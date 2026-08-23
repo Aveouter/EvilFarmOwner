@@ -3,139 +3,65 @@
 </p>
 
 <h1 align="center">
-  <img src="assets/icon-v2.png" alt="Evil Farm Owner icon" width="52" align="center">
-  Evil Farm Owner v0.1.0
+  <img src="assets/icon-v2.png" alt="Evil Farm Owner icon" width="48">
+  Evil Farm Owner
 </h1>
 
 <p align="center">
-  <strong>邪恶农场主</strong><br>
-  Hire farmhands, pay wages, and let someone else handle the repetitive farm work.
+  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.1.0
 </p>
 
 <p align="center">
-  <a href="#中文">中文</a> ·
+  Pay farmhands to handle watering, harvesting, debris cleanup, fertilizing, and planting.
+</p>
+
+<p align="center">
   <a href="#english">English</a> ·
-  <a href="#plan-list">Plan List</a> ·
-  <a href="#idea-list">Idea List</a> ·
-  <a href="#bug-list">Bug List</a>
+  <a href="#中文说明">中文说明</a> ·
+  <a href="#current-status">Current Status</a>
 </p>
 
 ---
 
-<details open>
-<summary id="中文"><strong>中文</strong></summary>
+## English
 
-## 这个 Mod 是做什么的？
+### What is Evil Farm Owner?
 
-`邪恶农场主` 让你在《星露谷物语》中花钱雇佣农工，把重复农活交出去。当前版本已经可以在农场内一键派工，帮助你浇水、收获、清理杂物，并可选择施肥和播种。
+`Evil Farm Owner` is a Stardew Valley mod for players who want to turn repetitive farm chores into paid labor.
 
-这不是一个完整的经营系统，当前版本更像“雇佣农工”的第一版可玩原型。后续会逐步加入雇佣菜单、可见 NPC、仓库整理和更完整的自动化流程。
+Press one key, pay a wage, and let hired farmhands run a work pass on your farm. The current version is an early playable prototype, focused on the core loop: hire workers, run enabled jobs, and charge money only when work is actually completed.
 
-## 当前能做什么？
+### Current Features
 
-- 按 `H` 派工一次。
-- 自动浇水。
-- 自动收获成熟作物。
-- 自动清理树枝、石头、杂草等农场杂物。
-- 可选：从背包拿肥料给空地施肥。
-- 可选：从背包拿种子播种。
-- 有工资消耗，默认每次有效派工扣除 `500g`。
-- 支持中文和英文文本。
-
-## 怎么用？
-
-1. 安装 SMAPI。
-2. 把 Mod 文件夹放进 `Stardew Valley/Mods`。
-3. 通过 SMAPI 启动游戏。
-4. 进入农场，按 `H` 派工。
-
-也可以在 SMAPI 控制台输入：
-
-```text
-efo_work
-```
-
-查看当前配置：
-
-```text
-efo_status
-```
-
-开关单项工作：
-
-```text
-efo_toggle water
-efo_toggle harvest
-efo_toggle clear
-efo_toggle fertilize
-efo_toggle plant
-```
-
-## 配置文件
-
-配置文件位于：
-
-```text
-Mods/EvilFarmOwner/config.json
-```
-
-| 配置项 | 说明 | 默认值 |
-| --- | --- | --- |
-| `OpenMenuKey` | 派工快捷键 | `H` |
-| `WorkRadius` | 工作扫描范围 | `64` |
-| `DailyWage` | 每次有效派工费用 | `500` |
-| `MaxTilesPerJob` | 单次最多处理数量 | `250` |
-| `WaterCrops` | 自动浇水 | `true` |
-| `HarvestCrops` | 自动收获 | `true` |
-| `ClearDebris` | 自动清理杂物 | `true` |
-| `FertilizeEmptyDirt` | 自动施肥 | `false` |
-| `PlantSeedsFromInventory` | 自动播种 | `false` |
-| `DepositHarvestToNearestChest` | 收获物放入附近箱子，待开发 | `false` |
-
-</details>
-
-<details>
-<summary id="english"><strong>English</strong></summary>
-
-## What does this mod do?
-
-`Evil Farm Owner` lets you hire farmhands in Stardew Valley so repetitive farm work is no longer all on you. The current version can run one work pass on the farm to water crops, harvest mature crops, clear debris, and optionally fertilize or plant seeds.
-
-This is not a full management system yet. Version `0.1.0` is the first playable prototype for the hired-worker loop. Future versions will add a proper hiring menu, visible NPC workers, warehouse sorting, and richer automation.
-
-## Current Features
-
-- Press `H` to send farmhands out for one work pass.
+- Hire farmhands with the `H` key.
 - Water crops.
 - Harvest mature crops.
-- Clear farm debris like twigs, stones, and weeds.
-- Optional: fertilize empty dirt using fertilizer from your inventory.
-- Optional: plant seeds from your inventory.
-- Wage cost, defaulting to `500g` per successful work pass.
-- Chinese and English text.
+- Clear farm debris such as twigs, stones, and weeds.
+- Optionally fertilize empty dirt using fertilizer from your inventory.
+- Optionally plant seeds from your inventory.
+- Charge a wage after successful work, defaulting to `500g`.
+- Support English and Chinese text.
 
-## How to Use
+### Installation
 
 1. Install SMAPI.
-2. Put the mod folder into `Stardew Valley/Mods`.
-3. Launch the game through SMAPI.
-4. Enter the farm and press `H`.
+2. Download or build `EvilFarmOwner`.
+3. Place the `EvilFarmOwner` folder in your `Stardew Valley/Mods` folder.
+4. Launch Stardew Valley through SMAPI.
 
-You can also run this in the SMAPI console:
+### How to Use
+
+Stand on your farm and press:
+
+```text
+H
+```
+
+You can also use SMAPI console commands:
 
 ```text
 efo_work
-```
-
-Show current settings:
-
-```text
 efo_status
-```
-
-Toggle individual jobs:
-
-```text
 efo_toggle water
 efo_toggle harvest
 efo_toggle clear
@@ -143,9 +69,9 @@ efo_toggle fertilize
 efo_toggle plant
 ```
 
-## Config
+### Configuration
 
-The config file is generated at:
+The config file is created at:
 
 ```text
 Mods/EvilFarmOwner/config.json
@@ -153,44 +79,113 @@ Mods/EvilFarmOwner/config.json
 
 | Key | Description | Default |
 | --- | --- | --- |
-| `OpenMenuKey` | Work hotkey | `H` |
-| `WorkRadius` | Work scan radius | `64` |
-| `DailyWage` | Wage per successful work pass | `500` |
-| `MaxTilesPerJob` | Max handled tiles or objects per pass | `250` |
-| `WaterCrops` | Water crops | `true` |
-| `HarvestCrops` | Harvest mature crops | `true` |
-| `ClearDebris` | Clear debris | `true` |
-| `FertilizeEmptyDirt` | Fertilize empty dirt | `false` |
-| `PlantSeedsFromInventory` | Plant seeds from inventory | `false` |
-| `DepositHarvestToNearestChest` | Deposit harvests into nearby chests, planned | `false` |
-
-</details>
+| `OpenMenuKey` | Hotkey for hiring farmhands | `H` |
+| `WorkRadius` | Work scan radius around the player | `64` |
+| `DailyWage` | Wage charged after successful work | `500` |
+| `MaxTilesPerJob` | Maximum handled tiles or objects per work pass | `250` |
+| `WaterCrops` | Enable crop watering | `true` |
+| `HarvestCrops` | Enable crop harvesting | `true` |
+| `ClearDebris` | Enable debris cleanup | `true` |
+| `FertilizeEmptyDirt` | Enable fertilizing from inventory | `false` |
+| `PlantSeedsFromInventory` | Enable planting from inventory | `false` |
+| `DepositHarvestToNearestChest` | Planned chest deposit behavior | `false` |
 
 ---
 
-## Plan List
+## 中文说明
 
-- Add an in-game hiring menu instead of relying on only a hotkey and console commands.
-- Add visible hired workers or temporary NPC workers.
-- Add worker movement, pathfinding, and work animations.
-- Add a warehouse or office anchor for hiring, seed storage, fertilizer storage, and harvest output.
-- Add host-authoritative multiplayer support.
+### 这个 Mod 是做什么的？
 
-## Idea List
+`邪恶农场主` 是一个《星露谷物语》SMAPI Mod。它的核心玩法是：你花钱雇佣农工，把重复农活交给他们处理。
 
-- Chest sorting by item type, quality, season, or custom labels.
-- Machine refilling and product collection.
-- Animal care jobs such as petting, feeding checks, and product pickup.
-- Tiered worker contracts with different wages, speeds, and job limits.
-- Evil capitalist flavor text, worker complaints, and event-style messages.
+当前版本是早期可玩原型，重点先跑通最基础的循环：雇佣农工、执行已开启的工作、只有真正完成工作后才扣钱。
 
-## Bug List
+### 当前功能
 
-- Multiplayer support is not complete; the host should run the work pass for now.
-- Visible NPC workers are not implemented yet; tasks execute instantly.
-- Harvest output currently follows the game's default harvest behavior instead of a custom warehouse route.
+- 按 `H` 雇佣农工执行一次工作。
+- 自动浇水。
+- 自动收获成熟作物。
+- 自动清理树枝、石头、杂草等农场杂物。
+- 可选：从背包拿肥料给空地施肥。
+- 可选：从背包拿种子播种。
+- 有工资系统，默认每次有效工作扣除 `500g`。
+- 支持中文和英文文本。
+
+### 安装方式
+
+1. 安装 SMAPI。
+2. 下载或构建 `EvilFarmOwner`。
+3. 把 `EvilFarmOwner` 文件夹放进 `Stardew Valley/Mods`。
+4. 通过 SMAPI 启动游戏。
+
+### 使用方式
+
+站在农场里按：
+
+```text
+H
+```
+
+也可以使用 SMAPI 控制台命令：
+
+```text
+efo_work
+efo_status
+efo_toggle water
+efo_toggle harvest
+efo_toggle clear
+efo_toggle fertilize
+efo_toggle plant
+```
+
+### 配置文件
+
+配置文件位置：
+
+```text
+Mods/EvilFarmOwner/config.json
+```
+
+| 配置项 | 说明 | 默认值 |
+| --- | --- | --- |
+| `OpenMenuKey` | 雇佣农工快捷键 | `H` |
+| `WorkRadius` | 以玩家为中心的工作扫描范围 | `64` |
+| `DailyWage` | 有效工作后的工资费用 | `500` |
+| `MaxTilesPerJob` | 单次最多处理的地块或对象数量 | `250` |
+| `WaterCrops` | 开启自动浇水 | `true` |
+| `HarvestCrops` | 开启自动收获 | `true` |
+| `ClearDebris` | 开启杂物清理 | `true` |
+| `FertilizeEmptyDirt` | 开启背包施肥 | `false` |
+| `PlantSeedsFromInventory` | 开启背包播种 | `false` |
+| `DepositHarvestToNearestChest` | 计划中的箱子入库功能 | `false` |
+
+---
+
+## Current Status
+
+### Plan List
+
+- Add an in-game hiring menu.
+- Show enabled jobs and wage before confirmation.
+- Add visible farmhand workers or simple worker feedback.
+- Add a warehouse or office anchor for storage and hiring.
+- Add safe host-authoritative multiplayer behavior.
+
+### Idea List
+
+- Sort chests by item type, quality, season, or custom labels.
+- Refill machines and collect finished products.
+- Add animal care jobs.
+- Add worker tiers with different wages and speeds.
+- Add flavor text, worker complaints, and capitalist farm-owner jokes.
+
+### Bug List / Known Limitations
+
+- Multiplayer support is not complete; the host should run work passes for now.
+- Workers are not visible yet; tasks execute instantly.
+- Harvest output uses the game's default behavior for now.
 - `DepositHarvestToNearestChest` is listed in config but not implemented yet.
-- Planting uses the first available seed stack in the player inventory and does not yet provide a crop selection UI.
+- Planting currently uses the first available seed stack in the player inventory.
 
 ## Compatibility
 
