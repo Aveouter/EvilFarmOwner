@@ -6,6 +6,7 @@
   "hud.empty": "Farmhands found no available work.",
   "cmd.work": "Hire farmhands to do one round of enabled work.",
   "cmd.status": "Show Hired Farmhands status.",
-  "cmd.toggle": "Toggle one task: water, harvest, clear, fertilize, plant.",
+  "cmd.toggle": "Toggle one task: water, harvest, fertilize, or plant. The clear task is temporarily disabled.",
+  "cmd.clear-disabled": "Debris cleanup is temporarily disabled to prevent resource loss.",
   "cmd.status.line": "Hired Farmhands: water={{water}}, harvest={{harvest}}, clear={{clear}}, fertilize={{fertilize}}, plant={{plant}}, radius={{radius}}, wage={{wage}}g."
 }

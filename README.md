@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  Pay farmhands to handle watering, harvesting, debris cleanup, fertilizing, and planting.
+  Pay farmhands to handle watering, harvesting, fertilizing, and planting.
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@ Press one key, pay a wage, and let hired farmhands run a work pass on your farm.
 - Hire farmhands with the `H` key.
 - Water crops.
 - Harvest mature crops.
-- Clear farm debris such as twigs, stones, and weeds.
+- Debris cleanup is temporarily disabled while resource-safe delivery is implemented.
 - Optionally fertilize empty dirt using fertilizer from your inventory.
 - Optionally plant seeds from your inventory.
 - Charge a wage after successful work, defaulting to `500g`.
@@ -69,6 +69,8 @@ efo_toggle fertilize
 efo_toggle plant
 ```
 
+`efo_toggle clear` is retained for config compatibility, but reports that debris cleanup is temporarily disabled.
+
 ### Configuration
 
 The config file is created at:
@@ -85,7 +87,7 @@ Mods/EvilFarmOwner/config.json
 | `MaxTilesPerJob` | Maximum handled tiles or objects per work pass | `250` |
 | `WaterCrops` | Enable crop watering | `true` |
 | `HarvestCrops` | Enable crop harvesting | `true` |
-| `ClearDebris` | Enable debris cleanup | `true` |
+| `ClearDebris` | Debris cleanup compatibility setting; forced off for safety | `false` |
 | `FertilizeEmptyDirt` | Enable fertilizing from inventory | `false` |
 | `PlantSeedsFromInventory` | Enable planting from inventory | `false` |
 | `DepositHarvestToNearestChest` | Planned chest deposit behavior | `false` |
@@ -105,7 +107,7 @@ Mods/EvilFarmOwner/config.json
 - 按 `H` 雇佣农工执行一次工作。
 - 自动浇水。
 - 自动收获成熟作物。
-- 自动清理树枝、石头、杂草等农场杂物。
+- 杂物清理暂时停用，等待实现不会丢失资源的交付逻辑。
 - 可选：从背包拿肥料给空地施肥。
 - 可选：从背包拿种子播种。
 - 有工资系统，默认每次有效工作扣除 `500g`。
@@ -138,6 +140,8 @@ efo_toggle fertilize
 efo_toggle plant
 ```
 
+为了兼容已有配置，仍保留 `efo_toggle clear`；执行时会提示杂物清理暂时停用。
+
 ### 配置文件
 
 配置文件位置：
@@ -154,7 +158,7 @@ Mods/EvilFarmOwner/config.json
 | `MaxTilesPerJob` | 单次最多处理的地块或对象数量 | `250` |
 | `WaterCrops` | 开启自动浇水 | `true` |
 | `HarvestCrops` | 开启自动收获 | `true` |
-| `ClearDebris` | 开启杂物清理 | `true` |
+| `ClearDebris` | 杂物清理兼容配置；当前会被安全地强制关闭 | `false` |
 | `FertilizeEmptyDirt` | 开启背包施肥 | `false` |
 | `PlantSeedsFromInventory` | 开启背包播种 | `false` |
 | `DepositHarvestToNearestChest` | 计划中的箱子入库功能 | `false` |
@@ -183,6 +187,7 @@ Mods/EvilFarmOwner/config.json
 
 - Multiplayer support is not complete; the host should run work passes for now.
 - Workers are not visible yet; tasks execute instantly.
+- Debris cleanup is disabled until normal drops and a safe delivery destination are implemented.
 - Harvest output uses the game's default behavior for now.
 - `DepositHarvestToNearestChest` is listed in config but not implemented yet.
 - Planting currently uses the first available seed stack in the player inventory.

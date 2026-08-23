@@ -5,7 +5,7 @@
   "MaxTilesPerJob": 250,
   "WaterCrops": true,
   "HarvestCrops": true,
-  "ClearDebris": true,
+  "ClearDebris": false,
   "FertilizeEmptyDirt": false,
   "PlantSeedsFromInventory": false,
   "DepositHarvestToNearestChest": false

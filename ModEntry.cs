@@ -18,6 +18,13 @@ public sealed class ModEntry : Mod
     {
         this.Config = helper.ReadConfig<ModConfig>();
 
+        if (this.Config.ClearDebris)
+        {
+            this.Config.ClearDebris = false;
+            helper.WriteConfig(this.Config);
+            this.Monitor.Log(helper.Translation.Get("cmd.clear-disabled"), LogLevel.Warn);
+        }
+
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
 
@@ -74,9 +81,6 @@ public sealed class ModEntry : Mod
 
             if (this.Config.HarvestCrops)
                 didWork |= this.TryHarvest(farm, tile, report);
-
-            if (this.Config.ClearDebris)
-                didWork |= this.TryClearDebris(farm, tile, report);
 
             if (this.Config.FertilizeEmptyDirt)
                 didWork |= this.TryFertilize(farm, tile, report);
@@ -148,25 +152,6 @@ public sealed class ModEntry : Mod
             return false;
 
         report.Harvested++;
-        return true;
-    }
-
-    private bool TryClearDebris(GameLocation location, Vector2 tile, WorkReport report)
-    {
-        if (!location.objects.TryGetValue(tile, out SObject obj))
-            return false;
-
-        string name = obj.Name.ToLowerInvariant();
-        bool isDebris = name.Contains("stone", StringComparison.Ordinal)
-            || name.Contains("twig", StringComparison.Ordinal)
-            || name.Contains("weed", StringComparison.Ordinal)
-            || obj.Category == SObject.junkCategory;
-
-        if (!isDebris)
-            return false;
-
-        location.objects.Remove(tile);
-        report.Cleared++;
         return true;
     }
 
@@ -243,7 +228,8 @@ public sealed class ModEntry : Mod
                 this.Config.HarvestCrops = !this.Config.HarvestCrops;
                 break;
             case "clear":
-                this.Config.ClearDebris = !this.Config.ClearDebris;
+                this.Config.ClearDebris = false;
+                this.Monitor.Log(this.Helper.Translation.Get("cmd.clear-disabled"), LogLevel.Warn);
                 break;
             case "fertilize":
                 this.Config.FertilizeEmptyDirt = !this.Config.FertilizeEmptyDirt;
