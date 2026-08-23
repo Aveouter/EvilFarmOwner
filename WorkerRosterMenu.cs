@@ -21,12 +21,17 @@ internal sealed class WorkerRosterMenu : IClickableMenu
 
     private readonly IReadOnlyList<WorkerRosterEntry> Entries;
     private readonly ITranslationHelper Translation;
+    private readonly Action<WorkerRosterEntry, int> OpenContractPreview;
     private readonly ClickableComponent PreviousButton;
     private readonly ClickableComponent NextButton;
     private readonly int PageSize;
     private int CurrentPage;
 
-    public WorkerRosterMenu(IReadOnlyList<WorkerRosterEntry> entries, ITranslationHelper translation)
+    public WorkerRosterMenu(
+        IReadOnlyList<WorkerRosterEntry> entries,
+        ITranslationHelper translation,
+        Action<WorkerRosterEntry, int> openContractPreview,
+        int initialPage = 0)
         : base(
             GetMenuX(),
             GetMenuY(),
@@ -36,7 +41,9 @@ internal sealed class WorkerRosterMenu : IClickableMenu
     {
         this.Entries = entries;
         this.Translation = translation;
+        this.OpenContractPreview = openContractPreview;
         this.PageSize = Math.Max(1, (this.height - HeaderHeight - FooterHeight) / RowHeight);
+        this.CurrentPage = Math.Clamp(initialPage, 0, this.PageCount - 1);
 
         int buttonY = this.yPositionOnScreen + this.height - FooterHeight + 10;
         this.PreviousButton = new ClickableComponent(
@@ -68,6 +75,14 @@ internal sealed class WorkerRosterMenu : IClickableMenu
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
+        WorkerRosterEntry? selectedEntry = this.GetEligibleEntryAt(x, y);
+        if (selectedEntry is not null)
+        {
+            Game1.playSound("smallSelect");
+            this.OpenContractPreview(selectedEntry, this.CurrentPage);
+            return;
+        }
+
         if (this.PreviousButton.containsPoint(x, y) && this.CurrentPage > 0)
         {
             this.ChangePage(-1);
@@ -258,6 +273,31 @@ internal sealed class WorkerRosterMenu : IClickableMenu
     {
         this.CurrentPage = Math.Clamp(this.CurrentPage + offset, 0, this.PageCount - 1);
         Game1.playSound("shwip");
+    }
+
+    private WorkerRosterEntry? GetEligibleEntryAt(int x, int y)
+    {
+        int contentX = this.xPositionOnScreen + HorizontalPadding;
+        int contentWidth = this.width - HorizontalPadding * 2;
+        int firstRowY = this.yPositionOnScreen + HeaderHeight;
+        Rectangle rowsBounds = new(
+            contentX,
+            firstRowY,
+            contentWidth,
+            this.PageSize * RowHeight);
+
+        if (!rowsBounds.Contains(x, y))
+            return null;
+
+        int rowOffset = (y - firstRowY) / RowHeight;
+        int entryIndex = this.CurrentPage * this.PageSize + rowOffset;
+        if (entryIndex < 0 || entryIndex >= this.Entries.Count)
+            return null;
+
+        WorkerRosterEntry entry = this.Entries[entryIndex];
+        return entry.Availability.State == WorkerAvailabilityState.EligibleForPreview
+            ? entry
+            : null;
     }
 
     private string GetStateText(WorkerAvailabilityState state)
