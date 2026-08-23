@@ -13,12 +13,18 @@ namespace EvilFarmOwner;
 public sealed class ModEntry : Mod
 {
     private ModConfig Config = new();
+    private bool HasKnownHotkeyConflict;
     private WorkerRosterService? WorkerRoster;
 
     public override void Entry(IModHelper helper)
     {
         this.Config = helper.ReadConfig<ModConfig>();
+        this.HasKnownHotkeyConflict = this.Config.OpenMenuKey == SButton.H
+            && helper.ModRegistry.IsLoaded("Annosz.UiInfoSuite2");
         this.WorkerRoster = new WorkerRosterService(this.Monitor);
+
+        if (this.HasKnownHotkeyConflict)
+            this.Monitor.Log(helper.Translation.Get("hud.hotkey-conflict"), LogLevel.Warn);
 
         if (this.Config.ClearDebris)
         {
@@ -39,6 +45,9 @@ public sealed class ModEntry : Mod
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
         Game1.addHUDMessage(new HUDMessage(this.Helper.Translation.Get("hud.ready", new { key = this.Config.OpenMenuKey }), HUDMessage.newQuest_type));
+
+        if (this.HasKnownHotkeyConflict)
+            Game1.addHUDMessage(new HUDMessage(this.Helper.Translation.Get("hud.hotkey-conflict"), HUDMessage.error_type));
     }
 
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)

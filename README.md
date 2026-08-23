@@ -33,7 +33,7 @@ Press one key to review named worker candidates and see why someone is currently
 
 ### Current Features
 
-- Open a read-only named worker roster with the `H` key.
+- Open a read-only named worker roster with the `K` key.
 - Show a current availability state and reason without moving, hiring, or reserving an NPC.
 - Water crops.
 - Harvest mature crops.
@@ -55,12 +55,14 @@ Press one key to review named worker candidates and see why someone is currently
 Load a save and press:
 
 ```text
-H
+K
 ```
 
 The roster is a read-only preview. It does not charge money or start farm work. The prototype work executor remains available only through the `efo_work` SMAPI console command for isolated testing.
 
 In multiplayer, both the host and farmhands may open their local read-only roster. It sends no work request and changes no NPC or farm state. A future contract action will be host-authoritative and will recheck availability instead of trusting this preview.
+
+New configurations default to `K`. If an older config still uses `H` while UI Info Suite 2 is installed, the mod shows a conflict warning; change `OpenMenuKey` to `K` or use `efo_roster`.
 
 You can also use SMAPI console commands:
 
@@ -87,7 +89,7 @@ Mods/EvilFarmOwner/config.json
 
 | Key | Description | Default |
 | --- | --- | --- |
-| `OpenMenuKey` | Hotkey for the read-only worker roster | `H` |
+| `OpenMenuKey` | Hotkey for the read-only worker roster | `K` |
 | `WorkRadius` | Work scan radius around the player | `64` |
 | `DailyWage` | Wage charged after successful work | `500` |
 | `MaxTilesPerJob` | Maximum handled tiles or objects per work pass | `250` |
@@ -110,7 +112,7 @@ Mods/EvilFarmOwner/config.json
 
 ### 当前功能
 
-- 按 `H` 打开只读的具名工人候选名单。
+- 按 `K` 打开只读的具名工人候选名单。
 - 显示当前可用状态和原因，不移动、雇佣或预留 NPC。
 - 自动浇水。
 - 自动收获成熟作物。
@@ -132,12 +134,14 @@ Mods/EvilFarmOwner/config.json
 载入存档后按：
 
 ```text
-H
+K
 ```
 
 候选名单仅用于预览，不会扣钱或开始农活。原型工作执行器只保留在 SMAPI 控制台命令 `efo_work` 中，用于隔离测试。
 
 多人游戏中，主机和农场助手都可以打开各自的本地只读名单。这个操作不会发送工作请求，也不会改变 NPC 或农场状态。未来真正签订合同时将由主机重新检查可用性，不会直接相信这次预览结果。
+
+新配置默认使用 `K`。如果旧配置仍使用 `H` 且安装了 UI Info Suite 2，模组会显示冲突警告；请把 `OpenMenuKey` 改成 `K`，或使用 `efo_roster`。
 
 也可以使用 SMAPI 控制台命令：
 
@@ -164,7 +168,7 @@ Mods/EvilFarmOwner/config.json
 
 | 配置项 | 说明 | 默认值 |
 | --- | --- | --- |
-| `OpenMenuKey` | 打开只读工人名单的快捷键 | `H` |
+| `OpenMenuKey` | 打开只读工人名单的快捷键 | `K` |
 | `WorkRadius` | 以玩家为中心的工作扫描范围 | `64` |
 | `DailyWage` | 有效工作后的工资费用 | `500` |
 | `MaxTilesPerJob` | 单次最多处理的地块或对象数量 | `250` |
