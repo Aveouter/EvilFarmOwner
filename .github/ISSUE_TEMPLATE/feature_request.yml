@@ -1,0 +1,40 @@
+name: Feature Request
+description: Propose a user-facing feature.
+title: "feat(area): "
+labels: ["type:feature", "status:needs-design"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should the player be able to do?
+    validations:
+      required: true
+  - type: textarea
+    id: user_story
+    attributes:
+      label: User Story
+      placeholder: As a player, I want ..., so that ...
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is included in this feature?
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: What must be true before this issue can close?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - area:ui
+        - area:farm-work
+        - area:storage
+        - area:multiplayer
+        - area:npc
+        - area:config
+        - area:docs
+        - area:release
