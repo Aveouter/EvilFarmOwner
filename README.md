@@ -35,6 +35,7 @@ Press one key to review named worker candidates and see why someone is currently
 
 - Open a read-only named worker roster with the `K` key.
 - Show a current availability state and reason without moving, hiring, or reserving an NPC.
+- Select a preview-eligible NPC to inspect a read-only watering contract and itemized wage estimate.
 - Water crops.
 - Harvest mature crops.
 - Debris cleanup is temporarily disabled while resource-safe delivery is implemented.
@@ -58,7 +59,7 @@ Load a save and press:
 K
 ```
 
-The roster is a read-only preview. It does not charge money or start farm work. The prototype work executor remains available only through the `efo_work` SMAPI console command for isolated testing.
+The roster and watering contract are read-only previews. Select a green preview-eligible row to see the six-hour estimate, friendship multiplier, workday or rest-day multiplier, baseline efficiency, and overtime policy. There is no confirm button, charge, or farm work. The prototype work executor remains available only through the `efo_work` SMAPI console command for isolated testing.
 
 In multiplayer, both the host and farmhands may open their local read-only roster. It sends no work request and changes no NPC or farm state. A future contract action will be host-authoritative and will recheck availability instead of trusting this preview.
 
@@ -91,7 +92,7 @@ Mods/EvilFarmOwner/config.json
 | --- | --- | --- |
 | `OpenMenuKey` | Hotkey for the read-only worker roster | `K` |
 | `WorkRadius` | Work scan radius around the player | `64` |
-| `DailyWage` | Wage charged after successful work | `500` |
+| `DailyWage` | Legacy `efo_work` prototype charge; the named contract preview uses its itemized hourly model | `500` |
 | `MaxTilesPerJob` | Maximum handled tiles or objects per work pass | `250` |
 | `WaterCrops` | Enable crop watering | `true` |
 | `HarvestCrops` | Enable crop harvesting | `true` |
@@ -114,6 +115,7 @@ Mods/EvilFarmOwner/config.json
 
 - 按 `K` 打开只读的具名工人候选名单。
 - 显示当前可用状态和原因，不移动、雇佣或预留 NPC。
+- 选择可预览的 NPC，查看只读浇水合同和逐项工资估算。
 - 自动浇水。
 - 自动收获成熟作物。
 - 杂物清理暂时停用，等待实现不会丢失资源的交付逻辑。
@@ -137,7 +139,7 @@ Mods/EvilFarmOwner/config.json
 K
 ```
 
-候选名单仅用于预览，不会扣钱或开始农活。原型工作执行器只保留在 SMAPI 控制台命令 `efo_work` 中，用于隔离测试。
+候选名单和浇水合同都仅用于预览。选择绿色“可预览合同”行，可以查看六小时工资、好感度系数、工作日或休息日系数、基础效率和加班政策。界面没有确认按钮，不会扣钱或开始农活。原型工作执行器只保留在 SMAPI 控制台命令 `efo_work` 中，用于隔离测试。
 
 多人游戏中，主机和农场助手都可以打开各自的本地只读名单。这个操作不会发送工作请求，也不会改变 NPC 或农场状态。未来真正签订合同时将由主机重新检查可用性，不会直接相信这次预览结果。
 
@@ -170,7 +172,7 @@ Mods/EvilFarmOwner/config.json
 | --- | --- | --- |
 | `OpenMenuKey` | 打开只读工人名单的快捷键 | `K` |
 | `WorkRadius` | 以玩家为中心的工作扫描范围 | `64` |
-| `DailyWage` | 有效工作后的工资费用 | `500` |
+| `DailyWage` | 旧版 `efo_work` 原型扣款；具名合同预览使用逐项时薪模型 | `500` |
 | `MaxTilesPerJob` | 单次最多处理的地块或对象数量 | `250` |
 | `WaterCrops` | 开启自动浇水 | `true` |
 | `HarvestCrops` | 开启自动收获 | `true` |
@@ -185,8 +187,8 @@ Mods/EvilFarmOwner/config.json
 
 ### Plan List
 
-- Add an in-game hiring menu.
-- Show enabled jobs and wage before confirmation.
+- Add a safe contract confirmation after the read-only preview.
+- Acquire and release an NPC work lease without disrupting protected schedules.
 - Add visible farmhand workers or simple worker feedback.
 - Add a warehouse or office anchor for storage and hiring.
 - Add safe host-authoritative multiplayer behavior.

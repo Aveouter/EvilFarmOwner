@@ -61,7 +61,7 @@ public sealed class ModEntry : Mod
         this.OpenWorkerRoster();
     }
 
-    private void OpenWorkerRoster()
+    private void OpenWorkerRoster(int initialPage = 0)
     {
         if (!Context.IsWorldReady || this.WorkerRoster is null)
         {
@@ -71,7 +71,25 @@ public sealed class ModEntry : Mod
 
         Game1.activeClickableMenu = new WorkerRosterMenu(
             this.WorkerRoster.GetRoster(),
-            this.Helper.Translation);
+            this.Helper.Translation,
+            this.OpenWateringContractPreview,
+            initialPage);
+    }
+
+    private void OpenWateringContractPreview(WorkerRosterEntry worker, int rosterPage)
+    {
+        if (!Context.IsWorldReady
+            || worker.Availability.State != WorkerAvailabilityState.EligibleForPreview)
+            return;
+
+        int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(worker.InternalName);
+        WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
+
+        Game1.activeClickableMenu = new WateringContractPreviewMenu(
+            worker,
+            preview,
+            this.Helper.Translation,
+            () => this.OpenWorkerRoster(rosterPage));
     }
 
     private void TryDoFarmWork(bool showEmptyMessage)
