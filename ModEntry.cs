@@ -13,10 +13,12 @@ namespace EvilFarmOwner;
 public sealed class ModEntry : Mod
 {
     private ModConfig Config = new();
+    private WorkerRosterService? WorkerRoster;
 
     public override void Entry(IModHelper helper)
     {
         this.Config = helper.ReadConfig<ModConfig>();
+        this.WorkerRoster = new WorkerRosterService(this.Monitor);
 
         if (this.Config.ClearDebris)
         {
@@ -29,6 +31,7 @@ public sealed class ModEntry : Mod
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
 
         helper.ConsoleCommands.Add("efo_work", helper.Translation.Get("cmd.work"), (_, _) => this.TryDoFarmWork(showEmptyMessage: true));
+        helper.ConsoleCommands.Add("efo_roster", helper.Translation.Get("cmd.roster"), (_, _) => this.OpenWorkerRoster());
         helper.ConsoleCommands.Add("efo_status", helper.Translation.Get("cmd.status"), (_, _) => this.ShowStatus());
         helper.ConsoleCommands.Add("efo_toggle", helper.Translation.Get("cmd.toggle"), this.ToggleTask);
     }
@@ -40,10 +43,26 @@ public sealed class ModEntry : Mod
 
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
     {
-        if (!Context.IsWorldReady || !e.Button.Equals(this.Config.OpenMenuKey))
+        if (!Context.IsWorldReady
+            || Game1.activeClickableMenu is not null
+            || !e.Button.Equals(this.Config.OpenMenuKey))
             return;
 
-        this.TryDoFarmWork(showEmptyMessage: true);
+        this.Helper.Input.Suppress(e.Button);
+        this.OpenWorkerRoster();
+    }
+
+    private void OpenWorkerRoster()
+    {
+        if (!Context.IsWorldReady || this.WorkerRoster is null)
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("cmd.roster-world-not-ready"), LogLevel.Info);
+            return;
+        }
+
+        Game1.activeClickableMenu = new WorkerRosterMenu(
+            this.WorkerRoster.GetRoster(),
+            this.Helper.Translation);
     }
 
     private void TryDoFarmWork(bool showEmptyMessage)

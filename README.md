@@ -29,11 +29,12 @@
 
 `Evil Farm Owner` is a Stardew Valley mod for players who want to turn repetitive farm chores into paid labor.
 
-Press one key, pay a wage, and let hired farmhands run a work pass on your farm. The current version is an early playable prototype, focused on the core loop: hire workers, run enabled jobs, and charge money only when work is actually completed.
+Press one key to review named worker candidates and see why someone is currently unavailable. The current version is an early playable prototype; the roster is deliberately read-only while safe contracts, schedules, and visible NPC work are developed.
 
 ### Current Features
 
-- Hire farmhands with the `H` key.
+- Open a read-only named worker roster with the `H` key.
+- Show a current availability state and reason without moving, hiring, or reserving an NPC.
 - Water crops.
 - Harvest mature crops.
 - Debris cleanup is temporarily disabled while resource-safe delivery is implemented.
@@ -51,16 +52,21 @@ Press one key, pay a wage, and let hired farmhands run a work pass on your farm.
 
 ### How to Use
 
-Stand on your farm and press:
+Load a save and press:
 
 ```text
 H
 ```
 
+The roster is a read-only preview. It does not charge money or start farm work. The prototype work executor remains available only through the `efo_work` SMAPI console command for isolated testing.
+
+In multiplayer, both the host and farmhands may open their local read-only roster. It sends no work request and changes no NPC or farm state. A future contract action will be host-authoritative and will recheck availability instead of trusting this preview.
+
 You can also use SMAPI console commands:
 
 ```text
 efo_work
+efo_roster
 efo_status
 efo_toggle water
 efo_toggle harvest
@@ -81,7 +87,7 @@ Mods/EvilFarmOwner/config.json
 
 | Key | Description | Default |
 | --- | --- | --- |
-| `OpenMenuKey` | Hotkey for hiring farmhands | `H` |
+| `OpenMenuKey` | Hotkey for the read-only worker roster | `H` |
 | `WorkRadius` | Work scan radius around the player | `64` |
 | `DailyWage` | Wage charged after successful work | `500` |
 | `MaxTilesPerJob` | Maximum handled tiles or objects per work pass | `250` |
@@ -100,11 +106,12 @@ Mods/EvilFarmOwner/config.json
 
 `邪恶农场主` 是一个《星露谷物语》SMAPI Mod。它的核心玩法是：你花钱雇佣农工，把重复农活交给他们处理。
 
-当前版本是早期可玩原型，重点先跑通最基础的循环：雇佣农工、执行已开启的工作、只有真正完成工作后才扣钱。
+当前版本是早期可玩原型。现在可以先查看具名 NPC 候选人及其当前不可雇佣原因；在安全合同、日程保护和可见工作流程完成前，这个名单保持只读。
 
 ### 当前功能
 
-- 按 `H` 雇佣农工执行一次工作。
+- 按 `H` 打开只读的具名工人候选名单。
+- 显示当前可用状态和原因，不移动、雇佣或预留 NPC。
 - 自动浇水。
 - 自动收获成熟作物。
 - 杂物清理暂时停用，等待实现不会丢失资源的交付逻辑。
@@ -122,16 +129,21 @@ Mods/EvilFarmOwner/config.json
 
 ### 使用方式
 
-站在农场里按：
+载入存档后按：
 
 ```text
 H
 ```
 
+候选名单仅用于预览，不会扣钱或开始农活。原型工作执行器只保留在 SMAPI 控制台命令 `efo_work` 中，用于隔离测试。
+
+多人游戏中，主机和农场助手都可以打开各自的本地只读名单。这个操作不会发送工作请求，也不会改变 NPC 或农场状态。未来真正签订合同时将由主机重新检查可用性，不会直接相信这次预览结果。
+
 也可以使用 SMAPI 控制台命令：
 
 ```text
 efo_work
+efo_roster
 efo_status
 efo_toggle water
 efo_toggle harvest
@@ -152,7 +164,7 @@ Mods/EvilFarmOwner/config.json
 
 | 配置项 | 说明 | 默认值 |
 | --- | --- | --- |
-| `OpenMenuKey` | 雇佣农工快捷键 | `H` |
+| `OpenMenuKey` | 打开只读工人名单的快捷键 | `H` |
 | `WorkRadius` | 以玩家为中心的工作扫描范围 | `64` |
 | `DailyWage` | 有效工作后的工资费用 | `500` |
 | `MaxTilesPerJob` | 单次最多处理的地块或对象数量 | `250` |
