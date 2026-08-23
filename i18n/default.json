@@ -2,6 +2,7 @@
   "hud.ready": "Evil Farm Owner is ready. Press {{key}} to view worker candidates.",
   "hud.hotkey-conflict": "Evil Farm Owner's H key conflicts with UI Info Suite 2. Set OpenMenuKey to K or use 'efo_roster'.",
   "hud.no-farm": "Farmhands only work on the farm.",
+  "hud.no-tasks": "No farmhand jobs are enabled.",
   "hud.no-money": "Not enough gold to hire farmhands. Need {{gold}}g.",
   "hud.done": "Farmhands finished: watered {{watered}}, harvested {{harvested}}, cleared {{cleared}}, fertilized {{fertilized}}, planted {{planted}}.",
   "hud.empty": "Farmhands found no available work.",

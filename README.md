@@ -91,9 +91,9 @@ Mods/EvilFarmOwner/config.json
 | Key | Description | Default |
 | --- | --- | --- |
 | `OpenMenuKey` | Hotkey for the read-only worker roster | `K` |
-| `WorkRadius` | Work scan radius around the player | `64` |
-| `DailyWage` | Legacy `efo_work` prototype charge; the named contract preview uses its itemized hourly model | `500` |
-| `MaxTilesPerJob` | Maximum handled tiles or objects per work pass | `250` |
+| `WorkRadius` | Work scan radius around the player (`1`–`256`) | `64` |
+| `DailyWage` | Legacy `efo_work` prototype charge (`0`–`100000000`); the named contract preview uses its itemized hourly model | `500` |
+| `MaxTilesPerJob` | Maximum handled tiles or objects per work pass (`1`–`10000`) | `250` |
 | `WaterCrops` | Enable crop watering | `true` |
 | `HarvestCrops` | Enable crop harvesting | `true` |
 | `ClearDebris` | Debris cleanup compatibility setting; forced off for safety | `false` |
@@ -171,9 +171,9 @@ Mods/EvilFarmOwner/config.json
 | 配置项 | 说明 | 默认值 |
 | --- | --- | --- |
 | `OpenMenuKey` | 打开只读工人名单的快捷键 | `K` |
-| `WorkRadius` | 以玩家为中心的工作扫描范围 | `64` |
-| `DailyWage` | 旧版 `efo_work` 原型扣款；具名合同预览使用逐项时薪模型 | `500` |
-| `MaxTilesPerJob` | 单次最多处理的地块或对象数量 | `250` |
+| `WorkRadius` | 以玩家为中心的工作扫描范围（`1`–`256`） | `64` |
+| `DailyWage` | 旧版 `efo_work` 原型扣款（`0`–`100000000`）；具名合同预览使用逐项时薪模型 | `500` |
+| `MaxTilesPerJob` | 单次最多处理的地块或对象数量（`1`–`10000`） | `250` |
 | `WaterCrops` | 开启自动浇水 | `true` |
 | `HarvestCrops` | 开启自动收获 | `true` |
 | `ClearDebris` | 杂物清理兼容配置；当前会被安全地强制关闭 | `false` |

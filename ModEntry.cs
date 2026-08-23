@@ -19,6 +19,12 @@ public sealed class ModEntry : Mod
     public override void Entry(IModHelper helper)
     {
         this.Config = helper.ReadConfig<ModConfig>();
+        IReadOnlyList<string> configWarnings = ConfigValidator.Normalize(this.Config);
+        bool shouldWriteConfig = configWarnings.Count > 0;
+
+        foreach (string warning in configWarnings)
+            this.Monitor.Log($"Invalid config: {warning}", LogLevel.Warn);
+
         this.HasKnownHotkeyConflict = this.Config.OpenMenuKey == SButton.H
             && helper.ModRegistry.IsLoaded("Annosz.UiInfoSuite2");
         this.WorkerRoster = new WorkerRosterService(this.Monitor);
@@ -29,9 +35,12 @@ public sealed class ModEntry : Mod
         if (this.Config.ClearDebris)
         {
             this.Config.ClearDebris = false;
-            helper.WriteConfig(this.Config);
+            shouldWriteConfig = true;
             this.Monitor.Log(helper.Translation.Get("cmd.clear-disabled"), LogLevel.Warn);
         }
+
+        if (shouldWriteConfig)
+            helper.WriteConfig(this.Config);
 
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
@@ -103,6 +112,12 @@ public sealed class ModEntry : Mod
         if (Game1.currentLocation is not Farm farm)
         {
             Game1.addHUDMessage(new HUDMessage(this.Helper.Translation.Get("hud.no-farm"), HUDMessage.error_type));
+            return;
+        }
+
+        if (!ConfigValidator.HasEnabledJobs(this.Config))
+        {
+            Game1.addHUDMessage(new HUDMessage(this.Helper.Translation.Get("hud.no-tasks"), HUDMessage.error_type));
             return;
         }
 
