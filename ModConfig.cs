@@ -10,7 +10,7 @@ internal sealed class ModConfig
     public int MaxTilesPerJob { get; set; } = 250;
     public bool WaterCrops { get; set; } = true;
     public bool HarvestCrops { get; set; } = true;
-    public bool ClearDebris { get; set; } = true;
+    public bool ClearDebris { get; set; } = false;
     public bool FertilizeEmptyDirt { get; set; } = false;
     public bool PlantSeedsFromInventory { get; set; } = false;
     public bool DepositHarvestToNearestChest { get; set; } = false;
