@@ -4,7 +4,7 @@ namespace EvilFarmOwner;
 
 internal sealed class ModConfig
 {
-    public SButton OpenMenuKey { get; set; } = SButton.H;
+    public SButton OpenMenuKey { get; set; } = SButton.K;
     public int WorkRadius { get; set; } = 64;
     public int DailyWage { get; set; } = 500;
     public int MaxTilesPerJob { get; set; } = 250;
