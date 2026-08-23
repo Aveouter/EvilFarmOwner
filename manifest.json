@@ -1,0 +1,10 @@
+{
+  "Name": "Evil Farm Owner",
+  "Author": "pespi-codex",
+  "Version": "0.1.0",
+  "Description": "Hire farmhands to water, harvest, clear debris, fertilize, and plant crops on your farm.",
+  "UniqueID": "Aveouter.EvilFarmOwner",
+  "EntryDll": "EvilFarmOwner.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

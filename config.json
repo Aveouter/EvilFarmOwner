@@ -1,0 +1,12 @@
+{
+  "OpenMenuKey": "H",
+  "WorkRadius": 64,
+  "DailyWage": 500,
+  "MaxTilesPerJob": 250,
+  "WaterCrops": true,
+  "HarvestCrops": true,
+  "ClearDebris": true,
+  "FertilizeEmptyDirt": false,
+  "PlantSeedsFromInventory": false,
+  "DepositHarvestToNearestChest": false
+}

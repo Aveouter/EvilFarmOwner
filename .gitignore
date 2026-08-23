@@ -1,0 +1,11 @@
+bin/
+obj/
+
+*.user
+*.suo
+*.tmp
+*.log
+
+.DS_Store
+
+config.local.json

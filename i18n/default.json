@@ -1,0 +1,11 @@
+{
+  "hud.ready": "Evil Farm Owner is ready. Press {{key}} or use 'efo_work'.",
+  "hud.no-farm": "Farmhands only work on the farm.",
+  "hud.no-money": "Not enough gold to hire farmhands. Need {{gold}}g.",
+  "hud.done": "Farmhands finished: watered {{watered}}, harvested {{harvested}}, cleared {{cleared}}, fertilized {{fertilized}}, planted {{planted}}.",
+  "hud.empty": "Farmhands found no available work.",
+  "cmd.work": "Hire farmhands to do one round of enabled work.",
+  "cmd.status": "Show Hired Farmhands status.",
+  "cmd.toggle": "Toggle one task: water, harvest, clear, fertilize, plant.",
+  "cmd.status.line": "Hired Farmhands: water={{water}}, harvest={{harvest}}, clear={{clear}}, fertilize={{fertilize}}, plant={{plant}}, radius={{radius}}, wage={{wage}}g."
+}

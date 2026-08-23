@@ -1,0 +1,11 @@
+{
+  "hud.ready": "邪恶农场主已就绪。按 {{key}} 或使用命令 efo_work 派工。",
+  "hud.no-farm": "雇佣农工目前只在农场工作。",
+  "hud.no-money": "金币不足，雇佣农工需要 {{gold}}g。",
+  "hud.done": "农工完成工作：浇水 {{watered}} 格，收获 {{harvested}} 格，清理 {{cleared}} 个，施肥 {{fertilized}} 格，播种 {{planted}} 格。",
+  "hud.empty": "农工没有找到可执行的工作。",
+  "cmd.work": "雇佣农工执行一次已开启的农场工作。",
+  "cmd.status": "显示雇佣农工状态。",
+  "cmd.toggle": "切换任务开关：water、harvest、clear、fertilize、plant。",
+  "cmd.status.line": "雇佣农工：浇水={{water}}，收获={{harvest}}，清理={{clear}}，施肥={{fertilize}}，播种={{plant}}，范围={{radius}}，工资={{wage}}g。"
+}
