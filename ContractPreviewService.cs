@@ -8,7 +8,6 @@ internal static class ContractPreviewService
     internal const decimal RestDayMultiplier = 3.00m;
     internal const decimal OvertimeMultiplier = 1.50m;
     internal const decimal BaselineEfficiencyMultiplier = 1.00m;
-    internal const int MaximumWaterTiles = 1;
 
     public static WateringContractPreview Create(int friendshipHearts, int dayOfMonth)
     {
@@ -40,8 +39,7 @@ internal static class ContractPreviewService
             MaximumOvertimeHours,
             estimatedWage,
             MaximumAuthorizedWage: estimatedWage,
-            MinimumCalloutWage: minimumCalloutWage,
-            MaximumWaterTiles);
+            MinimumCalloutWage: minimumCalloutWage);
     }
 
     private static (FriendshipWageBand Band, decimal Multiplier) GetFriendshipBand(int hearts)

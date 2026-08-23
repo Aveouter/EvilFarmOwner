@@ -11,6 +11,7 @@ namespace EvilFarmOwner;
 internal sealed class WateringContractExecutionController
 {
     private const int LatestStartTime = 1600;
+    private const int StopAcquiringTime = 2100;
     private const int HardStopTime = 2200;
     private const int ActionStartTicks = 8;
     private const int ActionDurationTicks = 36;
@@ -107,8 +108,8 @@ internal sealed class WateringContractExecutionController
 
             PathFindController outbound = this.CreatePathController(
                 contract,
-                planResult.Plan.InteractionTile,
-                planResult.Plan.FacingDirection,
+                planResult.Plan.FirstTarget.InteractionTile,
+                planResult.Plan.FirstTarget.FacingDirection,
                 this.OnArrivedAtTarget);
             contract.Controller = outbound;
             lease.AttachController(outbound);
@@ -172,17 +173,18 @@ internal sealed class WateringContractExecutionController
                 {
                     if (!this.TryApplyWatering(contract))
                     {
-                        contract.FailureTranslationKey = "contract.failure.target-invalidated";
-                        this.BeginReturn(contract);
-                        return;
+                        contract.SkippedTargets++;
+                        contract.ActionApplied = true;
                     }
-
-                    contract.ActionApplied = true;
-                    contract.WorkSucceeded = true;
+                    else
+                    {
+                        contract.ActionApplied = true;
+                        contract.WateredTargets++;
+                    }
                 }
 
                 if (contract.PhaseTicks >= ActionDurationTicks)
-                    this.BeginReturn(contract);
+                    this.BeginNextOrReturn(contract);
                 break;
 
             case WateringContractPhase.Returning:
@@ -207,8 +209,10 @@ internal sealed class WateringContractExecutionController
             case WateringContractPhase.Returned:
                 this.FinishContract(
                     contract,
-                    contract.WorkSucceeded && contract.FailureTranslationKey is null,
-                    contract.FailureTranslationKey);
+                    contract.WateredTargets > 0,
+                    contract.WateredTargets > 0
+                        ? null
+                        : "contract.failure.target-invalidated");
                 break;
         }
     }
@@ -239,7 +243,7 @@ internal sealed class WateringContractExecutionController
         contract.Phase = WateringContractPhase.Acting;
         contract.PhaseTicks = 0;
         contract.Lease.Worker.Halt();
-        contract.Lease.Worker.faceDirection(contract.Plan.FacingDirection);
+        contract.Lease.Worker.faceDirection(contract.CurrentTarget.FacingDirection);
     }
 
     private void OnReturnedToArrival(Character character, GameLocation location)
@@ -258,17 +262,17 @@ internal sealed class WateringContractExecutionController
 
     private bool TryApplyWatering(ActiveWateringContract contract)
     {
-        Vector2 targetTile = new(contract.Plan.TargetTile.X, contract.Plan.TargetTile.Y);
+        Vector2 targetTile = new(contract.CurrentTarget.TargetTile.X, contract.CurrentTarget.TargetTile.Y);
         if (!WateringTargetPlanner.IsDryCrop(contract.Farm, targetTile)
             || contract.Lease.Worker.currentLocation != contract.Farm
-            || contract.Lease.Worker.TilePoint != contract.Plan.InteractionTile)
+            || contract.Lease.Worker.TilePoint != contract.CurrentTarget.InteractionTile)
             return false;
 
         if (!contract.Farm.terrainFeatures.TryGetValue(targetTile, out TerrainFeature? feature)
             || feature is not HoeDirt dirt)
             return false;
 
-        contract.Lease.Worker.faceDirection(contract.Plan.FacingDirection);
+        contract.Lease.Worker.faceDirection(contract.CurrentTarget.FacingDirection);
         dirt.state.Value = HoeDirt.watered;
         contract.Farm.playSound("wateringCan", targetTile);
 
@@ -360,6 +364,62 @@ internal sealed class WateringContractExecutionController
         }
     }
 
+    private void BeginNextOrReturn(ActiveWateringContract contract)
+    {
+        if (!ReferenceEquals(this.ActiveContract, contract))
+            return;
+
+        if (Game1.timeOfDay >= StopAcquiringTime)
+        {
+            contract.RemainingTargets = WateringTargetPlanner.CountRemainingDryCrops(
+                contract.Farm,
+                contract.AttemptedTargets);
+            this.BeginReturn(contract);
+            return;
+        }
+
+        WateringTargetSearchResult next = this.TargetPlanner.TryFindNext(
+            contract.Farm,
+            contract.Lease.Worker,
+            contract.Lease.Worker.TilePoint,
+            contract.Plan.ArrivalTile,
+            contract.AttemptedTargets);
+
+        if (!next.IsSuccess || next.Target is null)
+        {
+            if (next.Failure == WateringPlanFailure.NoReachableCrop)
+                contract.UnreachableTargets += next.CandidateTargetCount;
+
+            this.BeginReturn(contract);
+            return;
+        }
+
+        try
+        {
+            contract.CurrentTarget = next.Target;
+            contract.AttemptedTargets.Add(next.Target.TargetTile);
+            contract.ActionApplied = false;
+            contract.Phase = WateringContractPhase.TravelingToTarget;
+            contract.PhaseTicks = 0;
+
+            PathFindController controller = this.CreatePathController(
+                contract,
+                next.Target.InteractionTile,
+                next.Target.FacingDirection,
+                this.OnArrivedAtTarget);
+            contract.Controller = controller;
+            contract.Lease.AttachController(controller);
+        }
+        catch (Exception ex)
+        {
+            contract.UnreachableTargets++;
+            this.Monitor.Log(
+                $"Worker '{contract.Lease.Worker.Name}' could not start the next watering path: {ex.Message}",
+                LogLevel.Warn);
+            this.BeginReturn(contract);
+        }
+    }
+
     private PathFindController CreatePathController(
         ActiveWateringContract contract,
         Point destination,
@@ -396,7 +456,9 @@ internal sealed class WateringContractExecutionController
         NpcLeaseRestoreResult restoreResult = contract.Lease.Restore();
         WateringContractSettlement settlement = WateringContractSettlement.Create(
             contract.Preview,
-            contract.Dispatched);
+            contract.Dispatched,
+            contract.Lease.StartTime,
+            Game1.timeOfDay);
         Game1.player.Money += settlement.RefundedGold;
         this.ActiveContract = null;
 
@@ -414,6 +476,11 @@ internal sealed class WateringContractExecutionController
                 this.Translation.Get("contract.hud.completed", new
                 {
                     worker = contract.Lease.Worker.displayName,
+                    watered = contract.WateredTargets,
+                    skipped = contract.SkippedTargets,
+                    unreachable = contract.UnreachableTargets,
+                    remaining = contract.RemainingTargets,
+                    hours = settlement.BillableHours,
                     paid = settlement.ChargedGold,
                     refunded = settlement.RefundedGold
                 }),
@@ -429,6 +496,11 @@ internal sealed class WateringContractExecutionController
             {
                 worker = contract.Lease.Worker.displayName,
                 reason,
+                watered = contract.WateredTargets,
+                skipped = contract.SkippedTargets,
+                unreachable = contract.UnreachableTargets,
+                remaining = contract.RemainingTargets,
+                hours = settlement.BillableHours,
                 paid = settlement.ChargedGold,
                 refunded = settlement.RefundedGold
             }),
@@ -474,6 +546,8 @@ internal sealed class WateringContractExecutionController
             this.Preview = preview;
             this.Farm = farm;
             this.Plan = plan;
+            this.CurrentTarget = plan.FirstTarget;
+            this.AttemptedTargets.Add(plan.FirstTarget.TargetTile);
         }
 
         public Guid Id { get; }
@@ -481,12 +555,16 @@ internal sealed class WateringContractExecutionController
         public WateringContractPreview Preview { get; }
         public Farm Farm { get; }
         public WateringWorkPlan Plan { get; }
+        public HashSet<Point> AttemptedTargets { get; } = new();
+        public WateringTargetPlan CurrentTarget { get; set; }
         public WateringContractPhase Phase { get; set; } = WateringContractPhase.TravelingToTarget;
         public PathFindController? Controller { get; set; }
         public int PhaseTicks { get; set; }
         public bool Dispatched { get; set; }
         public bool ActionApplied { get; set; }
-        public bool WorkSucceeded { get; set; }
-        public string? FailureTranslationKey { get; set; }
+        public int WateredTargets { get; set; }
+        public int SkippedTargets { get; set; }
+        public int UnreachableTargets { get; set; }
+        public int RemainingTargets { get; set; }
     }
 }

@@ -28,5 +28,4 @@ internal sealed record WateringContractPreview(
     int MaximumOvertimeHours,
     int EstimatedRegularWage,
     int MaximumAuthorizedWage,
-    int MinimumCalloutWage,
-    int MaximumWaterTiles);
+    int MinimumCalloutWage);

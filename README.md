@@ -29,15 +29,15 @@
 
 `Evil Farm Owner` is a Stardew Valley mod for players who want to turn repetitive farm chores into paid labor.
 
-Press one key to review named worker candidates and see why someone is currently unavailable. An available adult NPC can be hired for a visible one-tile watering contract with an itemized wage and a protected return to their original schedule position.
+Press one key to review named worker candidates and see why someone is currently unavailable. An available adult NPC can be hired for a visible whole-farm watering contract with an itemized wage and a protected return to their original schedule position.
 
 ### Current Features
 
 - Open a named worker roster with the `K` key.
 - Show each NPC's current availability and an explicit reason when they cannot be hired.
-- Confirm a named one-tile watering contract after reviewing the itemized wage.
-- Watch the selected NPC arrive, walk to a reachable crop, water it, return, and resume their prior state.
-- Reserve the six-hour maximum on dispatch, charge a one-hour callout, and refund the unused authorization on return.
+- Confirm a named whole-farm watering contract after reviewing the itemized wage.
+- Watch the selected NPC enter from the farm's left boundary, walk between reachable crops, water them, return to that entrance, and resume their prior state.
+- Reserve the six-hour maximum on dispatch, charge each started work hour (minimum one), and refund the unused authorization on return.
 - Water crops.
 - Harvest mature crops.
 - Debris cleanup is temporarily disabled while resource-safe delivery is implemented.
@@ -61,7 +61,7 @@ Load a save and press:
 K
 ```
 
-Select a green available row to review the six-hour maximum authorization, one-hour callout, friendship multiplier, workday or rest-day multiplier, baseline efficiency, and overtime policy. Confirm while standing on the main farm. The mod rechecks the NPC, funds, dry crop, and both walking paths before changing money or NPC state. The NPC then waters at most one crop and returns; unused authorization is refunded. Rest-day confirmation explicitly authorizes triple pay.
+Select a green available row to review the six-hour maximum authorization, one-hour minimum callout, friendship multiplier, workday or rest-day multiplier, baseline efficiency, and overtime policy. Confirm while standing on the main farm. The mod rechecks the NPC, funds, dry crop, and outbound/return paths before changing money or NPC state. The NPC enters from the left farm boundary, repeatedly walks to and revalidates each reachable dry crop, then returns through the same entrance. Settlement charges each started work hour up to six and refunds the unused authorization. Rest-day confirmation explicitly authorizes triple pay.
 
 Named contracts must start by 4:00 PM and stop at the 10:00 PM safety boundary. Only one named contract can run at a time. The legacy instant executor remains available through the `efo_work` SMAPI console command for isolated testing.
 
@@ -115,15 +115,15 @@ Mods/EvilFarmOwner/config.json
 
 `邪恶农场主` 是一个《星露谷物语》SMAPI Mod。它的核心玩法是：你花钱雇佣农工，把重复农活交给他们处理。
 
-当前版本可以查看具名 NPC 候选人及其当前不可雇佣原因，并雇佣有空的成年 NPC 可见地完成一次单格浇水合同。工资会逐项显示，NPC 完成后安全返回原位置并恢复日程。
+当前版本可以查看具名 NPC 候选人及其当前不可雇佣原因，并雇佣有空的成年 NPC 可见地完成一次全农场浇水合同。工资会逐项显示，NPC 完成后安全返回原位置并恢复日程。
 
 ### 当前功能
 
 - 按 `K` 打开具名工人候选名单。
 - 显示 NPC 当前是否可雇佣，以及不能雇佣的明确原因。
-- 查看逐项工资后，确认一份具名单格浇水合同。
-- 观看所选 NPC 到达农场、走到可到达的作物旁、浇水、返回并恢复原状态。
-- 出工时预留六小时最高工资，完成后只收一小时出工费并退还未使用的授权金额。
+- 查看逐项工资后，确认一份具名全农场浇水合同。
+- 观看所选 NPC 从农场左侧边界进入、逐格走到可到达的干旱作物旁浇水、从同一入口返回并恢复原状态。
+- 出工时预留六小时最高工资，完成后按已开始的工作小时计费（最少一小时）并退还未使用的授权金额。
 - 自动浇水。
 - 自动收获成熟作物。
 - 杂物清理暂时停用，等待实现不会丢失资源的交付逻辑。
@@ -147,7 +147,7 @@ Mods/EvilFarmOwner/config.json
 K
 ```
 
-选择绿色“当前可雇佣”行，可以查看六小时最高授权金额、一小时最低出工费、好感度系数、工作日或休息日系数、基础效率和加班政策。站在主农场确认后，模组会重新检查 NPC、资金、干旱作物以及去程和返程路线；所有检查通过后才预留工资并让 NPC 出工。NPC 最多浇水一格并返回，未使用的授权金额会退还。休息日按钮会明确要求授权三倍工资。
+选择绿色“当前可雇佣”行，可以查看六小时最高授权金额、一小时最低出工费、好感度系数、工作日或休息日系数、基础效率和加班政策。站在主农场确认后，模组会重新检查 NPC、资金、干旱作物以及去程和返程路线；所有检查通过后才预留工资并让 NPC 出工。NPC 从农场左侧入口进入，逐格走到并重新检查全部可到达的干旱作物，完成后从同一入口返回。工资按已开始的小时结算，未使用的授权金额会退还；休息日按钮会明确要求授权三倍工资。
 
 具名合同最迟必须在下午 4:00 开始，并受晚上 10:00 安全停止时间约束；同一时间只能执行一份。旧版瞬时执行器仍保留在 SMAPI 控制台命令 `efo_work` 中，仅用于隔离测试。
 

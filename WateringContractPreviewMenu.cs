@@ -148,7 +148,7 @@ internal sealed class WateringContractPreviewMenu : IClickableMenu
         int rightColumnX = contentX + columnWidth + columnGap;
 
         this.DrawDetailRow(batch, contentX, detailsY, columnWidth, "contract.task", this.Translation.Get("contract.task.watering"));
-        this.DrawDetailRow(batch, contentX, detailsY + 42, columnWidth, "contract.limit", this.Translation.Get("contract.limit.value", new { tiles = this.Preview.MaximumWaterTiles }));
+        this.DrawDetailRow(batch, contentX, detailsY + 42, columnWidth, "contract.limit", this.Translation.Get("contract.limit.value"));
         this.DrawDetailRow(batch, contentX, detailsY + 84, columnWidth, "contract.day", this.GetDayText());
         this.DrawDetailRow(batch, contentX, detailsY + 126, columnWidth, "contract.base-rate", this.Translation.Get("contract.base-rate.value", new { gold = this.Preview.BaseHourlyWage }));
         this.DrawDetailRow(batch, contentX, detailsY + 168, columnWidth, "contract.friendship", this.Translation.Get("contract.friendship.value", new

@@ -5,8 +5,8 @@
 - Added confirmation for a visible named-NPC watering contract.
 - Added fresh availability, funds, target, and two-way path checks before dispatch.
 - Added a recoverable NPC work lease with timeout and day-end cleanup.
-- Added six-hour wage reservation, one-hour callout settlement, and explicit rest-day triple-pay authorization.
-- Added deterministic wage, settlement, target-ordering, and one-tile-limit logic tests.
+- Added six-hour wage reservation, per-started-hour settlement, and explicit rest-day triple-pay authorization.
+- Added deterministic wage, settlement, target-ordering, and left-entrance selection logic tests.
 
 ## 0.1.0
 

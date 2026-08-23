@@ -6,9 +6,11 @@ List<(string Name, Action Test)> tests = new()
     ("rest-day triple wage", TestRestDayTripleWage),
     ("trusted wage", TestTrustedWage),
     ("pre-dispatch settlement", TestPreDispatchSettlement),
-    ("dispatched settlement", TestDispatchedSettlement),
+    ("dispatched one-hour settlement", TestDispatchedSettlement),
+    ("elapsed multi-hour settlement", TestElapsedMultiHourSettlement),
     ("target ordering", TestTargetOrdering),
-    ("one-tile contract limit", TestOneTileLimit)
+    ("left entrance selection", TestLeftEntranceSelection),
+    ("six-hour wage cap", TestSixHourWageCap)
 };
 
 int failures = 0;
@@ -57,19 +59,30 @@ static void TestTrustedWage()
 static void TestPreDispatchSettlement()
 {
     WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
-    WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: false);
+    WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: false, 900, 1200);
     Equal(600, settlement.ReservedGold);
     Equal(0, settlement.ChargedGold);
     Equal(600, settlement.RefundedGold);
+    Equal(0, settlement.BillableHours);
 }
 
 static void TestDispatchedSettlement()
 {
     WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
-    WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: true);
+    WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: true, 900, 910);
     Equal(600, settlement.ReservedGold);
     Equal(100, settlement.ChargedGold);
     Equal(500, settlement.RefundedGold);
+    Equal(1, settlement.BillableHours);
+}
+
+static void TestElapsedMultiHourSettlement()
+{
+    WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
+    WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: true, 900, 1110);
+    Equal(3, settlement.BillableHours);
+    Equal(300, settlement.ChargedGold);
+    Equal(300, settlement.RefundedGold);
 }
 
 static void TestTargetOrdering()
@@ -90,10 +103,28 @@ static void TestTargetOrdering()
     Equal(new GridPoint(9, 5), ordered[3].Target);
 }
 
-static void TestOneTileLimit()
+static void TestLeftEntranceSelection()
+{
+    GridPoint selected = FarmEntranceSelection.SelectLeftEntrance(
+        mapWidth: 100,
+        mapHeight: 80,
+        new[]
+        {
+            new GridPoint(99, 20),
+            new GridPoint(40, 79),
+            new GridPoint(0, 24)
+        });
+
+    Equal(new GridPoint(1, 24), selected);
+}
+
+static void TestSixHourWageCap()
 {
     WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
-    Equal(1, preview.MaximumWaterTiles);
+    WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: true, 900, 2200);
+    Equal(6, settlement.BillableHours);
+    Equal(600, settlement.ChargedGold);
+    Equal(0, settlement.RefundedGold);
 }
 
 static void Equal<T>(T expected, T actual)
