@@ -57,6 +57,9 @@ Stand on your farm and press:
 H
 ```
 
+The hiring menu shows the current wage and which jobs are enabled. Confirm to
+run one work pass, or cancel to leave the farm and your money unchanged.
+
 You can also use SMAPI console commands:
 
 ```text
@@ -125,6 +128,9 @@ Mods/EvilFarmOwner/config.json
 ```text
 H
 ```
+
+雇佣菜单会显示当前工资和已开启的任务。确认后执行一轮工作；取消则不会
+改变农场状态，也不会扣除金币。
 
 也可以使用 SMAPI 控制台命令：
 

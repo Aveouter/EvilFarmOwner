@@ -33,10 +33,16 @@ public sealed class ModEntry : Mod
 
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
     {
-        if (!Context.IsWorldReady || !e.Button.Equals(this.Config.OpenMenuKey))
+        if (!Context.IsWorldReady
+            || Game1.activeClickableMenu is not null
+            || !e.Button.Equals(this.Config.OpenMenuKey))
             return;
 
-        this.TryDoFarmWork(showEmptyMessage: true);
+        this.Helper.Input.Suppress(e.Button);
+        Game1.activeClickableMenu = new HiringMenu(
+            this.Config,
+            this.Helper.Translation,
+            () => this.TryDoFarmWork(showEmptyMessage: true));
     }
 
     private void TryDoFarmWork(bool showEmptyMessage)
