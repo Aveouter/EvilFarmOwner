@@ -7,40 +7,32 @@ using StardewValley.TerrainFeatures;
 
 namespace EvilFarmOwner;
 
-internal enum WateringPlanFailure
+internal enum HarvestPlanFailure
 {
     None,
     UnsupportedFarmMap,
     NoSafeArrivalTile,
-    NoDryCrop,
+    NoMatureCrop,
     NoReachableCrop
 }
 
-internal sealed record WateringTargetPlan(
+internal sealed record HarvestTargetPlan(
     Point TargetTile,
     Point InteractionTile,
     int FacingDirection);
 
-internal sealed record WateringWorkPlan(
+internal sealed record HarvestWorkPlan(
     Point ArrivalTile,
-    WateringTargetPlan FirstTarget);
+    HarvestTargetPlan Target);
 
-internal sealed record WateringTargetSearchResult(
-    WateringTargetPlan? Target,
-    WateringPlanFailure Failure,
-    int CandidateTargetCount)
+internal sealed record HarvestPlanResult(
+    HarvestWorkPlan? Plan,
+    HarvestPlanFailure Failure)
 {
-    public bool IsSuccess => this.Target is not null && this.Failure == WateringPlanFailure.None;
+    public bool IsSuccess => this.Plan is not null && this.Failure == HarvestPlanFailure.None;
 }
 
-internal sealed record WateringPlanResult(
-    WateringWorkPlan? Plan,
-    WateringPlanFailure Failure)
-{
-    public bool IsSuccess => this.Plan is not null && this.Failure == WateringPlanFailure.None;
-}
-
-internal sealed class WateringTargetPlanner
+internal sealed class HarvestTargetPlanner
 {
     private const int MaximumSupportedMapDimension = 255;
     private const int ArrivalSearchRadius = 8;
@@ -56,17 +48,17 @@ internal sealed class WateringTargetPlanner
 
     private readonly IMonitor Monitor;
 
-    public WateringTargetPlanner(IMonitor monitor)
+    public HarvestTargetPlanner(IMonitor monitor)
     {
         this.Monitor = monitor;
     }
 
-    public WateringPlanResult TryCreate(Farm farm, NPC worker)
+    public HarvestPlanResult TryCreate(Farm farm, NPC worker)
     {
         int width = farm.Map.Layers[0].LayerWidth;
         int height = farm.Map.Layers[0].LayerHeight;
         if (width > MaximumSupportedMapDimension || height > MaximumSupportedMapDimension)
-            return new WateringPlanResult(null, WateringPlanFailure.UnsupportedFarmMap);
+            return new HarvestPlanResult(null, HarvestPlanFailure.UnsupportedFarmMap);
 
         GridPoint entrance = FarmEntranceSelection.SelectLeftEntrance(
             width,
@@ -74,45 +66,19 @@ internal sealed class WateringTargetPlanner
             farm.warps.Select(warp => new GridPoint(warp.X, warp.Y)));
         Point? arrivalTile = this.FindArrivalTile(farm, new Point(entrance.X, entrance.Y));
         if (arrivalTile is null)
-            return new WateringPlanResult(null, WateringPlanFailure.NoSafeArrivalTile);
-
-        WateringTargetSearchResult firstTarget = this.TryFindNext(
-            farm,
-            worker,
-            arrivalTile.Value,
-            arrivalTile.Value,
-            new HashSet<Point>());
-        if (!firstTarget.IsSuccess || firstTarget.Target is null)
-            return new WateringPlanResult(null, firstTarget.Failure);
-
-        return new WateringPlanResult(
-            new WateringWorkPlan(arrivalTile.Value, firstTarget.Target),
-            WateringPlanFailure.None);
-    }
-
-    public WateringTargetSearchResult TryFindNext(
-        Farm farm,
-        NPC worker,
-        Point startTile,
-        Point arrivalTile,
-        IReadOnlySet<Point> attemptedTargets)
-    {
-        int width = farm.Map.Layers[0].LayerWidth;
-        int height = farm.Map.Layers[0].LayerHeight;
+            return new HarvestPlanResult(null, HarvestPlanFailure.NoSafeArrivalTile);
 
         List<WateringTargetOption> options = new();
-        HashSet<Point> candidateTargets = new();
-
+        int matureCropCount = 0;
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
             {
                 Vector2 target = new(x, y);
-                Point targetPoint = new(x, y);
-                if (attemptedTargets.Contains(targetPoint) || !IsDryCrop(farm, target))
+                if (!IsMatureSupportedCrop(farm, target))
                     continue;
 
-                candidateTargets.Add(targetPoint);
+                matureCropCount++;
                 foreach (Point offset in InteractionOffsets)
                 {
                     Vector2 interaction = new(x + offset.X, y + offset.Y);
@@ -126,61 +92,40 @@ internal sealed class WateringTargetPlanner
             }
         }
 
-        if (candidateTargets.Count == 0)
-            return new WateringTargetSearchResult(null, WateringPlanFailure.NoDryCrop, 0);
+        if (matureCropCount == 0)
+            return new HarvestPlanResult(null, HarvestPlanFailure.NoMatureCrop);
 
-        GridPoint start = new(startTile.X, startTile.Y);
+        GridPoint start = new(arrivalTile.Value.X, arrivalTile.Value.Y);
         foreach (WateringTargetOption option in WateringTargetSelection.Order(start, options))
         {
             Point interaction = new(option.Interaction.X, option.Interaction.Y);
-            if (!this.HasPath(farm, worker, startTile, interaction)
-                || !this.HasPath(farm, worker, interaction, arrivalTile))
+            if (!this.HasPath(farm, worker, arrivalTile.Value, interaction)
+                || !this.HasPath(farm, worker, interaction, arrivalTile.Value))
                 continue;
 
             Point target = new(option.Target.X, option.Target.Y);
-            return new WateringTargetSearchResult(
-                new WateringTargetPlan(
-                    target,
-                    interaction,
-                    GetFacingDirection(interaction, target)),
-                WateringPlanFailure.None,
-                candidateTargets.Count);
+            return new HarvestPlanResult(
+                new HarvestWorkPlan(
+                    arrivalTile.Value,
+                    new HarvestTargetPlan(
+                        target,
+                        interaction,
+                        GetFacingDirection(interaction, target))),
+                HarvestPlanFailure.None);
         }
 
-        return new WateringTargetSearchResult(
-            null,
-            WateringPlanFailure.NoReachableCrop,
-            candidateTargets.Count);
+        return new HarvestPlanResult(null, HarvestPlanFailure.NoReachableCrop);
     }
 
-    public static bool IsDryCrop(GameLocation location, Vector2 tile)
+    public static bool IsMatureSupportedCrop(GameLocation location, Vector2 tile)
     {
         return location.terrainFeatures.TryGetValue(tile, out TerrainFeature? feature)
             && feature is HoeDirt dirt
-            && dirt.crop is not null
-            && dirt.state.Value != HoeDirt.watered;
-    }
-
-    public static int CountRemainingDryCrops(
-        Farm farm,
-        IReadOnlySet<Point> attemptedTargets)
-    {
-        int width = farm.Map.Layers[0].LayerWidth;
-        int height = farm.Map.Layers[0].LayerHeight;
-        int count = 0;
-
-        for (int x = 0; x < width; x++)
-        {
-            for (int y = 0; y < height; y++)
-            {
-                Point target = new(x, y);
-                if (!attemptedTargets.Contains(target)
-                    && IsDryCrop(farm, new Vector2(x, y)))
-                    count++;
-            }
-        }
-
-        return count;
+            && dirt.crop is { } crop
+            && !crop.forageCrop.Value
+            && !crop.dead.Value
+            && !string.IsNullOrWhiteSpace(crop.indexOfHarvest.Value)
+            && dirt.readyForHarvest();
     }
 
     private Point? FindArrivalTile(Farm farm, Point center)
@@ -226,7 +171,7 @@ internal sealed class WateringTargetPlanner
         catch (Exception ex)
         {
             this.Monitor.Log(
-                $"Path preflight failed closed for worker '{worker.Name}' from {start} to {end}: {ex.Message}",
+                $"Harvest path preflight failed closed for worker '{worker.Name}' from {start} to {end}: {ex.Message}",
                 LogLevel.Warn);
             return false;
         }

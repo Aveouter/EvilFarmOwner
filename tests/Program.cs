@@ -10,7 +10,12 @@ List<(string Name, Action Test)> tests = new()
     ("elapsed multi-hour settlement", TestElapsedMultiHourSettlement),
     ("target ordering", TestTargetOrdering),
     ("left entrance selection", TestLeftEntranceSelection),
-    ("six-hour wage cap", TestSixHourWageCap)
+    ("six-hour wage cap", TestSixHourWageCap),
+    ("harvest chest match priority", TestHarvestChestMatchPriority),
+    ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
+    ("harvest partial remainder", TestHarvestPartialRemainder),
+    ("harvest overflow fallback", TestHarvestOverflowFallback),
+    ("harvest transfer replay protection", TestHarvestTransferReplayProtection)
 };
 
 int failures = 0;
@@ -33,7 +38,7 @@ return failures == 0 ? 0 : 1;
 
 static void TestRegularHighRiskWage()
 {
-    WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 0, dayOfMonth: 1);
+    WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 0, dayOfMonth: 1);
     Equal(ContractDayKind.RegularWorkday, preview.DayKind);
     Equal(120, preview.MinimumCalloutWage);
     Equal(720, preview.MaximumAuthorizedWage);
@@ -41,7 +46,7 @@ static void TestRegularHighRiskWage()
 
 static void TestRestDayTripleWage()
 {
-    WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 0, dayOfMonth: 6);
+    WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 0, dayOfMonth: 6);
     Equal(ContractDayKind.RestDay, preview.DayKind);
     Equal(3.00m, preview.DayMultiplier);
     Equal(360, preview.MinimumCalloutWage);
@@ -50,7 +55,7 @@ static void TestRestDayTripleWage()
 
 static void TestTrustedWage()
 {
-    WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 8, dayOfMonth: 2);
+    WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 8, dayOfMonth: 2);
     Equal(FriendshipWageBand.Trusted, preview.FriendshipBand);
     Equal(90, preview.MinimumCalloutWage);
     Equal(540, preview.MaximumAuthorizedWage);
@@ -58,7 +63,7 @@ static void TestTrustedWage()
 
 static void TestPreDispatchSettlement()
 {
-    WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
+    WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
     WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: false, 900, 1200);
     Equal(600, settlement.ReservedGold);
     Equal(0, settlement.ChargedGold);
@@ -68,7 +73,7 @@ static void TestPreDispatchSettlement()
 
 static void TestDispatchedSettlement()
 {
-    WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
+    WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
     WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: true, 900, 910);
     Equal(600, settlement.ReservedGold);
     Equal(100, settlement.ChargedGold);
@@ -78,7 +83,7 @@ static void TestDispatchedSettlement()
 
 static void TestElapsedMultiHourSettlement()
 {
-    WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
+    WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
     WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: true, 900, 1110);
     Equal(3, settlement.BillableHours);
     Equal(300, settlement.ChargedGold);
@@ -120,11 +125,65 @@ static void TestLeftEntranceSelection()
 
 static void TestSixHourWageCap()
 {
-    WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
+    WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
     WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: true, 900, 2200);
     Equal(6, settlement.BillableHours);
     Equal(600, settlement.ChargedGold);
     Equal(0, settlement.RefundedGold);
+}
+
+static void TestHarvestChestMatchPriority()
+{
+    HarvestChestOption[] options =
+    {
+        new(new GridPoint(1, 1), new GridPoint(1, 2), HarvestChestMatchKind.SameItem, 999, 10, 1),
+        new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.ExactStack, 1, 10, 20),
+        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.SameGroup, 999, 10, 2)
+    };
+
+    IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
+    Equal(HarvestChestMatchKind.ExactStack, ordered[0].MatchKind);
+    Equal(HarvestChestMatchKind.SameItem, ordered[1].MatchKind);
+    Equal(HarvestChestMatchKind.SameGroup, ordered[2].MatchKind);
+}
+
+static void TestHarvestChestFullAcceptance()
+{
+    HarvestChestOption[] options =
+    {
+        new(new GridPoint(1, 1), new GridPoint(1, 2), HarvestChestMatchKind.SameItem, 9, 10, 1),
+        new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.SameItem, 10, 10, 20)
+    };
+
+    IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
+    Equal(new GridPoint(8, 8), ordered[0].ChestTile);
+    Equal(true, ordered[0].CanFullyAccept);
+}
+
+static void TestHarvestPartialRemainder()
+{
+    Equal(6, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 4));
+    Equal(0, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 10));
+    Equal(10, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 0));
+}
+
+static void TestHarvestOverflowFallback()
+{
+    Equal(
+        HarvestFallbackDestination.PersistentOverflow,
+        HarvestDeliveryFallback.Select(hasEligibleChest: false, persistentOverflowAvailable: true));
+    Equal(
+        HarvestFallbackDestination.VisibleGroundDrop,
+        HarvestDeliveryFallback.Select(hasEligibleChest: false, persistentOverflowAvailable: false));
+}
+
+static void TestHarvestTransferReplayProtection()
+{
+    HarvestTransferLedger ledger = new();
+    int applied = 0;
+    Equal(true, ledger.TryApply("transfer-1", () => applied++));
+    Equal(false, ledger.TryApply("transfer-1", () => applied++));
+    Equal(1, applied);
 }
 
 static void Equal<T>(T expected, T actual)

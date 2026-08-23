@@ -7,7 +7,7 @@ internal sealed record WateringContractSettlement(
     int BillableHours)
 {
     public static WateringContractSettlement Create(
-        WateringContractPreview preview,
+        WorkContractPreview preview,
         bool dispatched,
         int startTime,
         int endTime)

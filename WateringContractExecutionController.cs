@@ -67,7 +67,7 @@ internal sealed class WateringContractExecutionController
         }
 
         int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(worker.Name);
-        WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
+        WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
         if (Game1.player.Money < preview.MaximumAuthorizedWage)
         {
             Game1.addHUDMessage(new HUDMessage(
@@ -105,6 +105,19 @@ internal sealed class WateringContractExecutionController
             worker.Halt();
             worker.Sprite?.ClearAnimation();
             contract.Dispatched = true;
+
+            if (worker.TilePoint == planResult.Plan.FirstTarget.InteractionTile)
+            {
+                this.OnArrivedAtTarget(worker, mainFarm);
+                Game1.addHUDMessage(new HUDMessage(
+                    this.Translation.Get("contract.hud.dispatched", new
+                    {
+                        worker = worker.displayName,
+                        gold = preview.MaximumAuthorizedWage
+                    }),
+                    HUDMessage.newQuest_type));
+                return true;
+            }
 
             PathFindController outbound = this.CreatePathController(
                 contract,
@@ -345,6 +358,14 @@ internal sealed class WateringContractExecutionController
         if (this.ActiveContract != contract)
             return;
 
+        if (contract.Lease.Worker.TilePoint == contract.Plan.ArrivalTile)
+        {
+            contract.Phase = WateringContractPhase.Returned;
+            contract.PhaseTicks = 0;
+            contract.Lease.Worker.Halt();
+            return;
+        }
+
         try
         {
             contract.Phase = WateringContractPhase.Returning;
@@ -401,6 +422,12 @@ internal sealed class WateringContractExecutionController
             contract.ActionApplied = false;
             contract.Phase = WateringContractPhase.TravelingToTarget;
             contract.PhaseTicks = 0;
+
+            if (contract.Lease.Worker.TilePoint == next.Target.InteractionTile)
+            {
+                this.OnArrivedAtTarget(contract.Lease.Worker, contract.Farm);
+                return;
+            }
 
             PathFindController controller = this.CreatePathController(
                 contract,
@@ -537,7 +564,7 @@ internal sealed class WateringContractExecutionController
         public ActiveWateringContract(
             Guid id,
             NpcWorkLease lease,
-            WateringContractPreview preview,
+            WorkContractPreview preview,
             Farm farm,
             WateringWorkPlan plan)
         {
@@ -552,7 +579,7 @@ internal sealed class WateringContractExecutionController
 
         public Guid Id { get; }
         public NpcWorkLease Lease { get; }
-        public WateringContractPreview Preview { get; }
+        public WorkContractPreview Preview { get; }
         public Farm Farm { get; }
         public WateringWorkPlan Plan { get; }
         public HashSet<Point> AttemptedTargets { get; } = new();

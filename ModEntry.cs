@@ -5,6 +5,9 @@ using StardewValley;
 using StardewValley.Extensions;
 using StardewValley.ItemTypeDefinitions;
 using StardewValley.Locations;
+using StardewValley.Menus;
+using StardewValley.Network;
+using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
 using SObject = StardewValley.Object;
 
@@ -16,6 +19,7 @@ public sealed class ModEntry : Mod
     private bool HasKnownHotkeyConflict;
     private WorkerRosterService? WorkerRoster;
     private WateringContractExecutionController? WateringContracts;
+    private HarvestingContractExecutionController? HarvestingContracts;
 
     public override void Entry(IModHelper helper)
     {
@@ -24,6 +28,10 @@ public sealed class ModEntry : Mod
         this.RefreshHotkeyConflict();
         this.WorkerRoster = new WorkerRosterService(this.Monitor);
         this.WateringContracts = new WateringContractExecutionController(
+            helper.Translation,
+            this.Monitor,
+            this.WorkerRoster);
+        this.HarvestingContracts = new HarvestingContractExecutionController(
             helper.Translation,
             this.Monitor,
             this.WorkerRoster);
@@ -40,6 +48,7 @@ public sealed class ModEntry : Mod
 
         helper.ConsoleCommands.Add("efo_work", helper.Translation.Get("cmd.work"), (_, _) => this.TryDoFarmWork(showEmptyMessage: true));
         helper.ConsoleCommands.Add("efo_roster", helper.Translation.Get("cmd.roster"), (_, _) => this.OpenWorkerRoster());
+        helper.ConsoleCommands.Add("efo_overflow", helper.Translation.Get("cmd.overflow"), (_, _) => this.OpenHarvestOverflow());
         helper.ConsoleCommands.Add("efo_status", helper.Translation.Get("cmd.status"), (_, _) => this.ShowStatus());
         helper.ConsoleCommands.Add("efo_toggle", helper.Translation.Get("cmd.toggle"), this.ToggleTask);
     }
@@ -117,7 +126,7 @@ public sealed class ModEntry : Mod
             return;
         }
 
-        if (this.WateringContracts?.HasActiveContract == true)
+        if (this.HasActiveNamedContract())
         {
             Game1.addHUDMessage(new HUDMessage(
                 this.Helper.Translation.Get("contract.start.already-active"),
@@ -128,40 +137,130 @@ public sealed class ModEntry : Mod
         Game1.activeClickableMenu = new WorkerRosterMenu(
             this.WorkerRoster.GetRoster(),
             this.Helper.Translation,
-            this.OpenWateringContractPreview,
+            this.OpenWorkerTaskSelection,
             initialPage);
     }
 
-    private void OpenWateringContractPreview(WorkerRosterEntry worker, int rosterPage)
+    private void OpenWorkerTaskSelection(WorkerRosterEntry worker, int rosterPage)
+    {
+        if (!Context.IsWorldReady
+            || worker.Availability.State != WorkerAvailabilityState.EligibleForPreview)
+            return;
+
+        Game1.activeClickableMenu = new WorkerTaskSelectionMenu(
+            worker,
+            this.Helper.Translation,
+            () => this.OpenWorkerRoster(rosterPage),
+            task => this.OpenWorkContractPreview(worker, rosterPage, task));
+    }
+
+    private void OpenWorkContractPreview(
+        WorkerRosterEntry worker,
+        int rosterPage,
+        NamedFarmTask task)
     {
         if (!Context.IsWorldReady
             || worker.Availability.State != WorkerAvailabilityState.EligibleForPreview)
             return;
 
         int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(worker.InternalName);
-        WateringContractPreview preview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
+        WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
 
-        Game1.activeClickableMenu = new WateringContractPreviewMenu(
+        Game1.activeClickableMenu = new WorkContractPreviewMenu(
             worker,
             preview,
+            task,
             this.Helper.Translation,
-            () => this.OpenWorkerRoster(rosterPage),
-            () => this.WateringContracts?.TryStart(worker.InternalName) == true);
+            () => this.OpenWorkerTaskSelection(worker, rosterPage),
+            () => this.TryStartNamedContract(worker.InternalName, task));
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
         this.WateringContracts?.Update();
+        this.HarvestingContracts?.Update();
     }
 
     private void OnDayEnding(object? sender, DayEndingEventArgs e)
     {
         this.WateringContracts?.OnDayEnding();
+        this.HarvestingContracts?.OnDayEnding();
     }
 
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
     {
         this.WateringContracts?.OnReturnedToTitle();
+        this.HarvestingContracts?.OnReturnedToTitle();
+    }
+
+    private bool HasActiveNamedContract()
+    {
+        return this.WateringContracts?.HasActiveContract == true
+            || this.HarvestingContracts?.HasActiveContract == true;
+    }
+
+    private bool TryStartNamedContract(string workerInternalName, NamedFarmTask task)
+    {
+        if (this.HasActiveNamedContract())
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("contract.start.already-active"),
+                HUDMessage.error_type));
+            return false;
+        }
+
+        return task switch
+        {
+            NamedFarmTask.Watering => this.WateringContracts?.TryStart(workerInternalName) == true,
+            NamedFarmTask.Harvesting => this.HarvestingContracts?.TryStart(workerInternalName) == true,
+            _ => false
+        };
+    }
+
+    private void OpenHarvestOverflow()
+    {
+        if (!Context.IsWorldReady)
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("cmd.roster-world-not-ready"), LogLevel.Info);
+            return;
+        }
+
+        if (this.HasActiveNamedContract())
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("overflow.busy"),
+                HUDMessage.error_type));
+            return;
+        }
+
+        NetMutex mutex = Game1.player.team.GetOrCreateGlobalInventoryMutex(
+            HarvestingContractExecutionController.OverflowInventoryId);
+        mutex.RequestLock(
+            () =>
+            {
+                Chest proxy = new(playerChest: true, Vector2.Zero)
+                {
+                    GlobalInventoryId = HarvestingContractExecutionController.OverflowInventoryId
+                };
+                proxy.ShowMenu();
+                if (Game1.activeClickableMenu is ItemGrabMenu menu)
+                {
+                    IClickableMenu.onExit? originalExit = menu.exitFunction;
+                    menu.exitFunction = () =>
+                    {
+                        originalExit?.Invoke();
+                        if (mutex.IsLockHeld())
+                            mutex.ReleaseLock();
+                    };
+                }
+                else if (mutex.IsLockHeld())
+                {
+                    mutex.ReleaseLock();
+                }
+            },
+            () => Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("overflow.locked"),
+                HUDMessage.error_type)));
     }
 
     private void TryDoFarmWork(bool showEmptyMessage)
