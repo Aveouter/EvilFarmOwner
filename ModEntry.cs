@@ -19,29 +19,14 @@ public sealed class ModEntry : Mod
     public override void Entry(IModHelper helper)
     {
         this.Config = helper.ReadConfig<ModConfig>();
-        IReadOnlyList<string> configWarnings = ConfigValidator.Normalize(this.Config);
-        bool shouldWriteConfig = configWarnings.Count > 0;
-
-        foreach (string warning in configWarnings)
-            this.Monitor.Log($"Invalid config: {warning}", LogLevel.Warn);
-
-        this.HasKnownHotkeyConflict = this.Config.OpenMenuKey == SButton.H
-            && helper.ModRegistry.IsLoaded("Annosz.UiInfoSuite2");
+        this.NormalizeAndSaveConfig(writeEvenIfUnchanged: false);
+        this.RefreshHotkeyConflict();
         this.WorkerRoster = new WorkerRosterService(this.Monitor);
 
         if (this.HasKnownHotkeyConflict)
             this.Monitor.Log(helper.Translation.Get("hud.hotkey-conflict"), LogLevel.Warn);
 
-        if (this.Config.ClearDebris)
-        {
-            this.Config.ClearDebris = false;
-            shouldWriteConfig = true;
-            this.Monitor.Log(helper.Translation.Get("cmd.clear-disabled"), LogLevel.Warn);
-        }
-
-        if (shouldWriteConfig)
-            helper.WriteConfig(this.Config);
-
+        helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
 
@@ -49,6 +34,52 @@ public sealed class ModEntry : Mod
         helper.ConsoleCommands.Add("efo_roster", helper.Translation.Get("cmd.roster"), (_, _) => this.OpenWorkerRoster());
         helper.ConsoleCommands.Add("efo_status", helper.Translation.Get("cmd.status"), (_, _) => this.ShowStatus());
         helper.ConsoleCommands.Add("efo_toggle", helper.Translation.Get("cmd.toggle"), this.ToggleTask);
+    }
+
+    private void NormalizeAndSaveConfig(bool writeEvenIfUnchanged)
+    {
+        IReadOnlyList<string> configWarnings = ConfigValidator.Normalize(this.Config);
+        bool shouldWriteConfig = configWarnings.Count > 0;
+
+        foreach (string warning in configWarnings)
+            this.Monitor.Log($"Invalid config: {warning}", LogLevel.Warn);
+
+        if (this.Config.ClearDebris)
+        {
+            this.Config.ClearDebris = false;
+            shouldWriteConfig = true;
+            this.Monitor.Log(this.Helper.Translation.Get("cmd.clear-disabled"), LogLevel.Warn);
+        }
+
+        if (shouldWriteConfig || writeEvenIfUnchanged)
+            this.Helper.WriteConfig(this.Config);
+    }
+
+    private void RefreshHotkeyConflict()
+    {
+        this.HasKnownHotkeyConflict = this.Config.OpenMenuKey == SButton.H
+            && this.Helper.ModRegistry.IsLoaded("Annosz.UiInfoSuite2");
+    }
+
+    private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
+    {
+        GenericModConfigMenuIntegration integration = new(
+            this.Helper,
+            this.ModManifest,
+            getConfig: () => this.Config,
+            setConfig: config => this.Config = config,
+            saveConfig: this.SaveConfigFromMenu);
+
+        integration.Register();
+    }
+
+    private void SaveConfigFromMenu()
+    {
+        this.NormalizeAndSaveConfig(writeEvenIfUnchanged: true);
+        this.RefreshHotkeyConflict();
+
+        if (this.HasKnownHotkeyConflict)
+            this.Monitor.Log(this.Helper.Translation.Get("hud.hotkey-conflict"), LogLevel.Warn);
     }
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)

@@ -82,6 +82,8 @@ efo_toggle plant
 
 ### Configuration
 
+If Generic Mod Config Menu is installed, Evil Farm Owner appears in its Mod Options list with a localized roster-hotkey setting. The integration is optional; direct `config.json` editing remains supported. Work area, tasks, and wages belong to each future NPC contract instead of a global player-centered scan, so legacy prototype controls aren't exposed in the menu.
+
 The config file is created at:
 
 ```text
@@ -161,6 +163,8 @@ efo_toggle plant
 为了兼容已有配置，仍保留 `efo_toggle clear`；执行时会提示杂物清理暂时停用。
 
 ### 配置文件
+
+如果安装了 Generic Mod Config Menu，“邪恶农场主”会出现在它的“MOD 选项”列表中，并提供本地化的候选名单快捷键设置。该集成是可选的，仍可直接编辑 `config.json`。工作区域、任务和工资属于未来的每份 NPC 合同，不使用以玩家为中心的全局扫描范围，因此菜单不会暴露旧原型设置。
 
 配置文件位置：
 
