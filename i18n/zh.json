@@ -1,5 +1,6 @@
 {
   "hud.ready": "邪恶农场主已就绪。按 {{key}} 或使用命令 efo_work 派工。",
+  "hud.host-only": "联机模式目前只能由主机玩家雇佣农工。",
   "hud.no-farm": "雇佣农工目前只在农场工作。",
   "hud.no-money": "金币不足，雇佣农工需要 {{gold}}g。",
   "hud.done": "农工完成工作：浇水 {{watered}} 格，收获 {{harvested}} 格，清理 {{cleared}} 个，施肥 {{fertilized}} 格，播种 {{planted}} 格。",

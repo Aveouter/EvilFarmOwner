@@ -44,6 +44,7 @@ public sealed class ModEntry : Mod
         if (!Context.IsMainPlayer)
         {
             this.Monitor.Log("Farmhand automation should run on the host player in multiplayer.", LogLevel.Info);
+            Game1.addHUDMessage(new HUDMessage(this.Helper.Translation.Get("hud.host-only"), HUDMessage.error_type));
             return;
         }
 

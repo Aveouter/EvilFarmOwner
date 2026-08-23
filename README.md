@@ -69,6 +69,9 @@ efo_toggle fertilize
 efo_toggle plant
 ```
 
+In multiplayer, only the host player can start a work pass. Farmhand players
+who try to hire workers will receive a message explaining this limitation.
+
 ### Configuration
 
 The config file is created at:
@@ -137,6 +140,9 @@ efo_toggle clear
 efo_toggle fertilize
 efo_toggle plant
 ```
+
+联机模式目前只能由主机玩家发起工作。农场帮手玩家尝试雇佣农工时，
+会收到说明此限制的提示，且不会改变农场状态或扣除工资。
 
 ### 配置文件
 
