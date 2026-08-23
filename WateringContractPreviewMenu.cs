@@ -13,20 +13,24 @@ internal sealed class WateringContractPreviewMenu : IClickableMenu
     private const int MaximumHeight = 700;
     private const int ScreenMargin = 64;
     private const int HorizontalPadding = 56;
-    private const int ButtonWidth = 180;
+    private const int BackButtonWidth = 180;
+    private const int ConfirmButtonWidth = 300;
     private const int ButtonHeight = 52;
 
     private readonly WorkerRosterEntry Worker;
     private readonly WateringContractPreview Preview;
     private readonly ITranslationHelper Translation;
     private readonly Action ReturnToRoster;
+    private readonly Func<bool> ConfirmContract;
     private readonly ClickableComponent BackButton;
+    private readonly ClickableComponent ConfirmButton;
 
     public WateringContractPreviewMenu(
         WorkerRosterEntry worker,
         WateringContractPreview preview,
         ITranslationHelper translation,
-        Action returnToRoster)
+        Action returnToRoster,
+        Func<bool> confirmContract)
         : base(
             GetMenuX(),
             GetMenuY(),
@@ -38,17 +42,31 @@ internal sealed class WateringContractPreviewMenu : IClickableMenu
         this.Preview = preview;
         this.Translation = translation;
         this.ReturnToRoster = returnToRoster;
+        this.ConfirmContract = confirmContract;
 
         this.BackButton = new ClickableComponent(
             new Rectangle(
                 this.xPositionOnScreen + HorizontalPadding,
                 this.yPositionOnScreen + this.height - ButtonHeight - 28,
-                ButtonWidth,
+                BackButtonWidth,
                 ButtonHeight),
             translation.Get("contract.back"));
         this.BackButton.myID = 100;
+        this.BackButton.rightNeighborID = 101;
 
-        this.allClickableComponents = new List<ClickableComponent> { this.BackButton };
+        this.ConfirmButton = new ClickableComponent(
+            new Rectangle(
+                this.xPositionOnScreen + this.width - HorizontalPadding - ConfirmButtonWidth,
+                this.yPositionOnScreen + this.height - ButtonHeight - 28,
+                ConfirmButtonWidth,
+                ButtonHeight),
+            preview.DayKind == ContractDayKind.RestDay
+                ? translation.Get("contract.confirm.rest-day")
+                : translation.Get("contract.confirm.regular"));
+        this.ConfirmButton.myID = 101;
+        this.ConfirmButton.leftNeighborID = 100;
+
+        this.allClickableComponents = new List<ClickableComponent> { this.BackButton, this.ConfirmButton };
         if (this.upperRightCloseButton is not null)
             this.allClickableComponents.Add(this.upperRightCloseButton);
 
@@ -58,6 +76,14 @@ internal sealed class WateringContractPreviewMenu : IClickableMenu
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
+        if (this.ConfirmButton.containsPoint(x, y))
+        {
+            Game1.playSound("smallSelect");
+            if (this.ConfirmContract())
+                Game1.activeClickableMenu = null;
+            return;
+        }
+
         if (this.BackButton.containsPoint(x, y))
         {
             Game1.playSound("bigDeSelect");
@@ -82,7 +108,7 @@ internal sealed class WateringContractPreviewMenu : IClickableMenu
 
     public override void snapToDefaultClickableComponent()
     {
-        this.currentlySnappedComponent = this.getComponentWithID(this.BackButton.myID);
+        this.currentlySnappedComponent = this.getComponentWithID(this.ConfirmButton.myID);
         this.snapCursorToCurrentSnappedComponent();
     }
 
@@ -122,7 +148,7 @@ internal sealed class WateringContractPreviewMenu : IClickableMenu
         int rightColumnX = contentX + columnWidth + columnGap;
 
         this.DrawDetailRow(batch, contentX, detailsY, columnWidth, "contract.task", this.Translation.Get("contract.task.watering"));
-        this.DrawDetailRow(batch, contentX, detailsY + 42, columnWidth, "contract.shift", this.Translation.Get("contract.shift.value", new { hours = this.Preview.RegularShiftHours }));
+        this.DrawDetailRow(batch, contentX, detailsY + 42, columnWidth, "contract.limit", this.Translation.Get("contract.limit.value", new { tiles = this.Preview.MaximumWaterTiles }));
         this.DrawDetailRow(batch, contentX, detailsY + 84, columnWidth, "contract.day", this.GetDayText());
         this.DrawDetailRow(batch, contentX, detailsY + 126, columnWidth, "contract.base-rate", this.Translation.Get("contract.base-rate.value", new { gold = this.Preview.BaseHourlyWage }));
         this.DrawDetailRow(batch, contentX, detailsY + 168, columnWidth, "contract.friendship", this.Translation.Get("contract.friendship.value", new
@@ -134,24 +160,25 @@ internal sealed class WateringContractPreviewMenu : IClickableMenu
         this.DrawDetailRow(batch, rightColumnX, detailsY, columnWidth, "contract.friendship-multiplier", FormatMultiplier(this.Preview.FriendshipMultiplier));
         this.DrawDetailRow(batch, rightColumnX, detailsY + 42, columnWidth, "contract.day-multiplier", FormatMultiplier(this.Preview.DayMultiplier));
         this.DrawDetailRow(batch, rightColumnX, detailsY + 84, columnWidth, "contract.efficiency", FormatMultiplier(this.Preview.EfficiencyMultiplier));
-        this.DrawDetailRow(batch, rightColumnX, detailsY + 126, columnWidth, "contract.overtime", this.Translation.Get("contract.overtime.disabled", new
+        this.DrawDetailRow(batch, rightColumnX, detailsY + 126, columnWidth, "contract.callout", this.Translation.Get("contract.gold", new { gold = this.Preview.MinimumCalloutWage }), highlight: true);
+        this.DrawDetailRow(batch, rightColumnX, detailsY + 168, columnWidth, "contract.overtime", this.Translation.Get("contract.overtime.disabled", new
         {
             multiplier = FormatMultiplier(this.Preview.OvertimeMultiplier),
             hours = this.Preview.MaximumOvertimeHours
         }));
-        this.DrawDetailRow(batch, rightColumnX, detailsY + 168, columnWidth, "contract.estimate", this.Translation.Get("contract.gold", new { gold = this.Preview.EstimatedRegularWage }), highlight: true);
         this.DrawDetailRow(batch, rightColumnX, detailsY + 210, columnWidth, "contract.maximum", this.Translation.Get("contract.gold", new { gold = this.Preview.MaximumAuthorizedWage }), highlight: true);
 
         int noticeY = this.BackButton.bounds.Y - 48;
         string notice = Game1.parseText(
             this.Preview.DayKind == ContractDayKind.RestDay
                 ? this.Translation.Get("contract.notice.rest-day")
-                : this.Translation.Get("contract.notice.read-only"),
+                : this.Translation.Get("contract.notice.confirm"),
             Game1.smallFont,
             contentWidth);
         batch.DrawString(Game1.smallFont, notice, new Vector2(contentX, noticeY), new Color(150, 45, 40));
 
         this.DrawButton(batch, this.BackButton);
+        this.DrawButton(batch, this.ConfirmButton);
         base.draw(batch);
         this.drawMouse(batch);
     }
@@ -180,7 +207,7 @@ internal sealed class WateringContractPreviewMenu : IClickableMenu
         batch.DrawString(Game1.dialogueFont, this.Worker.DisplayName, new Vector2(x + 100, y + 16), Game1.textColor);
         batch.DrawString(
             Game1.smallFont,
-            this.Translation.Get("contract.worker.preview-only"),
+            this.Translation.Get("contract.worker.selected"),
             new Vector2(x + 102, y + 58),
             Color.DimGray);
     }

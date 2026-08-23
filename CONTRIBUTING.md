@@ -48,6 +48,7 @@ For code changes, run:
 
 ```bash
 dotnet build -c Release
+dotnet run -c Release --project tests/EvilFarmOwner.LogicTests.csproj
 ```
 
 For gameplay changes, also test through SMAPI in a disposable save.

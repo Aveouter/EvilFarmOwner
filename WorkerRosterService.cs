@@ -76,6 +76,37 @@ internal sealed class WorkerRosterService
             .ToArray();
     }
 
+    public bool TryGetWorker(
+        string internalName,
+        out NPC? worker,
+        out WorkerAvailabilityResult availability)
+    {
+        worker = null;
+        availability = Unavailable(WorkerAvailabilityReason.MissingLocation);
+
+        try
+        {
+            worker = Utility.getAllCharacters()
+                .FirstOrDefault(npc => string.Equals(npc.Name, internalName, StringComparison.OrdinalIgnoreCase));
+
+            if (worker is null || !this.ShouldDisplay(worker))
+            {
+                worker = null;
+                return false;
+            }
+
+            availability = this.Evaluate(worker);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Could not resolve named worker '{internalName}' safely: {ex.Message}", LogLevel.Warn);
+            availability = Unknown(WorkerAvailabilityReason.EvaluationFailed);
+            worker = null;
+            return false;
+        }
+    }
+
     private bool ShouldDisplay(NPC npc)
     {
         try
@@ -105,7 +136,7 @@ internal sealed class WorkerRosterService
             this.Evaluate(npc));
     }
 
-    private WorkerAvailabilityResult Evaluate(NPC npc)
+    public WorkerAvailabilityResult Evaluate(NPC npc)
     {
         try
         {
@@ -143,7 +174,13 @@ internal sealed class WorkerRosterService
             if (npc.controller is not null || npc.temporaryController is not null)
                 return Unavailable(WorkerAvailabilityReason.ControlledActivity);
 
-            if (npc.Sprite?.CurrentAnimation is not null)
+            if (npc.isMoving())
+                return Unavailable(WorkerAvailabilityReason.MovementActivity);
+
+            if (npc.CurrentDialogue.Count > 0 && npc.CurrentDialogue.Peek().removeOnNextMove)
+                return Unavailable(WorkerAvailabilityReason.DialogueActivity);
+
+            if (npc.doingEndOfRouteAnimation.Value || npc.Sprite?.CurrentAnimation is not null)
                 return Unavailable(WorkerAvailabilityReason.ScriptedAnimation);
 
             return new WorkerAvailabilityResult(

@@ -29,13 +29,15 @@
 
 `Evil Farm Owner` is a Stardew Valley mod for players who want to turn repetitive farm chores into paid labor.
 
-Press one key to review named worker candidates and see why someone is currently unavailable. The current version is an early playable prototype; the roster is deliberately read-only while safe contracts, schedules, and visible NPC work are developed.
+Press one key to review named worker candidates and see why someone is currently unavailable. An available adult NPC can be hired for a visible one-tile watering contract with an itemized wage and a protected return to their original schedule position.
 
 ### Current Features
 
-- Open a read-only named worker roster with the `K` key.
-- Show a current availability state and reason without moving, hiring, or reserving an NPC.
-- Select a preview-eligible NPC to inspect a read-only watering contract and itemized wage estimate.
+- Open a named worker roster with the `K` key.
+- Show each NPC's current availability and an explicit reason when they cannot be hired.
+- Confirm a named one-tile watering contract after reviewing the itemized wage.
+- Watch the selected NPC arrive, walk to a reachable crop, water it, return, and resume their prior state.
+- Reserve the six-hour maximum on dispatch, charge a one-hour callout, and refund the unused authorization on return.
 - Water crops.
 - Harvest mature crops.
 - Debris cleanup is temporarily disabled while resource-safe delivery is implemented.
@@ -59,9 +61,11 @@ Load a save and press:
 K
 ```
 
-The roster and watering contract are read-only previews. Select a green preview-eligible row to see the six-hour estimate, friendship multiplier, workday or rest-day multiplier, baseline efficiency, and overtime policy. There is no confirm button, charge, or farm work. The prototype work executor remains available only through the `efo_work` SMAPI console command for isolated testing.
+Select a green available row to review the six-hour maximum authorization, one-hour callout, friendship multiplier, workday or rest-day multiplier, baseline efficiency, and overtime policy. Confirm while standing on the main farm. The mod rechecks the NPC, funds, dry crop, and both walking paths before changing money or NPC state. The NPC then waters at most one crop and returns; unused authorization is refunded. Rest-day confirmation explicitly authorizes triple pay.
 
-In multiplayer, both the host and farmhands may open their local read-only roster. It sends no work request and changes no NPC or farm state. A future contract action will be host-authoritative and will recheck availability instead of trusting this preview.
+Named contracts must start by 4:00 PM and stop at the 10:00 PM safety boundary. Only one named contract can run at a time. The legacy instant executor remains available through the `efo_work` SMAPI console command for isolated testing.
+
+In multiplayer, the roster and contract estimate remain viewable, but confirmation is currently blocked. Host-authoritative execution and synchronization are required before multiplayer work is enabled.
 
 New configurations default to `K`. If an older config still uses `H` while UI Info Suite 2 is installed, the mod shows a conflict warning; change `OpenMenuKey` to `K` or use `efo_roster`.
 
@@ -111,13 +115,15 @@ Mods/EvilFarmOwner/config.json
 
 `邪恶农场主` 是一个《星露谷物语》SMAPI Mod。它的核心玩法是：你花钱雇佣农工，把重复农活交给他们处理。
 
-当前版本是早期可玩原型。现在可以先查看具名 NPC 候选人及其当前不可雇佣原因；在安全合同、日程保护和可见工作流程完成前，这个名单保持只读。
+当前版本可以查看具名 NPC 候选人及其当前不可雇佣原因，并雇佣有空的成年 NPC 可见地完成一次单格浇水合同。工资会逐项显示，NPC 完成后安全返回原位置并恢复日程。
 
 ### 当前功能
 
-- 按 `K` 打开只读的具名工人候选名单。
-- 显示当前可用状态和原因，不移动、雇佣或预留 NPC。
-- 选择可预览的 NPC，查看只读浇水合同和逐项工资估算。
+- 按 `K` 打开具名工人候选名单。
+- 显示 NPC 当前是否可雇佣，以及不能雇佣的明确原因。
+- 查看逐项工资后，确认一份具名单格浇水合同。
+- 观看所选 NPC 到达农场、走到可到达的作物旁、浇水、返回并恢复原状态。
+- 出工时预留六小时最高工资，完成后只收一小时出工费并退还未使用的授权金额。
 - 自动浇水。
 - 自动收获成熟作物。
 - 杂物清理暂时停用，等待实现不会丢失资源的交付逻辑。
@@ -141,9 +147,11 @@ Mods/EvilFarmOwner/config.json
 K
 ```
 
-候选名单和浇水合同都仅用于预览。选择绿色“可预览合同”行，可以查看六小时工资、好感度系数、工作日或休息日系数、基础效率和加班政策。界面没有确认按钮，不会扣钱或开始农活。原型工作执行器只保留在 SMAPI 控制台命令 `efo_work` 中，用于隔离测试。
+选择绿色“当前可雇佣”行，可以查看六小时最高授权金额、一小时最低出工费、好感度系数、工作日或休息日系数、基础效率和加班政策。站在主农场确认后，模组会重新检查 NPC、资金、干旱作物以及去程和返程路线；所有检查通过后才预留工资并让 NPC 出工。NPC 最多浇水一格并返回，未使用的授权金额会退还。休息日按钮会明确要求授权三倍工资。
 
-多人游戏中，主机和农场助手都可以打开各自的本地只读名单。这个操作不会发送工作请求，也不会改变 NPC 或农场状态。未来真正签订合同时将由主机重新检查可用性，不会直接相信这次预览结果。
+具名合同最迟必须在下午 4:00 开始，并受晚上 10:00 安全停止时间约束；同一时间只能执行一份。旧版瞬时执行器仍保留在 SMAPI 控制台命令 `efo_work` 中，仅用于隔离测试。
+
+多人游戏中仍可查看名单和合同估算，但当前会阻止确认。完成主机权威执行与同步后，才会开放多人 NPC 工作。
 
 新配置默认使用 `K`。如果旧配置仍使用 `H` 且安装了 UI Info Suite 2，模组会显示冲突警告；请把 `OpenMenuKey` 改成 `K`，或使用 `efo_roster`。
 
@@ -191,9 +199,9 @@ Mods/EvilFarmOwner/config.json
 
 ### Plan List
 
-- Add a safe contract confirmation after the read-only preview.
-- Acquire and release an NPC work lease without disrupting protected schedules.
-- Add visible farmhand workers or simple worker feedback.
+- Extend the visible named-worker execution framework from watering to harvesting.
+- Add safe harvest output routing without silent item loss.
+- Add host-authoritative multiplayer requests, synchronization, and duplicate prevention.
 - Add a warehouse or office anchor for storage and hiring.
 - Add safe host-authoritative multiplayer behavior.
 
@@ -208,7 +216,8 @@ Mods/EvilFarmOwner/config.json
 ### Bug List / Known Limitations
 
 - Multiplayer support is not complete; the host should run work passes for now.
-- Workers are not visible yet; tasks execute instantly.
+- Named watering contracts are visible; legacy `efo_work` tasks still execute instantly.
+- Named contract execution is blocked in multiplayer until host synchronization is implemented.
 - Debris cleanup is disabled until normal drops and a safe delivery destination are implemented.
 - Harvest output uses the game's default behavior for now.
 - `DepositHarvestToNearestChest` is listed in config but not implemented yet.

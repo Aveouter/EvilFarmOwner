@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="config.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="i18n\*.json" CopyToOutputDirectory="PreserveNewest" />

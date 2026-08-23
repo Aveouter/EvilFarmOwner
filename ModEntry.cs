@@ -15,6 +15,7 @@ public sealed class ModEntry : Mod
     private ModConfig Config = new();
     private bool HasKnownHotkeyConflict;
     private WorkerRosterService? WorkerRoster;
+    private WateringContractExecutionController? WateringContracts;
 
     public override void Entry(IModHelper helper)
     {
@@ -22,12 +23,19 @@ public sealed class ModEntry : Mod
         this.NormalizeAndSaveConfig(writeEvenIfUnchanged: false);
         this.RefreshHotkeyConflict();
         this.WorkerRoster = new WorkerRosterService(this.Monitor);
+        this.WateringContracts = new WateringContractExecutionController(
+            helper.Translation,
+            this.Monitor,
+            this.WorkerRoster);
 
         if (this.HasKnownHotkeyConflict)
             this.Monitor.Log(helper.Translation.Get("hud.hotkey-conflict"), LogLevel.Warn);
 
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
+        helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
+        helper.Events.GameLoop.DayEnding += this.OnDayEnding;
+        helper.Events.GameLoop.ReturnedToTitle += this.OnReturnedToTitle;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
 
         helper.ConsoleCommands.Add("efo_work", helper.Translation.Get("cmd.work"), (_, _) => this.TryDoFarmWork(showEmptyMessage: true));
@@ -109,6 +117,14 @@ public sealed class ModEntry : Mod
             return;
         }
 
+        if (this.WateringContracts?.HasActiveContract == true)
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("contract.start.already-active"),
+                HUDMessage.error_type));
+            return;
+        }
+
         Game1.activeClickableMenu = new WorkerRosterMenu(
             this.WorkerRoster.GetRoster(),
             this.Helper.Translation,
@@ -129,7 +145,23 @@ public sealed class ModEntry : Mod
             worker,
             preview,
             this.Helper.Translation,
-            () => this.OpenWorkerRoster(rosterPage));
+            () => this.OpenWorkerRoster(rosterPage),
+            () => this.WateringContracts?.TryStart(worker.InternalName) == true);
+    }
+
+    private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
+    {
+        this.WateringContracts?.Update();
+    }
+
+    private void OnDayEnding(object? sender, DayEndingEventArgs e)
+    {
+        this.WateringContracts?.OnDayEnding();
+    }
+
+    private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
+    {
+        this.WateringContracts?.OnReturnedToTitle();
     }
 
     private void TryDoFarmWork(bool showEmptyMessage)

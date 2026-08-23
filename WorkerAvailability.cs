@@ -23,6 +23,8 @@ internal enum WorkerAvailabilityReason
     MedicalActivity,
     WorkActivity,
     ControlledActivity,
+    MovementActivity,
+    DialogueActivity,
     ScriptedAnimation,
     UnsupportedCustomNpc,
     EvaluationFailed

@@ -328,6 +328,8 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             WorkerAvailabilityReason.MedicalActivity => "roster.reason.medical",
             WorkerAvailabilityReason.WorkActivity => "roster.reason.work",
             WorkerAvailabilityReason.ControlledActivity => "roster.reason.controlled",
+            WorkerAvailabilityReason.MovementActivity => "roster.reason.movement",
+            WorkerAvailabilityReason.DialogueActivity => "roster.reason.dialogue",
             WorkerAvailabilityReason.ScriptedAnimation => "roster.reason.animation",
             WorkerAvailabilityReason.UnsupportedCustomNpc => "roster.reason.custom-npc",
             _ => "roster.reason.evaluation-failed"

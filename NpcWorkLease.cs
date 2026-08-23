@@ -1,0 +1,149 @@
+using Microsoft.Xna.Framework;
+using StardewModdingAPI;
+using StardewValley;
+using StardewValley.Pathfinding;
+
+namespace EvilFarmOwner;
+
+internal enum NpcLeaseRestoreResult
+{
+    Restored,
+    LeaseOwnershipLost,
+    ConflictingController
+}
+
+internal sealed class NpcWorkLease
+{
+    private const string LeaseDataKey = "Aveouter.EvilFarmOwner/WorkLease";
+
+    private readonly IMonitor Monitor;
+    private readonly HashSet<PathFindController> OwnedControllers = new();
+    private readonly GameLocation OriginalLocation;
+    private readonly Vector2 OriginalPosition;
+    private readonly int OriginalFacingDirection;
+    private readonly int OriginalSpeed;
+    private readonly float OriginalAddedSpeed;
+    private readonly int OriginalBlockedInterval;
+    private readonly bool OriginalIsCharging;
+    private readonly string Token;
+    private bool Released;
+
+    private NpcWorkLease(NPC worker, int reservedWage, IMonitor monitor)
+    {
+        this.Worker = worker;
+        this.ReservedWage = reservedWage;
+        this.Monitor = monitor;
+        this.OriginalLocation = worker.currentLocation;
+        this.OriginalPosition = worker.Position;
+        this.OriginalFacingDirection = worker.FacingDirection;
+        this.OriginalSpeed = worker.speed;
+        this.OriginalAddedSpeed = worker.addedSpeed;
+        this.OriginalBlockedInterval = worker.blockedInterval;
+        this.OriginalIsCharging = worker.isCharging;
+        this.StartTime = Game1.timeOfDay;
+        this.StartTotalDays = Game1.Date.TotalDays;
+        this.Token = Guid.NewGuid().ToString("N");
+
+        worker.modData[LeaseDataKey] = this.Token;
+    }
+
+    public NPC Worker { get; }
+
+    public int ReservedWage { get; }
+
+    public int StartTime { get; }
+
+    public int StartTotalDays { get; }
+
+    public static bool TryAcquire(
+        NPC worker,
+        int reservedWage,
+        IMonitor monitor,
+        out NpcWorkLease? lease)
+    {
+        lease = null;
+
+        if (worker.currentLocation is null
+            || !worker.currentLocation.characters.Contains(worker)
+            || !worker.currentLocation.isTileOnMap(worker.Tile)
+            || worker.controller is not null
+            || worker.temporaryController is not null
+            || worker.modData.ContainsKey(LeaseDataKey))
+            return false;
+
+        lease = new NpcWorkLease(worker, reservedWage, monitor);
+        return true;
+    }
+
+    public void AttachController(PathFindController controller)
+    {
+        this.OwnedControllers.Add(controller);
+        this.Worker.controller = controller;
+    }
+
+    public bool IsCurrentController(PathFindController controller)
+    {
+        return ReferenceEquals(this.Worker.controller, controller);
+    }
+
+    public NpcLeaseRestoreResult Restore()
+    {
+        if (this.Released)
+            return NpcLeaseRestoreResult.Restored;
+
+        if (!this.Worker.modData.TryGetValue(LeaseDataKey, out string? token)
+            || !string.Equals(token, this.Token, StringComparison.Ordinal))
+        {
+            this.Monitor.Log(
+                $"Could not restore worker '{this.Worker.Name}' because the work-lease marker is no longer owned by this contract.",
+                LogLevel.Error);
+            return NpcLeaseRestoreResult.LeaseOwnershipLost;
+        }
+
+        if ((this.Worker.controller is not null && !this.OwnedControllers.Contains(this.Worker.controller))
+            || this.Worker.temporaryController is not null)
+        {
+            this.Monitor.Log(
+                $"Could not safely restore worker '{this.Worker.Name}' because another controller took control during the work lease.",
+                LogLevel.Error);
+            return NpcLeaseRestoreResult.ConflictingController;
+        }
+
+        if (this.Worker.controller is not null)
+            this.Worker.controller = null;
+
+        this.Worker.Halt();
+        this.Worker.Sprite?.ClearAnimation();
+        Game1.warpCharacter(
+            this.Worker,
+            this.OriginalLocation,
+            new Vector2(
+                (int)Math.Floor(this.OriginalPosition.X / Game1.tileSize),
+                (int)Math.Floor(this.OriginalPosition.Y / Game1.tileSize)));
+
+        this.Worker.Position = this.OriginalPosition;
+        this.Worker.faceDirection(this.OriginalFacingDirection);
+        this.Worker.speed = this.OriginalSpeed;
+        this.Worker.addedSpeed = this.OriginalAddedSpeed;
+        this.Worker.blockedInterval = this.OriginalBlockedInterval;
+        this.Worker.isCharging = this.OriginalIsCharging;
+        this.Worker.modData.Remove(LeaseDataKey);
+        this.Released = true;
+
+        if (Context.IsWorldReady && Game1.Date.TotalDays == this.StartTotalDays)
+        {
+            try
+            {
+                this.Worker.checkSchedule(Game1.timeOfDay);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log(
+                    $"Worker '{this.Worker.Name}' was restored, but resuming the vanilla schedule failed: {ex.Message}",
+                    LogLevel.Warn);
+            }
+        }
+
+        return NpcLeaseRestoreResult.Restored;
+    }
+}
