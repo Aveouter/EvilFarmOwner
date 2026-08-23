@@ -52,3 +52,11 @@ dotnet run -c Release --project tests/EvilFarmOwner.LogicTests.csproj
 ```
 
 For gameplay changes, also test through SMAPI in a disposable save.
+
+For a release candidate, run the complete deterministic build and package allowlist check:
+
+```bash
+./scripts/verify-release.sh
+```
+
+This command does not deploy into the live game. Real single-player and remote host/farmhand acceptance tests are still required for gameplay and multiplayer releases.
