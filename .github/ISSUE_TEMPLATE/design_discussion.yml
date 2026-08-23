@@ -1,0 +1,27 @@
+name: Design Discussion
+description: Capture gameplay, UX, architecture, or implementation decisions before coding.
+title: "design(area): "
+labels: ["type:design", "status:needs-design"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Decision Needed
+      description: What needs to be decided?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why does this matter?
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: List the realistic options and tradeoffs.
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommendation
+      description: Which option should be chosen, if any?

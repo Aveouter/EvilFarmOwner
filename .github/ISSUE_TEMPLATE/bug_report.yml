@@ -1,0 +1,47 @@
+name: Bug Report
+description: Report a confirmed problem or unsafe behavior.
+title: "fix(area): "
+labels: ["type:bug", "status:needs-design"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What went wrong?
+      placeholder: Describe the bug clearly.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction Steps
+      description: List the shortest steps that reproduce the issue.
+      placeholder: |
+        1. Start the game through SMAPI.
+        2. Load a save.
+        3. Press ...
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - area:ui
+        - area:farm-work
+        - area:storage
+        - area:multiplayer
+        - area:npc
+        - area:config
+        - area:docs
+        - area:release
+  - type: textarea
+    id: logs
+    attributes:
+      label: SMAPI Log or Screenshot
+      description: Paste a SMAPI log link or attach screenshots if useful.
