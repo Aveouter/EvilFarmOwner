@@ -20,6 +20,8 @@ internal sealed class HarvestingContractExecutionController
     private const int ActionDurationTicks = 40;
     private const int MaximumTravelTicks = 3600;
     private const int MaximumLockWaitTicks = 300;
+    private const int MaximumOverflowWaitTicks = 600;
+    private const int OverflowRetryIntervalTicks = 60;
 
     private readonly ITranslationHelper Translation;
     private readonly IMonitor Monitor;
@@ -27,6 +29,7 @@ internal sealed class HarvestingContractExecutionController
     private readonly HarvestTargetPlanner TargetPlanner;
     private readonly HarvestChestRouter ChestRouter;
     private ActiveHarvestContract? ActiveContract;
+    private NamedContractCompletionState? LastCompletion;
 
     public HarvestingContractExecutionController(
         ITranslationHelper translation,
@@ -42,13 +45,15 @@ internal sealed class HarvestingContractExecutionController
 
     public bool HasActiveContract => this.ActiveContract is not null;
 
-    public bool TryStart(string workerInternalName)
+    public string? LastStartFailureKey { get; private set; }
+
+    public string? ActiveContractId => this.ActiveContract?.Id.ToString("N");
+
+    public bool TryStart(long requestingPlayerId, string workerInternalName, string requestId)
     {
+        this.LastStartFailureKey = null;
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
             return this.FailStart("contract.start.host-only");
-
-        if (Context.IsMultiplayer)
-            return this.FailStart("contract.start.multiplayer-deferred");
 
         if (this.ActiveContract is not null)
             return this.FailStart("contract.start.already-active");
@@ -56,8 +61,12 @@ internal sealed class HarvestingContractExecutionController
         if (Game1.timeOfDay > LatestStartTime)
             return this.FailStart("harvest.start.too-late");
 
+        Farmer? requester = Game1.GetPlayer(requestingPlayerId, onlyOnline: true);
+        if (requester is null)
+            return this.FailStart("multiplayer.reject.player");
+
         Farm mainFarm = Game1.getFarm();
-        if (Game1.currentLocation is not Farm currentFarm || !ReferenceEquals(mainFarm, currentFarm))
+        if (requester.currentLocation is not Farm currentFarm || !ReferenceEquals(mainFarm, currentFarm))
             return this.FailStart("contract.start.must-be-on-farm");
 
         if (!this.WorkerRoster.TryGetWorker(workerInternalName, out NPC? worker, out WorkerAvailabilityResult availability)
@@ -66,16 +75,18 @@ internal sealed class HarvestingContractExecutionController
 
         if (availability.State != WorkerAvailabilityState.EligibleForPreview)
         {
+            this.LastStartFailureKey = "contract.start.worker-unavailable";
             Game1.addHUDMessage(new HUDMessage(
                 this.Translation.Get("contract.start.worker-unavailable", new { worker = worker.displayName }),
                 HUDMessage.error_type));
             return false;
         }
 
-        int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(worker.Name);
+        int friendshipHearts = requester.getFriendshipHeartLevelForNPC(worker.Name);
         WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
-        if (Game1.player.Money < preview.MaximumAuthorizedWage)
+        if (requester.Money < preview.MaximumAuthorizedWage)
         {
+            this.LastStartFailureKey = "contract.start.insufficient-funds";
             Game1.addHUDMessage(new HUDMessage(
                 this.Translation.Get("contract.start.insufficient-funds", new { gold = preview.MaximumAuthorizedWage }),
                 HUDMessage.error_type));
@@ -96,12 +107,14 @@ internal sealed class HarvestingContractExecutionController
 
         ActiveHarvestContract contract = new(
             Guid.NewGuid(),
+            requestId,
+            requester,
             lease,
             preview,
             mainFarm,
             planResult.Plan);
         this.ActiveContract = contract;
-        Game1.player.Money -= preview.MaximumAuthorizedWage;
+        requester.Money -= preview.MaximumAuthorizedWage;
 
         try
         {
@@ -110,11 +123,11 @@ internal sealed class HarvestingContractExecutionController
                 planResult.Plan.ArrivalTile.Y));
             worker.Halt();
             worker.Sprite?.ClearAnimation();
-            contract.Dispatched = true;
 
             if (worker.TilePoint == planResult.Plan.Target.InteractionTile)
             {
                 this.OnArrivedAtTarget(worker, mainFarm);
+                contract.Dispatched = true;
                 Game1.addHUDMessage(new HUDMessage(
                     this.Translation.Get("harvest.hud.dispatched", new
                     {
@@ -132,6 +145,7 @@ internal sealed class HarvestingContractExecutionController
                 this.OnArrivedAtTarget);
             contract.Controller = outbound;
             lease.AttachController(outbound);
+            contract.Dispatched = true;
 
             Game1.addHUDMessage(new HUDMessage(
                 this.Translation.Get("harvest.hud.dispatched", new
@@ -157,7 +171,6 @@ internal sealed class HarvestingContractExecutionController
             return;
 
         if (!Context.IsMainPlayer
-            || Context.IsMultiplayer
             || Game1.Date.TotalDays != contract.Lease.StartTotalDays
             || Game1.timeOfDay >= HardStopTime)
         {
@@ -200,6 +213,20 @@ internal sealed class HarvestingContractExecutionController
                 }
                 break;
 
+            case HarvestContractPhase.WaitingForOverflowLock:
+                if (contract.PhaseTicks >= MaximumOverflowWaitTicks)
+                {
+                    this.DropCargoVisibly(contract, "persistent overflow stayed locked until timeout");
+                    contract.Phase = HarvestContractPhase.Returned;
+                    contract.PhaseTicks = 0;
+                }
+                else if (!contract.OverflowLockRequested
+                    && contract.PhaseTicks % OverflowRetryIntervalTicks == 0)
+                {
+                    this.RequestOverflowLock(contract);
+                }
+                break;
+
             case HarvestContractPhase.Returned:
                 this.FinishContract(
                     contract,
@@ -223,6 +250,40 @@ internal sealed class HarvestingContractExecutionController
             this.FinishContract(contract, succeeded: false, "contract.failure.world-closed");
 
         this.ActiveContract = null;
+    }
+
+    public NamedContractRuntimeState? GetRuntimeState()
+    {
+        ActiveHarvestContract? contract = this.ActiveContract;
+        if (contract is null)
+            return null;
+
+        return new NamedContractRuntimeState(
+            contract.Id.ToString("N"),
+            contract.RequestId,
+            contract.Requester.UniqueMultiplayerID,
+            contract.Lease.Worker.Name,
+            NamedFarmTask.Harvesting,
+            contract.Phase.ToString(),
+            contract.Plan.Target.TargetTile.X,
+            contract.Plan.Target.TargetTile.Y,
+            contract.Preview.MaximumAuthorizedWage,
+            contract.Lease.StartTime,
+            contract.HarvestedTargets,
+            contract.Cargo.Select(entry => new NamedContractCargoState(
+                entry.TransferId,
+                entry.Item.QualifiedItemId,
+                entry.Item.DisplayName,
+                entry.Item.Quality,
+                entry.Item.Stack)).ToArray(),
+            contract.TransferLedger.GetCompletedTransferIds());
+    }
+
+    public NamedContractCompletionState? ConsumeCompletion()
+    {
+        NamedContractCompletionState? completion = this.LastCompletion;
+        this.LastCompletion = null;
+        return completion;
     }
 
     private void UpdateTravel(ActiveHarvestContract contract)
@@ -304,7 +365,10 @@ internal sealed class HarvestingContractExecutionController
 
         contract.Lease.Worker.Halt();
         if (contract.DepositOverflowOnReturn && contract.Cargo.Count > 0)
-            this.PersistOrDropCargo(contract);
+        {
+            this.BeginOverflowDeposit(contract);
+            return;
+        }
 
         contract.Phase = HarvestContractPhase.Returned;
         contract.PhaseTicks = 0;
@@ -336,8 +400,14 @@ internal sealed class HarvestingContractExecutionController
 
         foreach (Item item in collector.Items)
         {
-            contract.Cargo.Add(new HarvestCargoEntry(Guid.NewGuid().ToString("N"), item));
-            contract.HarvestedItems.Add(new HarvestItemSnapshot(item.DisplayName, item.Quality, item.Stack));
+            string transferId = Guid.NewGuid().ToString("N");
+            contract.Cargo.Add(new HarvestCargoEntry(transferId, item));
+            contract.HarvestedItems.Add(new HarvestItemSnapshot(
+                transferId,
+                item.QualifiedItemId,
+                item.DisplayName,
+                item.Quality,
+                item.Stack));
         }
 
         this.ShowHarvestedItem(contract, collector.Items[0]);
@@ -489,7 +559,10 @@ internal sealed class HarvestingContractExecutionController
         if (contract.Lease.Worker.TilePoint == contract.Plan.ArrivalTile)
         {
             if (contract.DepositOverflowOnReturn && contract.Cargo.Count > 0)
-                this.PersistOrDropCargo(contract);
+            {
+                this.BeginOverflowDeposit(contract);
+                return;
+            }
             contract.CurrentChestRoute = null;
             contract.Phase = HarvestContractPhase.Returned;
             contract.PhaseTicks = 0;
@@ -559,8 +632,37 @@ internal sealed class HarvestingContractExecutionController
             contract.Dispatched,
             contract.Lease.StartTime,
             Game1.timeOfDay);
-        Game1.player.Money += settlement.RefundedGold;
+        contract.Requester.Money += settlement.RefundedGold;
         this.ActiveContract = null;
+
+        bool finalSucceeded = succeeded && restoreResult == NpcLeaseRestoreResult.Restored;
+        string finalReasonKey = finalSucceeded
+            ? ""
+            : restoreResult != NpcLeaseRestoreResult.Restored
+                ? "contract.hud.restore-failed"
+                : failureTranslationKey ?? "contract.failure.unknown";
+        this.LastCompletion = new NamedContractCompletionState(
+            contract.Id.ToString("N"),
+            contract.RequestId,
+            contract.Requester.UniqueMultiplayerID,
+            contract.Lease.Worker.Name,
+            NamedFarmTask.Harvesting,
+            finalSucceeded,
+            finalReasonKey,
+            contract.HarvestedTargets,
+            contract.ChestDeliveredItems,
+            contract.OverflowItems,
+            contract.DroppedItems,
+            settlement.BillableHours,
+            settlement.ChargedGold,
+            settlement.RefundedGold,
+            contract.HarvestedItems.Select(item => new NamedContractCargoState(
+                item.TransferId,
+                item.QualifiedItemId,
+                item.Name,
+                item.Quality,
+                item.Stack)).ToArray(),
+            contract.TransferLedger.GetCompletedTransferIds());
 
         if (restoreResult != NpcLeaseRestoreResult.Restored)
         {
@@ -613,44 +715,150 @@ internal sealed class HarvestingContractExecutionController
         if (contract.Cargo.Count == 0)
             return;
 
+        NetMutex mutex = Game1.player.team.GetOrCreateGlobalInventoryMutex(OverflowInventoryId);
         try
         {
-            Inventory overflow = Game1.player.team.GetOrCreateGlobalInventory(OverflowInventoryId);
-            foreach (HarvestCargoEntry entry in contract.Cargo.ToArray())
+            if (!this.TryAcquireOverflowLockImmediately(mutex))
             {
-                int stack = entry.Item.Stack;
-                bool applied = contract.TransferLedger.TryApply(
-                    entry.TransferId,
-                    () => overflow.Add(entry.Item));
-                if (applied)
-                    contract.OverflowItems += stack;
-                contract.Cargo.Remove(entry);
+                this.DropCargoVisibly(contract, "persistent overflow was locked during emergency settlement");
+                return;
             }
+
+            this.StoreCargoInOverflow(contract);
         }
         catch (Exception ex)
         {
-            this.Monitor.Log($"Persistent harvest overflow failed; dropping exact cargo visibly: {ex}", LogLevel.Error);
-            foreach (HarvestCargoEntry entry in contract.Cargo.ToArray())
-            {
-                int stack = entry.Item.Stack;
-                try
-                {
-                    Game1.createItemDebris(entry.Item, contract.Lease.Worker.Position, -1, contract.Farm);
-                    contract.DroppedItems += stack;
-                    contract.Cargo.Remove(entry);
-                }
-                catch (Exception dropException)
-                {
-                    this.Monitor.Log(
-                        $"CRITICAL: exact harvest cargo '{entry.Item.QualifiedItemId}' x{entry.Item.Stack} could not be persisted or dropped: {dropException}",
-                        LogLevel.Error);
-                }
-            }
-
-            Game1.addHUDMessage(new HUDMessage(
-                this.Translation.Get("harvest.hud.emergency-drop"),
-                HUDMessage.error_type));
+            this.DropCargoVisibly(contract, $"persistent harvest overflow failed: {ex}");
         }
+        finally
+        {
+            if (mutex.IsLockHeld())
+                mutex.ReleaseLock();
+        }
+    }
+
+    private void BeginOverflowDeposit(ActiveHarvestContract contract)
+    {
+        if (!ReferenceEquals(this.ActiveContract, contract))
+            return;
+
+        contract.CurrentChestRoute = null;
+        contract.Phase = HarvestContractPhase.WaitingForOverflowLock;
+        contract.PhaseTicks = 0;
+        contract.OverflowLockRequested = false;
+        contract.Lease.Worker.Halt();
+        this.RequestOverflowLock(contract);
+    }
+
+    private void RequestOverflowLock(ActiveHarvestContract contract)
+    {
+        if (!ReferenceEquals(this.ActiveContract, contract)
+            || contract.Phase != HarvestContractPhase.WaitingForOverflowLock
+            || contract.OverflowLockRequested)
+            return;
+
+        contract.OverflowLockRequested = true;
+        NetMutex mutex = Game1.player.team.GetOrCreateGlobalInventoryMutex(OverflowInventoryId);
+        mutex.RequestLock(
+            () => this.OnOverflowLockAcquired(contract.Id, mutex),
+            () => this.OnOverflowLockFailed(contract.Id));
+    }
+
+    private void OnOverflowLockAcquired(Guid contractId, NetMutex mutex)
+    {
+        ActiveHarvestContract? contract = this.ActiveContract;
+        if (contract is null
+            || contract.Id != contractId
+            || contract.Phase != HarvestContractPhase.WaitingForOverflowLock)
+        {
+            if (mutex.IsLockHeld())
+                mutex.ReleaseLock();
+            return;
+        }
+
+        try
+        {
+            this.StoreCargoInOverflow(contract);
+            contract.Phase = HarvestContractPhase.Returned;
+            contract.PhaseTicks = 0;
+        }
+        catch (Exception ex)
+        {
+            this.DropCargoVisibly(contract, $"persistent harvest overflow failed after locking: {ex}");
+            contract.Phase = HarvestContractPhase.Returned;
+            contract.PhaseTicks = 0;
+        }
+        finally
+        {
+            if (mutex.IsLockHeld())
+                mutex.ReleaseLock();
+            contract.OverflowLockRequested = false;
+        }
+    }
+
+    private void OnOverflowLockFailed(Guid contractId)
+    {
+        ActiveHarvestContract? contract = this.ActiveContract;
+        if (contract is null
+            || contract.Id != contractId
+            || contract.Phase != HarvestContractPhase.WaitingForOverflowLock)
+            return;
+
+        contract.OverflowLockRequested = false;
+    }
+
+    private void StoreCargoInOverflow(ActiveHarvestContract contract)
+    {
+        Inventory overflow = Game1.player.team.GetOrCreateGlobalInventory(OverflowInventoryId);
+        foreach (HarvestCargoEntry entry in contract.Cargo.ToArray())
+        {
+            int stack = entry.Item.Stack;
+            bool applied = contract.TransferLedger.TryApply(
+                entry.TransferId,
+                () => overflow.Add(entry.Item));
+            if (applied)
+                contract.OverflowItems += stack;
+            contract.Cargo.Remove(entry);
+        }
+    }
+
+    private bool TryAcquireOverflowLockImmediately(NetMutex mutex)
+    {
+        if (mutex.IsLockHeld())
+            return true;
+        if (mutex.IsLocked())
+            return false;
+
+        bool acquired = false;
+        mutex.RequestLock(() => acquired = true, () => acquired = false);
+        if (!acquired)
+            mutex.Update(Game1.getOnlineFarmers());
+        return acquired || mutex.IsLockHeld();
+    }
+
+    private void DropCargoVisibly(ActiveHarvestContract contract, string reason)
+    {
+        this.Monitor.Log($"{reason}; dropping exact harvest cargo visibly.", LogLevel.Error);
+        foreach (HarvestCargoEntry entry in contract.Cargo.ToArray())
+        {
+            int stack = entry.Item.Stack;
+            try
+            {
+                Game1.createItemDebris(entry.Item, contract.Lease.Worker.Position, -1, contract.Farm);
+                contract.DroppedItems += stack;
+                contract.Cargo.Remove(entry);
+            }
+            catch (Exception dropException)
+            {
+                this.Monitor.Log(
+                    $"CRITICAL: exact harvest cargo '{entry.Item.QualifiedItemId}' x{entry.Item.Stack} could not be persisted or dropped: {dropException}",
+                    LogLevel.Error);
+            }
+        }
+
+        Game1.addHUDMessage(new HUDMessage(
+            this.Translation.Get("harvest.hud.emergency-drop"),
+            HUDMessage.error_type));
     }
 
     private void StartHarvestAnimation(NPC worker)
@@ -710,6 +918,7 @@ internal sealed class HarvestingContractExecutionController
 
     private bool FailStart(string translationKey)
     {
+        this.LastStartFailureKey = translationKey;
         Game1.addHUDMessage(new HUDMessage(this.Translation.Get(translationKey), HUDMessage.error_type));
         return false;
     }
@@ -750,6 +959,7 @@ internal sealed class HarvestingContractExecutionController
         Acting,
         TravelingToChest,
         WaitingForChestLock,
+        WaitingForOverflowLock,
         Returning,
         Returned
     }
@@ -760,12 +970,16 @@ internal sealed class HarvestingContractExecutionController
 
         public ActiveHarvestContract(
             Guid id,
+            string requestId,
+            Farmer requester,
             NpcWorkLease lease,
             WorkContractPreview preview,
             Farm farm,
             HarvestWorkPlan plan)
         {
             this.Id = id;
+            this.RequestId = requestId;
+            this.Requester = requester;
             this.Lease = lease;
             this.Preview = preview;
             this.Farm = farm;
@@ -773,6 +987,8 @@ internal sealed class HarvestingContractExecutionController
         }
 
         public Guid Id { get; }
+        public string RequestId { get; }
+        public Farmer Requester { get; }
         public NpcWorkLease Lease { get; }
         public WorkContractPreview Preview { get; }
         public Farm Farm { get; }
@@ -787,6 +1003,7 @@ internal sealed class HarvestingContractExecutionController
         public bool Dispatched { get; set; }
         public bool ActionApplied { get; set; }
         public bool DepositOverflowOnReturn { get; set; }
+        public bool OverflowLockRequested { get; set; }
         public int HarvestedTargets { get; set; }
         public int SkippedTargets { get; set; }
         public int ChestDeliveredItems { get; set; }
@@ -817,5 +1034,10 @@ internal sealed class HarvestingContractExecutionController
         public Item Item { get; set; }
     }
 
-    private sealed record HarvestItemSnapshot(string Name, int Quality, int Stack);
+    private sealed record HarvestItemSnapshot(
+        string TransferId,
+        string QualifiedItemId,
+        string Name,
+        int Quality,
+        int Stack);
 }

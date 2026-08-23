@@ -20,6 +20,7 @@ public sealed class ModEntry : Mod
     private WorkerRosterService? WorkerRoster;
     private WateringContractExecutionController? WateringContracts;
     private HarvestingContractExecutionController? HarvestingContracts;
+    private MultiplayerContractCoordinator? MultiplayerContracts;
 
     public override void Entry(IModHelper helper)
     {
@@ -35,6 +36,13 @@ public sealed class ModEntry : Mod
             helper.Translation,
             this.Monitor,
             this.WorkerRoster);
+        this.MultiplayerContracts = new MultiplayerContractCoordinator(
+            helper,
+            this.ModManifest,
+            helper.Translation,
+            this.Monitor,
+            this.WateringContracts,
+            this.HarvestingContracts);
 
         if (this.HasKnownHotkeyConflict)
             this.Monitor.Log(helper.Translation.Get("hud.hotkey-conflict"), LogLevel.Warn);
@@ -43,12 +51,17 @@ public sealed class ModEntry : Mod
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
         helper.Events.GameLoop.DayEnding += this.OnDayEnding;
+        helper.Events.GameLoop.Saving += this.OnSaving;
         helper.Events.GameLoop.ReturnedToTitle += this.OnReturnedToTitle;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
+        helper.Events.Multiplayer.ModMessageReceived += this.OnModMessageReceived;
+        helper.Events.Multiplayer.PeerConnected += this.OnPeerConnected;
+        helper.Events.Multiplayer.PeerDisconnected += this.OnPeerDisconnected;
 
         helper.ConsoleCommands.Add("efo_work", helper.Translation.Get("cmd.work"), (_, _) => this.TryDoFarmWork(showEmptyMessage: true));
         helper.ConsoleCommands.Add("efo_roster", helper.Translation.Get("cmd.roster"), (_, _) => this.OpenWorkerRoster());
         helper.ConsoleCommands.Add("efo_overflow", helper.Translation.Get("cmd.overflow"), (_, _) => this.OpenHarvestOverflow());
+        helper.ConsoleCommands.Add("efo_netstatus", helper.Translation.Get("cmd.netstatus"), (_, _) => this.ShowNetworkStatus());
         helper.ConsoleCommands.Add("efo_status", helper.Translation.Get("cmd.status"), (_, _) => this.ShowStatus());
         helper.ConsoleCommands.Add("efo_toggle", helper.Translation.Get("cmd.toggle"), this.ToggleTask);
     }
@@ -101,6 +114,7 @@ public sealed class ModEntry : Mod
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
+        this.MultiplayerContracts?.OnSaveLoaded();
         Game1.addHUDMessage(new HUDMessage(this.Helper.Translation.Get("hud.ready", new { key = this.Config.OpenMenuKey }), HUDMessage.newQuest_type));
 
         if (this.HasKnownHotkeyConflict)
@@ -123,6 +137,14 @@ public sealed class ModEntry : Mod
         if (!Context.IsWorldReady || this.WorkerRoster is null)
         {
             this.Monitor.Log(this.Helper.Translation.Get("cmd.roster-world-not-ready"), LogLevel.Info);
+            return;
+        }
+
+        if (this.MultiplayerContracts?.HasPendingRequest == true)
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("multiplayer.hud.pending-existing"),
+                HUDMessage.error_type));
             return;
         }
 
@@ -179,42 +201,57 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.Update();
         this.HarvestingContracts?.Update();
+        this.MultiplayerContracts?.Update();
     }
 
     private void OnDayEnding(object? sender, DayEndingEventArgs e)
     {
         this.WateringContracts?.OnDayEnding();
         this.HarvestingContracts?.OnDayEnding();
+        this.MultiplayerContracts?.Update();
+    }
+
+    private void OnSaving(object? sender, SavingEventArgs e)
+    {
+        this.WateringContracts?.OnDayEnding();
+        this.HarvestingContracts?.OnDayEnding();
+        this.MultiplayerContracts?.Update();
     }
 
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
     {
         this.WateringContracts?.OnReturnedToTitle();
         this.HarvestingContracts?.OnReturnedToTitle();
+        this.MultiplayerContracts?.Update();
+        this.MultiplayerContracts?.OnReturnedToTitle();
     }
 
     private bool HasActiveNamedContract()
     {
         return this.WateringContracts?.HasActiveContract == true
-            || this.HarvestingContracts?.HasActiveContract == true;
+            || this.HarvestingContracts?.HasActiveContract == true
+            || this.MultiplayerContracts?.HasObservedActiveContract == true
+            || this.MultiplayerContracts?.HasPendingRequest == true;
     }
 
     private bool TryStartNamedContract(string workerInternalName, NamedFarmTask task)
     {
-        if (this.HasActiveNamedContract())
-        {
-            Game1.addHUDMessage(new HUDMessage(
-                this.Helper.Translation.Get("contract.start.already-active"),
-                HUDMessage.error_type));
-            return false;
-        }
+        return this.MultiplayerContracts?.RequestStart(workerInternalName, task) == true;
+    }
 
-        return task switch
-        {
-            NamedFarmTask.Watering => this.WateringContracts?.TryStart(workerInternalName) == true,
-            NamedFarmTask.Harvesting => this.HarvestingContracts?.TryStart(workerInternalName) == true,
-            _ => false
-        };
+    private void OnModMessageReceived(object? sender, ModMessageReceivedEventArgs e)
+    {
+        this.MultiplayerContracts?.OnModMessageReceived(sender, e);
+    }
+
+    private void OnPeerConnected(object? sender, PeerConnectedEventArgs e)
+    {
+        this.MultiplayerContracts?.OnPeerConnected(sender, e);
+    }
+
+    private void OnPeerDisconnected(object? sender, PeerDisconnectedEventArgs e)
+    {
+        this.MultiplayerContracts?.OnPeerDisconnected(sender, e);
     }
 
     private void OpenHarvestOverflow()
@@ -432,6 +469,19 @@ public sealed class ModEntry : Mod
             radius = this.Config.WorkRadius,
             wage = this.Config.DailyWage
         }), LogLevel.Info);
+    }
+
+    private void ShowNetworkStatus()
+    {
+        if (!Context.IsWorldReady)
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("cmd.roster-world-not-ready"), LogLevel.Info);
+            return;
+        }
+
+        this.Monitor.Log(
+            this.MultiplayerContracts?.GetDiagnosticStatus() ?? "EFO network coordinator is unavailable.",
+            LogLevel.Info);
     }
 
     private void ToggleTask(string command, string[] args)

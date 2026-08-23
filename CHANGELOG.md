@@ -11,7 +11,10 @@
 - Added vanilla-compatible harvest capture for exact quality, quantity, regrowth, metadata, and by-products.
 - Added deterministic chest ranking, mutex-protected partial delivery, persistent team overflow, replay protection, and explicit emergency ground drops.
 - Added `efo_overflow` to retrieve harvest results which could not fit in an eligible farm chest.
-- Expanded the deterministic logic harness to 14 wage, routing, remainder, overflow, and replay tests.
+- Added host-authoritative multiplayer contract requests, bounded request replay protection, phase/cargo/transfer snapshots, reconnect synchronization, and host-only visual action messages.
+- Bound wage reservation and refund to the requesting farmer instead of the host's local player.
+- Added mutex-aware persistent overflow delivery and save-time lease/cargo cleanup.
+- Expanded the deterministic logic harness to 21 wage, routing, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
 
 ## 0.1.0
 

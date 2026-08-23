@@ -67,7 +67,7 @@ Select a green available row, choose watering or harvesting, then review the six
 
 Named contracts must start by 4:00 PM and stop at the 10:00 PM safety boundary. Only one named contract can run at a time. The legacy instant executor remains available through the `efo_work` SMAPI console command for isolated testing.
 
-In multiplayer, the roster and contract estimate remain viewable, but confirmation is currently blocked. Host-authoritative execution and synchronization are required before multiplayer work is enabled.
+In multiplayer, both the host and a connected farmhand can request watering or harvest contracts. A farmhand confirmation sends a versioned request to the host and never mutates money, NPCs, crops, cargo, or chests locally. The host revalidates the player, worker, funds, target, paths, and save/day/version identity; accepted contracts, phase changes, cargo/transfer state, actions, and final results are synchronized back to peers. Retries reuse the same processed result instead of charging or dispatching twice.
 
 New configurations default to `K`. If an older config still uses `H` while UI Info Suite 2 is installed, the mod shows a conflict warning; change `OpenMenuKey` to `K` or use `efo_roster`.
 
@@ -77,6 +77,7 @@ You can also use SMAPI console commands:
 efo_work
 efo_roster
 efo_overflow
+efo_netstatus
 efo_status
 efo_toggle water
 efo_toggle harvest
@@ -89,9 +90,11 @@ efo_toggle plant
 
 `efo_overflow` opens the persistent team inventory used only when no eligible farm chest can accept a harvest result. Emergency ground drops are announced explicitly.
 
+`efo_netstatus` reports the local network role, host session, active contract, pending request, processed-request count, and synchronized state version for multiplayer acceptance testing.
+
 ### Configuration
 
-If Generic Mod Config Menu is installed, Evil Farm Owner appears in its Mod Options list with a localized roster-hotkey setting. The integration is optional; direct `config.json` editing remains supported. Work area, tasks, and wages belong to each future NPC contract instead of a global player-centered scan, so legacy prototype controls aren't exposed in the menu.
+If Generic Mod Config Menu is installed, Evil Farm Owner appears in its Mod Options list with a localized roster-hotkey setting. The integration is optional; direct `config.json` editing remains supported. Work area, tasks, and wages belong to each named NPC contract instead of a global player-centered scan, so legacy prototype controls aren't exposed in the menu.
 
 The config file is created at:
 
@@ -158,7 +161,7 @@ K
 
 具名合同最迟必须在下午 4:00 开始，并受晚上 10:00 安全停止时间约束；同一时间只能执行一份。旧版瞬时执行器仍保留在 SMAPI 控制台命令 `efo_work` 中，仅用于隔离测试。
 
-多人游戏中仍可查看名单和合同估算，但当前会阻止确认。完成主机权威执行与同步后，才会开放多人 NPC 工作。
+多人游戏中，主机和已连接的农场工都可以请求浇水或收获合同。农场工确认后只会向主机发送带版本的请求，本地绝不会直接改动金币、NPC、作物、货物或箱子。主机会重新检查玩家、工人、资金、目标、路线以及存档、日期和版本身份，再把已接受合同、阶段、货物与转移状态、动作和最终结果同步给其他玩家；重试会返回同一处理结果，不会重复扣钱或重复出工。
 
 新配置默认使用 `K`。如果旧配置仍使用 `H` 且安装了 UI Info Suite 2，模组会显示冲突警告；请把 `OpenMenuKey` 改成 `K`，或使用 `efo_roster`。
 
@@ -168,6 +171,7 @@ K
 efo_work
 efo_roster
 efo_overflow
+efo_netstatus
 efo_status
 efo_toggle water
 efo_toggle harvest
@@ -180,9 +184,11 @@ efo_toggle plant
 
 `efo_overflow` 用于打开持久化队伍溢出仓；只有普通农场箱子都无法接收产物时才会使用它。紧急地面掉落一定会明确提示。
 
+`efo_netstatus` 用于多人验收，显示本地网络角色、主机会话、活动合同、待处理请求、已处理请求数量和同步状态版本。
+
 ### 配置文件
 
-如果安装了 Generic Mod Config Menu，“邪恶农场主”会出现在它的“MOD 选项”列表中，并提供本地化的候选名单快捷键设置。该集成是可选的，仍可直接编辑 `config.json`。工作区域、任务和工资属于未来的每份 NPC 合同，不使用以玩家为中心的全局扫描范围，因此菜单不会暴露旧原型设置。
+如果安装了 Generic Mod Config Menu，“邪恶农场主”会出现在它的“MOD 选项”列表中，并提供本地化的候选名单快捷键设置。该集成是可选的，仍可直接编辑 `config.json`。工作区域、任务和工资属于每份具名 NPC 合同，不使用以玩家为中心的全局扫描范围，因此菜单不会暴露旧原型设置。
 
 配置文件位置：
 
@@ -210,9 +216,8 @@ Mods/EvilFarmOwner/config.json
 ### Plan List
 
 - Validate the visible one-crop named harvest and lossless delivery flow in a live save.
-- Add host-authoritative multiplayer requests, synchronization, and duplicate prevention.
+- Validate host-authoritative network multiplayer with a real host and remote farmhand for watering and harvest delivery.
 - Add a warehouse or office anchor for storage and hiring.
-- Add safe host-authoritative multiplayer behavior.
 
 ### Idea List
 
@@ -224,9 +229,9 @@ Mods/EvilFarmOwner/config.json
 
 ### Bug List / Known Limitations
 
-- Multiplayer support is not complete; the host should run work passes for now.
+- Host-authoritative multiplayer is implemented but still requires the release-gate test with a real remote host/farmhand session; split-screen alone is not accepted as proof.
 - Named watering and one-crop harvest contracts are visible; legacy `efo_work` tasks still execute instantly.
-- Named contract execution is blocked in multiplayer until host synchronization is implemented.
+- Every peer must install the same Evil Farm Owner version; mismatched protocol/save/day/player/task messages are rejected without mutation.
 - Debris cleanup is disabled until normal drops and a safe delivery destination are implemented.
 - Named harvest supports ordinary player-owned main-farm chests and persistent overflow; special or modded chest subclasses are excluded for safety.
 - `DepositHarvestToNearestChest` remains a legacy prototype config field; named harvest routing is always lossless and does not use this switch.

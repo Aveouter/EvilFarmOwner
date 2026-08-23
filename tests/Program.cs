@@ -1,4 +1,5 @@
 using EvilFarmOwner;
+using System.Text.Json;
 
 List<(string Name, Action Test)> tests = new()
 {
@@ -15,7 +16,14 @@ List<(string Name, Action Test)> tests = new()
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("harvest overflow fallback", TestHarvestOverflowFallback),
-    ("harvest transfer replay protection", TestHarvestTransferReplayProtection)
+    ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
+    ("multiplayer request authorization", TestMultiplayerRequestAuthorization),
+    ("multiplayer request replay", TestMultiplayerRequestReplay),
+    ("multiplayer deterministic order", TestMultiplayerDeterministicOrder),
+    ("multiplayer reconnect ledger", TestMultiplayerReconnectLedger),
+    ("multiplayer stale snapshot rejection", TestMultiplayerStaleSnapshotRejection),
+    ("multiplayer stale sync-state rejection", TestMultiplayerStaleSyncStateRejection),
+    ("multiplayer snapshot serialization", TestMultiplayerSnapshotSerialization)
 };
 
 int failures = 0;
@@ -184,6 +192,221 @@ static void TestHarvestTransferReplayProtection()
     Equal(true, ledger.TryApply("transfer-1", () => applied++));
     Equal(false, ledger.TryApply("transfer-1", () => applied++));
     Equal(1, applied);
+}
+
+static void TestMultiplayerRequestAuthorization()
+{
+    long playerId = 112233;
+    ContractProtocolContext context = new(
+        ModVersion: "0.1.0",
+        SaveId: 445566,
+        TotalDays: 12,
+        KnownPlayerIds: new HashSet<long> { playerId });
+    ContractStartRequestMessage valid = NewMultiplayerRequest(playerId);
+
+    Equal(
+        ContractRequestValidationFailure.None,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.RequestingPlayerId = 998877;
+    Equal(
+        ContractRequestValidationFailure.SenderMismatch,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.RequestingPlayerId = playerId;
+    valid.ModVersion = "9.9.9";
+    Equal(
+        ContractRequestValidationFailure.WrongModVersion,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.ModVersion = "0.1.0";
+    valid.SaveId = 1;
+    Equal(
+        ContractRequestValidationFailure.WrongSave,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.SaveId = 445566;
+    valid.TotalDays = 11;
+    Equal(
+        ContractRequestValidationFailure.StaleDay,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.TotalDays = 12;
+    valid.Task = (NamedFarmTask)999;
+    Equal(
+        ContractRequestValidationFailure.InvalidTask,
+        ContractRequestValidator.Validate(valid, playerId, context));
+}
+
+static void TestMultiplayerRequestReplay()
+{
+    ProcessedContractRequestLedger ledger = new();
+    ContractStartResponseMessage first = NewStartResponse(playerId: 1, requestId: "request-a", order: 1);
+    ContractStartResponseMessage retry = NewStartResponse(playerId: 1, requestId: "request-a", order: 2);
+    ledger.Record(first);
+    ledger.Record(retry);
+
+    Equal(1, ledger.Count);
+    Equal(true, ledger.TryGet(1, "request-a", out ContractStartResponseMessage? stored));
+    Equal(1L, stored!.HostOrder);
+}
+
+static void TestMultiplayerDeterministicOrder()
+{
+    ProcessedContractRequestLedger ledger = new();
+    ledger.Record(NewStartResponse(playerId: 7, requestId: "first", order: 10));
+    ledger.Record(NewStartResponse(playerId: 7, requestId: "second", order: 11));
+
+    IReadOnlyList<ContractStartResponseMessage> responses = ledger.GetForPlayer(7);
+    Equal("first", responses[0].RequestId);
+    Equal("second", responses[1].RequestId);
+    Equal(10L, responses[0].HostOrder);
+    Equal(11L, responses[1].HostOrder);
+}
+
+static void TestMultiplayerReconnectLedger()
+{
+    ProcessedContractRequestLedger ledger = new(capacity: 2);
+    ledger.Record(NewStartResponse(playerId: 4, requestId: "old", order: 1));
+    ledger.Record(NewStartResponse(playerId: 5, requestId: "other", order: 2));
+    ledger.Record(NewStartResponse(playerId: 4, requestId: "recent", order: 3));
+
+    Equal(false, ledger.TryGet(4, "old", out _));
+    IReadOnlyList<ContractStartResponseMessage> reconnect = ledger.GetForPlayer(4);
+    Equal(1, reconnect.Count);
+    Equal("recent", reconnect[0].RequestId);
+}
+
+static void TestMultiplayerStaleSnapshotRejection()
+{
+    ContractSnapshotTracker tracker = new();
+    ContractSnapshotMessage first = NewSnapshot(session: "host-a", sequence: 1);
+    Equal(true, tracker.TryAccept(first, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+
+    ContractSnapshotMessage replay = NewSnapshot(session: "host-a", sequence: 1);
+    Equal(false, tracker.TryAccept(replay, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+
+    ContractSnapshotMessage next = NewSnapshot(session: "host-a", sequence: 2);
+    Equal(true, tracker.TryAccept(next, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+
+    ContractSnapshotMessage newHostSession = NewSnapshot(session: "host-b", sequence: 1);
+    Equal(false, tracker.TryAccept(newHostSession, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+    tracker.BeginSession("host-b");
+    Equal(true, tracker.TryAccept(newHostSession, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+
+    ContractSnapshotMessage wrongSave = NewSnapshot(session: "host-b", sequence: 2);
+    wrongSave.SaveId = 123;
+    Equal(false, tracker.TryAccept(wrongSave, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+
+    ContractResultMessage result = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "host-b",
+        ContractId = "contract-1",
+        Sequence = 2,
+        Task = NamedFarmTask.Watering
+    };
+    Equal(true, tracker.TryAccept(result, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+    Equal(false, tracker.TryAccept(result, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+}
+
+static void TestMultiplayerStaleSyncStateRejection()
+{
+    HostStateVersionTracker tracker = new();
+    Equal(true, tracker.CanAccept(1));
+    tracker.Commit(1);
+    Equal(true, tracker.CanAccept(1));
+    Equal(false, tracker.CanAccept(0));
+    Equal(true, tracker.CanAccept(2));
+    tracker.Commit(2);
+    Equal(2L, tracker.Latest);
+}
+
+static void TestMultiplayerSnapshotSerialization()
+{
+    ContractSnapshotMessage source = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "host-session",
+        ContractId = "contract-1",
+        Sequence = 7,
+        StateVersion = 12,
+        RequestId = "request-1",
+        RequestingPlayerId = 55,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.Harvesting,
+        Phase = "TravelingToChest",
+        TargetX = 10,
+        TargetY = 20,
+        ReservedGold = 600,
+        CargoCount = 3,
+        Cargo = new[]
+        {
+            new ContractCargoSnapshotMessage
+            {
+                TransferId = "transfer-1",
+                QualifiedItemId = "(O)24",
+                DisplayName = "Parsnip",
+                Quality = 2,
+                Stack = 3
+            }
+        },
+        CompletedTransferIds = new[] { "transfer-0" }
+    };
+
+    string json = JsonSerializer.Serialize(source);
+    ContractSnapshotMessage? restored = JsonSerializer.Deserialize<ContractSnapshotMessage>(json);
+    Equal("contract-1", restored!.ContractId);
+    Equal(12L, restored.StateVersion);
+    Equal(NamedFarmTask.Harvesting, restored.Task);
+    Equal("(O)24", restored.Cargo[0].QualifiedItemId);
+    Equal(3, restored.Cargo[0].Stack);
+    Equal("transfer-0", restored.CompletedTransferIds[0]);
+}
+
+static ContractStartRequestMessage NewMultiplayerRequest(long playerId)
+{
+    return new ContractStartRequestMessage
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        ModVersion = "0.1.0",
+        SaveId = 445566,
+        TotalDays = 12,
+        RequestId = Guid.NewGuid().ToString("N"),
+        RequestingPlayerId = playerId,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.Watering
+    };
+}
+
+static ContractStartResponseMessage NewStartResponse(long playerId, string requestId, long order)
+{
+    return new ContractStartResponseMessage
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "host-session",
+        HostOrder = order,
+        RequestId = requestId,
+        RequestingPlayerId = playerId,
+        Accepted = true,
+        ContractId = $"contract-{order}"
+    };
+}
+
+static ContractSnapshotMessage NewSnapshot(string session, long sequence)
+{
+    return new ContractSnapshotMessage
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = session,
+        ContractId = "contract-1",
+        Sequence = sequence,
+        Task = NamedFarmTask.Watering
+    };
 }
 
 static void Equal<T>(T expected, T actual)

@@ -49,6 +49,11 @@ internal sealed class HarvestTransferLedger
         this.CompletedTransferIds.Add(transferId);
         return true;
     }
+
+    public IReadOnlyList<string> GetCompletedTransferIds()
+    {
+        return this.CompletedTransferIds.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+    }
 }
 
 internal static class HarvestTransferMath

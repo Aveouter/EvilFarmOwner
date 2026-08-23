@@ -22,6 +22,7 @@ internal sealed class WateringContractExecutionController
     private readonly WorkerRosterService WorkerRoster;
     private readonly WateringTargetPlanner TargetPlanner;
     private ActiveWateringContract? ActiveContract;
+    private NamedContractCompletionState? LastCompletion;
 
     public WateringContractExecutionController(
         ITranslationHelper translation,
@@ -36,13 +37,15 @@ internal sealed class WateringContractExecutionController
 
     public bool HasActiveContract => this.ActiveContract is not null;
 
-    public bool TryStart(string workerInternalName)
+    public string? LastStartFailureKey { get; private set; }
+
+    public string? ActiveContractId => this.ActiveContract?.Id.ToString("N");
+
+    public bool TryStart(long requestingPlayerId, string workerInternalName, string requestId)
     {
+        this.LastStartFailureKey = null;
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
             return this.FailStart("contract.start.host-only");
-
-        if (Context.IsMultiplayer)
-            return this.FailStart("contract.start.multiplayer-deferred");
 
         if (this.ActiveContract is not null)
             return this.FailStart("contract.start.already-active");
@@ -50,8 +53,12 @@ internal sealed class WateringContractExecutionController
         if (Game1.timeOfDay > LatestStartTime)
             return this.FailStart("contract.start.too-late");
 
+        Farmer? requester = Game1.GetPlayer(requestingPlayerId, onlyOnline: true);
+        if (requester is null)
+            return this.FailStart("multiplayer.reject.player");
+
         Farm mainFarm = Game1.getFarm();
-        if (Game1.currentLocation is not Farm currentFarm || !ReferenceEquals(mainFarm, currentFarm))
+        if (requester.currentLocation is not Farm currentFarm || !ReferenceEquals(mainFarm, currentFarm))
             return this.FailStart("contract.start.must-be-on-farm");
 
         if (!this.WorkerRoster.TryGetWorker(workerInternalName, out NPC? worker, out WorkerAvailabilityResult availability)
@@ -60,16 +67,18 @@ internal sealed class WateringContractExecutionController
 
         if (availability.State != WorkerAvailabilityState.EligibleForPreview)
         {
+            this.LastStartFailureKey = "contract.start.worker-unavailable";
             Game1.addHUDMessage(new HUDMessage(
                 this.Translation.Get("contract.start.worker-unavailable", new { worker = worker.displayName }),
                 HUDMessage.error_type));
             return false;
         }
 
-        int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(worker.Name);
+        int friendshipHearts = requester.getFriendshipHeartLevelForNPC(worker.Name);
         WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
-        if (Game1.player.Money < preview.MaximumAuthorizedWage)
+        if (requester.Money < preview.MaximumAuthorizedWage)
         {
+            this.LastStartFailureKey = "contract.start.insufficient-funds";
             Game1.addHUDMessage(new HUDMessage(
                 this.Translation.Get("contract.start.insufficient-funds", new { gold = preview.MaximumAuthorizedWage }),
                 HUDMessage.error_type));
@@ -90,12 +99,14 @@ internal sealed class WateringContractExecutionController
 
         ActiveWateringContract contract = new(
             Guid.NewGuid(),
+            requestId,
+            requester,
             lease,
             preview,
             mainFarm,
             planResult.Plan);
         this.ActiveContract = contract;
-        Game1.player.Money -= preview.MaximumAuthorizedWage;
+        requester.Money -= preview.MaximumAuthorizedWage;
 
         try
         {
@@ -104,11 +115,11 @@ internal sealed class WateringContractExecutionController
                 planResult.Plan.ArrivalTile.Y));
             worker.Halt();
             worker.Sprite?.ClearAnimation();
-            contract.Dispatched = true;
 
             if (worker.TilePoint == planResult.Plan.FirstTarget.InteractionTile)
             {
                 this.OnArrivedAtTarget(worker, mainFarm);
+                contract.Dispatched = true;
                 Game1.addHUDMessage(new HUDMessage(
                     this.Translation.Get("contract.hud.dispatched", new
                     {
@@ -126,6 +137,7 @@ internal sealed class WateringContractExecutionController
                 this.OnArrivedAtTarget);
             contract.Controller = outbound;
             lease.AttachController(outbound);
+            contract.Dispatched = true;
 
             Game1.addHUDMessage(new HUDMessage(
                 this.Translation.Get("contract.hud.dispatched", new
@@ -151,7 +163,6 @@ internal sealed class WateringContractExecutionController
             return;
 
         if (!Context.IsMainPlayer
-            || Context.IsMultiplayer
             || Game1.Date.TotalDays != contract.Lease.StartTotalDays
             || Game1.timeOfDay >= HardStopTime)
         {
@@ -242,6 +253,35 @@ internal sealed class WateringContractExecutionController
             this.FinishContract(contract, succeeded: false, "contract.failure.world-closed");
 
         this.ActiveContract = null;
+    }
+
+    public NamedContractRuntimeState? GetRuntimeState()
+    {
+        ActiveWateringContract? contract = this.ActiveContract;
+        if (contract is null)
+            return null;
+
+        return new NamedContractRuntimeState(
+            contract.Id.ToString("N"),
+            contract.RequestId,
+            contract.Requester.UniqueMultiplayerID,
+            contract.Lease.Worker.Name,
+            NamedFarmTask.Watering,
+            contract.Phase.ToString(),
+            contract.CurrentTarget.TargetTile.X,
+            contract.CurrentTarget.TargetTile.Y,
+            contract.Preview.MaximumAuthorizedWage,
+            contract.Lease.StartTime,
+            contract.WateredTargets,
+            Array.Empty<NamedContractCargoState>(),
+            Array.Empty<string>());
+    }
+
+    public NamedContractCompletionState? ConsumeCompletion()
+    {
+        NamedContractCompletionState? completion = this.LastCompletion;
+        this.LastCompletion = null;
+        return completion;
     }
 
     private void OnArrivedAtTarget(Character character, GameLocation location)
@@ -486,8 +526,32 @@ internal sealed class WateringContractExecutionController
             contract.Dispatched,
             contract.Lease.StartTime,
             Game1.timeOfDay);
-        Game1.player.Money += settlement.RefundedGold;
+        contract.Requester.Money += settlement.RefundedGold;
         this.ActiveContract = null;
+
+        bool finalSucceeded = succeeded && restoreResult == NpcLeaseRestoreResult.Restored;
+        string finalReasonKey = finalSucceeded
+            ? ""
+            : restoreResult != NpcLeaseRestoreResult.Restored
+                ? "contract.hud.restore-failed"
+                : failureTranslationKey ?? "contract.failure.unknown";
+        this.LastCompletion = new NamedContractCompletionState(
+            contract.Id.ToString("N"),
+            contract.RequestId,
+            contract.Requester.UniqueMultiplayerID,
+            contract.Lease.Worker.Name,
+            NamedFarmTask.Watering,
+            finalSucceeded,
+            finalReasonKey,
+            contract.WateredTargets,
+            ChestItems: 0,
+            OverflowItems: 0,
+            DroppedItems: 0,
+            settlement.BillableHours,
+            settlement.ChargedGold,
+            settlement.RefundedGold,
+            Array.Empty<NamedContractCargoState>(),
+            Array.Empty<string>());
 
         if (restoreResult != NpcLeaseRestoreResult.Restored)
         {
@@ -536,6 +600,7 @@ internal sealed class WateringContractExecutionController
 
     private bool FailStart(string translationKey)
     {
+        this.LastStartFailureKey = translationKey;
         Game1.addHUDMessage(new HUDMessage(this.Translation.Get(translationKey), HUDMessage.error_type));
         return false;
     }
@@ -563,12 +628,16 @@ internal sealed class WateringContractExecutionController
     {
         public ActiveWateringContract(
             Guid id,
+            string requestId,
+            Farmer requester,
             NpcWorkLease lease,
             WorkContractPreview preview,
             Farm farm,
             WateringWorkPlan plan)
         {
             this.Id = id;
+            this.RequestId = requestId;
+            this.Requester = requester;
             this.Lease = lease;
             this.Preview = preview;
             this.Farm = farm;
@@ -578,6 +647,8 @@ internal sealed class WateringContractExecutionController
         }
 
         public Guid Id { get; }
+        public string RequestId { get; }
+        public Farmer Requester { get; }
         public NpcWorkLease Lease { get; }
         public WorkContractPreview Preview { get; }
         public Farm Farm { get; }
