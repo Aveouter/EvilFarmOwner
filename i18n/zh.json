@@ -1,11 +1,6 @@
 {
   "hud.ready": "邪恶农场主已就绪。按 {{key}} 查看工人候选名单。",
   "hud.hotkey-conflict": "邪恶农场主的 H 键与 UI Info Suite 2 冲突。请将 OpenMenuKey 改为 K，或使用命令 efo_roster。",
-  "hud.no-farm": "雇佣农工目前只在农场工作。",
-  "hud.no-tasks": "当前没有开启任何农工任务。",
-  "hud.no-money": "金币不足，雇佣农工需要 {{gold}}g。",
-  "hud.done": "农工完成工作：浇水 {{watered}} 格，收获 {{harvested}} 格，清理 {{cleared}} 个，施肥 {{fertilized}} 格，播种 {{planted}} 格。",
-  "hud.empty": "农工没有找到可执行的工作。",
   "roster.title": "工人候选名单",
   "roster.subtitle": "选择当前有空的成年 NPC，再选择一份可见执行的农活合同。",
   "roster.summary": "共显示 {{total}} 名候选人；其中 {{eligible}} 人当前可以查看合同。",
@@ -147,14 +142,9 @@
   "gmcm.section.interface": "界面",
   "gmcm.open-menu-key.name": "打开候选名单的按键",
   "gmcm.open-menu-key.tooltip": "用于打开具名工人候选名单的按键。",
-  "gmcm.contract-settings.notice": "工作区域、任务和工资由每份具名 NPC 合同定义，不使用以玩家为中心的全局扫描。旧版 efo_work 设置仅作为隐藏测试控制保留。",
-  "cmd.work": "雇佣农工执行一次已开启的农场工作。",
+  "gmcm.contract-settings.notice": "工作范围、任务规则和工资由每份具名 NPC 合同定义，不存在以玩家为中心的全局扫描设置。",
   "cmd.roster": "打开具名工人名单并选择农活。",
   "cmd.overflow": "打开持久化收获溢出仓。",
   "cmd.netstatus": "显示主机权威合同的网络诊断状态。",
-  "cmd.roster-world-not-ready": "请先载入存档，再打开工人候选名单。",
-  "cmd.status": "显示雇佣农工状态。",
-  "cmd.toggle": "切换任务开关：water、harvest、fertilize、plant；clear 任务暂时停用。",
-  "cmd.clear-disabled": "为防止资源丢失，杂物清理功能暂时停用。",
-  "cmd.status.line": "雇佣农工：浇水={{water}}，收获={{harvest}}，清理={{clear}}，施肥={{fertilize}}，播种={{plant}}，范围={{radius}}，工资={{wage}}g。"
+  "cmd.roster-world-not-ready": "请先载入存档，再打开工人候选名单。"
 }

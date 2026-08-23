@@ -1,11 +1,6 @@
 {
   "hud.ready": "Evil Farm Owner is ready. Press {{key}} to view worker candidates.",
   "hud.hotkey-conflict": "Evil Farm Owner's H key conflicts with UI Info Suite 2. Set OpenMenuKey to K or use 'efo_roster'.",
-  "hud.no-farm": "Farmhands only work on the farm.",
-  "hud.no-tasks": "No farmhand jobs are enabled.",
-  "hud.no-money": "Not enough gold to hire farmhands. Need {{gold}}g.",
-  "hud.done": "Farmhands finished: watered {{watered}}, harvested {{harvested}}, cleared {{cleared}}, fertilized {{fertilized}}, planted {{planted}}.",
-  "hud.empty": "Farmhands found no available work.",
   "roster.title": "Worker Candidates",
   "roster.subtitle": "Select an available adult NPC, then choose a visible farm-work contract.",
   "roster.summary": "Showing {{total}} candidates; {{eligible}} are currently available for a contract preview.",
@@ -147,14 +142,9 @@
   "gmcm.section.interface": "Interface",
   "gmcm.open-menu-key.name": "Open roster key",
   "gmcm.open-menu-key.tooltip": "Key used to open the named worker candidate roster.",
-  "gmcm.contract-settings.notice": "Work area, tasks, and wages are defined by each named NPC contract instead of a global player-centered scan. Legacy efo_work settings remain hidden testing controls.",
-  "cmd.work": "Hire farmhands to do one round of enabled work.",
+  "gmcm.contract-settings.notice": "Work scope, task rules, and wages are defined by each named NPC contract; there is no player-centered global scan setting.",
   "cmd.roster": "Open the named worker roster and choose a farm task.",
   "cmd.overflow": "Open the persistent harvest overflow inventory.",
   "cmd.netstatus": "Show host-authoritative contract network diagnostics.",
-  "cmd.roster-world-not-ready": "Load a save before opening the worker roster.",
-  "cmd.status": "Show Hired Farmhands status.",
-  "cmd.toggle": "Toggle one task: water, harvest, fertilize, or plant. The clear task is temporarily disabled.",
-  "cmd.clear-disabled": "Debris cleanup is temporarily disabled to prevent resource loss.",
-  "cmd.status.line": "Hired Farmhands: water={{water}}, harvest={{harvest}}, clear={{clear}}, fertilize={{fertilize}}, plant={{plant}}, radius={{radius}}, wage={{wage}}g."
+  "cmd.roster-world-not-ready": "Load a save before opening the worker roster."
 }

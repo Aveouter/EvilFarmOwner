@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 - 2026-08-24
 
 - Added confirmation for a visible named-NPC watering contract.
 - Added fresh availability, funds, target, and two-way path checks before dispatch.
@@ -15,11 +15,6 @@
 - Bound wage reservation and refund to the requesting farmer instead of the host's local player.
 - Added mutex-aware persistent overflow delivery and save-time lease/cargo cleanup.
 - Expanded the deterministic logic harness to 21 wage, routing, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
-
-## 0.1.0
-
-- Added the first playable hired farmhand work pass.
-- Added watering, harvesting, debris clearing, fertilizing, and planting tasks.
-- Added config file support.
-- Added Chinese and English translations.
-- Added SMAPI console commands for testing.
+- Removed the legacy instant `efo_work`, task toggles, player-centered scan settings, and bundled user config from the production release surface.
+- Corrected manifest ownership, release description, and GitHub update metadata.
+- Added English and Chinese UI, configuration, multiplayer, failure, storage, and settlement text.

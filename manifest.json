@@ -1,10 +1,12 @@
 {
   "Name": "Evil Farm Owner",
-  "Author": "pespi-codex",
+  "Author": "Aveouter",
   "Version": "0.1.0",
-  "Description": "Hire farmhands to water, harvest, clear debris, fertilize, and plant crops on your farm.",
+  "Description": "Hire named adult NPCs for visible watering and lossless harvest contracts.",
   "UniqueID": "Aveouter.EvilFarmOwner",
   "EntryDll": "EvilFarmOwner.dll",
   "MinimumApiVersion": "4.0.0",
-  "UpdateKeys": []
+  "UpdateKeys": [
+    "GitHub:Aveouter/EvilFarmOwner"
+  ]
 }
