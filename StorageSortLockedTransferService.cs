@@ -113,6 +113,12 @@ internal static class StorageSortRecoveryValidation
     }
 }
 
+internal sealed record StorageSortTransferItemSummary(
+    string QualifiedItemId,
+    string DisplayName,
+    int Category,
+    int Quality);
+
 internal sealed class StorageSortExecutionSession
 {
     private readonly StorageSortRuntimePlan RuntimePlan;
@@ -130,6 +136,22 @@ internal sealed class StorageSortExecutionSession
     }
 
     public int NextSequence { get; private set; } = 1;
+
+    public bool TryGetItemSummary(
+        string stackId,
+        out StorageSortTransferItemSummary? summary)
+    {
+        summary = null;
+        if (!this.StackItems.TryGetValue(stackId, out Item? item))
+            return false;
+
+        summary = new StorageSortTransferItemSummary(
+            item.QualifiedItemId,
+            item.DisplayName,
+            item.Category,
+            item.Quality);
+        return true;
+    }
 
     public static bool TryCreate(
         Farm farm,

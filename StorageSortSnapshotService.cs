@@ -218,7 +218,7 @@ internal static class StorageSortSnapshotService
         Dictionary<GridPoint, Chest> chests = sourceChests.ToDictionary(
             pair => pair.Key,
             pair => pair.Value);
-        if (chests.Count == 0)
+        if (chests.Count < 2)
         {
             return new StorageSortRuntimePlanResult(
                 StorageSortSnapshotFailure.NoEligibleChest,

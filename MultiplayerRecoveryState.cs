@@ -20,6 +20,7 @@ internal static class MultiplayerRecoveryState
     private const int LegacyHandshakeProtocolSchemaVersion = 3;
     private const int LegacyQuarantineProtocolSchemaVersion = 4;
     private const int LegacyPlacementProtocolSchemaVersion = 5;
+    private const int LegacyEfficiencyProtocolSchemaVersion = 6;
 
     public static MultiplayerRecoverySaveData Create(
         string modVersion,
@@ -124,11 +125,12 @@ internal static class MultiplayerRecoveryState
     {
         // Protocol 4 only adds the reconnect sync nonce. Protocol 5 adds a nonnegative
         // quarantine destination count. Protocol 6 adds efficiency only to live snapshots,
-        // which are never persisted here. Persisted transaction identities remain compatible
-        // after full validation.
+        // and protocol 7 adds storage sorting as a task. Persisted transaction identities from
+        // these versions remain compatible after their own schema is fully validated.
         return protocolSchemaVersion is LegacyHandshakeProtocolSchemaVersion
             or LegacyQuarantineProtocolSchemaVersion
             or LegacyPlacementProtocolSchemaVersion
+            or LegacyEfficiencyProtocolSchemaVersion
             or MultiplayerContractProtocol.SchemaVersion;
     }
 
@@ -151,7 +153,7 @@ internal static class MultiplayerRecoveryState
                     && !string.IsNullOrWhiteSpace(response.ReasonKey));
     }
 
-    private static bool IsValidResult(
+    internal static bool IsValidResult(
         ContractResultMessage? result,
         ulong expectedSaveId,
         int expectedProtocolSchemaVersion)
@@ -184,7 +186,9 @@ internal static class MultiplayerRecoveryState
                 ? !string.IsNullOrWhiteSpace(result.ReasonKey)
                 : string.IsNullOrWhiteSpace(result.ReasonKey))
             || result.ProducedItems is null
-            || result.CompletedTransferIds is null)
+            || result.CompletedTransferIds is null
+            || result.CompletedTransfers is null
+            || result.SkippedTransfers is null)
             return false;
 
         HashSet<string> producedTransferIds = new(StringComparer.Ordinal);
@@ -211,11 +215,67 @@ internal static class MultiplayerRecoveryState
                 return false;
         }
 
+        if (!AreTransferReportsValid(result))
+            return false;
+
         long placedItems = (long)result.PlayerItems
             + result.ChestItems
             + result.OverflowItems
             + result.QuarantinedItems
             + result.DroppedItems;
         return producedItems == placedItems;
+    }
+
+    private static bool AreTransferReportsValid(ContractResultMessage result)
+    {
+        if (result.Task != NamedFarmTask.StorageSorting)
+        {
+            return result.CompletedTransfers.Length == 0
+                && result.SkippedTransfers.Length == 0;
+        }
+
+        if (result.SchemaVersion < MultiplayerContractProtocol.SchemaVersion
+            || result.CompletedTransfers.Length != result.CompletedWork
+            || result.CompletedTransfers.Length + result.SkippedTransfers.Length > 4096
+            || (result.Succeeded && result.SkippedTransfers.Length != 0))
+        {
+            return false;
+        }
+
+        HashSet<int> sequences = new();
+        long movedItems = 0;
+        foreach (ContractTransferReportMessage transfer in result.CompletedTransfers)
+        {
+            if (!IsValidTransferReport(transfer) || !sequences.Add(transfer.Sequence))
+                return false;
+            movedItems += transfer.Quantity;
+        }
+        foreach (ContractTransferReportMessage transfer in result.SkippedTransfers)
+        {
+            if (!IsValidTransferReport(transfer) || !sequences.Add(transfer.Sequence))
+                return false;
+        }
+
+        return movedItems == result.ChestItems
+            && sequences.OrderBy(sequence => sequence).SequenceEqual(
+                Enumerable.Range(1, sequences.Count));
+    }
+
+    private static bool IsValidTransferReport(ContractTransferReportMessage? transfer)
+    {
+        return transfer is not null
+            && transfer.Sequence > 0
+            && !string.IsNullOrWhiteSpace(transfer.QualifiedItemId)
+            && transfer.QualifiedItemId.Length <= 256
+            && !string.IsNullOrWhiteSpace(transfer.DisplayName)
+            && transfer.DisplayName.Length <= 256
+            && transfer.Quality >= 0
+            && transfer.Quantity > 0
+            && transfer.SourceX >= 0
+            && transfer.SourceY >= 0
+            && transfer.DestinationX >= 0
+            && transfer.DestinationY >= 0
+            && (transfer.SourceX != transfer.DestinationX
+                || transfer.SourceY != transfer.DestinationY);
     }
 }

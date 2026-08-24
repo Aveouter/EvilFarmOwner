@@ -107,6 +107,7 @@ internal sealed class RecurringContractCoordinator
         if (!Context.IsWorldReady
             || !Context.IsMainPlayer
             || !this.PersistenceHealthy
+            || task == NamedFarmTask.StorageSorting
             || approvedSubstituteNames is null
             || !WorkerEfficiencyProfiles.HasExplicitProfile(preferredWorkerName))
             return false;

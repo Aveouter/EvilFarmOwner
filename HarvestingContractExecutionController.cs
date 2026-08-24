@@ -1302,7 +1302,9 @@ internal sealed class HarvestingContractExecutionController
                 item.Name,
                 item.Quality,
                 item.Stack)).ToArray(),
-            contract.TransferLedger.GetCompletedTransferIds());
+            contract.TransferLedger.GetCompletedTransferIds(),
+            Array.Empty<NamedContractTransferState>(),
+            Array.Empty<NamedContractTransferState>());
 
         if (restoreResult != NpcLeaseRestoreResult.Restored)
         {

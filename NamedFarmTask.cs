@@ -3,5 +3,6 @@ namespace EvilFarmOwner;
 internal enum NamedFarmTask
 {
     Watering,
-    Harvesting
+    Harvesting,
+    StorageSorting
 }

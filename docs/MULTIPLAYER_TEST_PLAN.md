@@ -39,7 +39,17 @@ The host diagnostic must also report `recoveryHealthy=True` and `quarantineHealt
 8. Repeat with the requester off the farm or without inventory capacity. Verify the exact remainder appears once in `efo_overflow`; if emergency dropping is forced, verify an explicit warning and visible exact drop at the on-farm requester, otherwise at a collision-free farmhouse/selected-entrance delivery tile. It must not appear inside a blocked worker tile. Then force both overflow-lock failure and a ground-drop exception: verify the exact remainder appears once in `efo_quarantine`, carries one transfer ID, survives save/reload, and is reported in the quarantine destination count. If the quarantine write is also temporarily withheld, verify the host retains a recovery record, rejects new harvest contracts, and restores the exact stack once before clearing the record. Repeat at day end, ordinary save, and initial save creation with the recovery-record path withheld; verify the exact transient remainder is forced into `efo_quarantine` before the save completes and the NPC lease and wage settle once.
 9. Verify only the requesting farmhand pays the reported wage once.
 
-### 3. Host request and simultaneous request ordering
+### 3. Farmhand requests manual chest sorting
+
+1. Record both players' money, every ordinary main-farm chest slot, the shipping bin, and network status. Include compatible exact stacks, same items at another quality, pure and mixed category chests, one empty fallback, one full chest, and at least one excluded special or modded chest.
+2. On the farmhand, choose chest sorting and confirm. Verify the host alone snapshots and simulates the complete plan before the requesting farmhand's wage or the NPC changes.
+3. Verify both peers observe the same named worker, prioritized entrance, source/destination sequence, chest actions, and return. No chest selection may depend on the worker's position.
+4. Verify every committed transfer moves one complete exact stack once, under both chest locks. The shipping bin, player inventories, excluded storage, and unrelated stacks must remain unchanged.
+5. Run `efo_report` on the requester. Verify every completed and skipped transfer lists the same item, quality, category, quantity, source tile, and destination tile on both peers, followed by the exact wage and refund.
+6. Request sorting again without changing the chests. Verify the host reports no work and performs no wage reservation, NPC lease, item mutation, or network action.
+7. In a fresh disposable copy, open or change a planned source/destination chest after dispatch but before its transfer. Verify the host stops, restores or persistently quarantines the in-flight stack exactly once, reports all later transfers as skipped, sets `quarantineHealthy=False` only while recovery is unresolved, and never uses the shipping bin.
+
+### 4. Host request and simultaneous request ordering
 
 1. Have host and farmhand open contract previews before either confirms.
 2. Confirm on both peers as close together as practical.
@@ -47,31 +57,31 @@ The host diagnostic must also report `recoveryHealthy=True` and `quarantineHealt
 4. Verify only the accepted requester is charged and exactly one NPC lease, target mutation, and settlement occur.
 5. After completion, have the host request the other task and verify the farmhand observes matching snapshots and final result.
 
-### 4. Disconnect, reconnect, and replay safety
+### 5. Disconnect, reconnect, and replay safety
 
 1. Start a farmhand harvest request and disconnect the farmhand after acceptance but before delivery finishes.
 2. Verify the host continues safe delivery/overflow and restores the NPC; no cargo is lost or duplicated.
 3. Reconnect the same farmhand. Verify the active snapshot or processed final result is restored and the requesting farmer receives the correct refund despite the disconnect.
 4. Repeat with a disconnect immediately after confirmation/pending feedback. Delay an old-session response and sync state until after the host reconnects. Verify the farmhand accepts only the sync state whose nonce matches its latest sync request, establishes that response's new host session, ignores both delayed old-session messages, then resends the pending request once with its original request ID. The host must return the prior request result and must not dispatch or charge twice.
 
-### 5. Host save and restart replay safety
+### 6. Host save and restart replay safety
 
-1. Complete a farmhand watering or harvest contract, record its request/contract result, then let the host save normally.
+1. Complete a farmhand watering, harvest, or chest-sorting contract, record its request/contract result, then let the host save normally.
 2. Quit and restart the host process, reconnect the same farmhand, and verify `efo_netstatus` shows a new host session with `recoveryHealthy=True` and a nonzero processed count.
 3. Resend the exact saved request ID from the farmhand test harness. Verify the host returns the prior accepted response/result rebound to the new session, with no new lease, crop mutation, item transfer, charge, or refund.
 4. Repeat with a previously rejected request and verify it remains rejected without reevaluating into a new contract.
 5. In a disposable copy, corrupt or schema-mismatch the persisted recovery record. Include a duplicate transfer ID and a produced-item total which does not equal requester inventory plus chest, overflow, and visible-drop totals. Verify the host reports `recoveryHealthy=False` and rejects all new contracts without mutating money or world state.
-6. In disposable copies created by the protocol-3, protocol-4, and protocol-5 development builds, retain a clean recovery ledger and load it with protocol 6. Verify the host validates and rebinds the prior response/result to the new session, reports `recoveryHealthy=True`, and an exact request replay causes no second contract, mutation, transfer, charge, or refund. A mixed or older-than-3 schema must still fail closed.
+6. In disposable copies created by the protocol-3 through protocol-6 development builds, retain a clean recovery ledger and load it with protocol 7. Verify the host validates and rebinds each prior response/result to the new session, reports `recoveryHealthy=True`, and an exact request replay causes no second contract, mutation, transfer, charge, or refund. A mixed or older-than-3 schema must still fail closed.
 7. Start workers with both baseline and non-baseline task profiles. Verify the farmhand's start notice displays the exact multiplier from the host snapshot and rejects a missing or out-of-range multiplier without rendering an action.
 
-### 6. Rejection safety
+### 7. Rejection safety
 
 For each case below, verify the request is rejected with no money, NPC, crop, cargo, chest, or overflow mutation:
 
 - insufficient requester funds;
 - requester not on the main farm;
 - NPC becomes unavailable after preview;
-- no valid dry/mature target;
+- no valid dry/mature target or no complete chest-sorting plan;
 - second request while a contract is active;
 - mismatched Evil Farm Owner versions on the two peers.
 
@@ -79,7 +89,7 @@ For each case below, verify the request is rejected with no money, NPC, crop, ca
 
 The multiplayer gate passes only when:
 
-- both the watering and harvest scenarios pass over a real host/farmhand connection;
+- watering, harvest, and manual chest-sorting scenarios pass over a real host/farmhand connection;
 - both SMAPI logs contain no Evil Farm Owner error or unhandled exception;
 - before/after money, crop, chest, overflow, and inventory counts reconcile exactly;
 - disconnect/reconnect produces one contract, one mutation, and one settlement;

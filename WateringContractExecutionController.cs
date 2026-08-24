@@ -929,7 +929,9 @@ internal sealed class WateringContractExecutionController
             settlement.ChargedGold,
             settlement.RefundedGold,
             Array.Empty<NamedContractCargoState>(),
-            Array.Empty<string>());
+            Array.Empty<string>(),
+            Array.Empty<NamedContractTransferState>(),
+            Array.Empty<NamedContractTransferState>());
 
         if (restoreResult != NpcLeaseRestoreResult.Restored)
         {

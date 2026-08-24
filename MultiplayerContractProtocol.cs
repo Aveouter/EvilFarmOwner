@@ -2,7 +2,7 @@ namespace EvilFarmOwner;
 
 internal static class MultiplayerContractProtocol
 {
-    public const int SchemaVersion = 6;
+    public const int SchemaVersion = 7;
     public const int ProcessedRequestCapacity = 256;
     public const string StartRequestType = "Contract/StartRequest";
     public const string StartResponseType = "Contract/StartResponse";
@@ -99,6 +99,24 @@ internal sealed class ContractResultMessage
     public int RefundedGold { get; set; }
     public ContractCargoSnapshotMessage[] ProducedItems { get; set; } = Array.Empty<ContractCargoSnapshotMessage>();
     public string[] CompletedTransferIds { get; set; } = Array.Empty<string>();
+    public ContractTransferReportMessage[] CompletedTransfers { get; set; } =
+        Array.Empty<ContractTransferReportMessage>();
+    public ContractTransferReportMessage[] SkippedTransfers { get; set; } =
+        Array.Empty<ContractTransferReportMessage>();
+}
+
+internal sealed class ContractTransferReportMessage
+{
+    public int Sequence { get; set; }
+    public string QualifiedItemId { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public int Category { get; set; }
+    public int Quality { get; set; }
+    public int Quantity { get; set; }
+    public int SourceX { get; set; }
+    public int SourceY { get; set; }
+    public int DestinationX { get; set; }
+    public int DestinationY { get; set; }
 }
 
 internal sealed class ContractSyncRequestMessage
@@ -424,6 +442,18 @@ internal sealed record NamedContractCargoState(
     int Quality,
     int Stack);
 
+internal sealed record NamedContractTransferState(
+    int Sequence,
+    string QualifiedItemId,
+    string DisplayName,
+    int Category,
+    int Quality,
+    int Quantity,
+    int SourceX,
+    int SourceY,
+    int DestinationX,
+    int DestinationY);
+
 internal sealed record NamedContractCompletionState(
     string ContractId,
     string RequestId,
@@ -442,4 +472,6 @@ internal sealed record NamedContractCompletionState(
     int ChargedGold,
     int RefundedGold,
     IReadOnlyList<NamedContractCargoState> ProducedItems,
-    IReadOnlyList<string> CompletedTransferIds);
+    IReadOnlyList<string> CompletedTransferIds,
+    IReadOnlyList<NamedContractTransferState> CompletedTransfers,
+    IReadOnlyList<NamedContractTransferState> SkippedTransfers);

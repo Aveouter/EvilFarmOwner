@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Added a manually confirmed named-NPC chest-sorting contract for ordinary player-owned main-farm chests.
+- Preflight the immutable whole-stack plan, exact capacity, every source/destination route, and safe return before reserving wages or leasing the worker.
+- Execute deterministic exact-stack, same-item, exact-category, and empty-chest transfers under ordered dual mutexes with exact rollback or persistent quarantine recovery.
+- Added bilingual task selection, contract settlement HUDs, host-authoritative protocol 7 snapshots/results, and persistent per-transfer source/destination reports.
+- Kept recurring automatic chest sorting disabled until the manual contract passes live acceptance.
+
 ## 0.1.0-beta.1 - 2026-08-24
 
 - Published the first explicitly non-stable test build under the MIT License.

@@ -10,7 +10,7 @@ namespace EvilFarmOwner;
 internal sealed class WorkerTaskSelectionMenu : IClickableMenu
 {
     private const int MenuWidth = 760;
-    private const int MenuHeight = 520;
+    private const int MenuHeight = 640;
     private const int HorizontalPadding = 56;
     private const int ButtonHeight = 96;
 
@@ -20,13 +20,15 @@ internal sealed class WorkerTaskSelectionMenu : IClickableMenu
     private readonly Action<NamedFarmTask> SelectTask;
     private readonly ClickableComponent WateringButton;
     private readonly ClickableComponent HarvestingButton;
+    private readonly ClickableComponent? StorageSortingButton;
     private readonly ClickableComponent BackButton;
 
     public WorkerTaskSelectionMenu(
         WorkerRosterEntry worker,
         ITranslationHelper translation,
         Action returnToRoster,
-        Action<NamedFarmTask> selectTask)
+        Action<NamedFarmTask> selectTask,
+        bool includeStorageSorting = true)
         : base(
             Game1.uiViewport.Width / 2 - Math.Min(MenuWidth, Game1.uiViewport.Width - 64) / 2,
             Game1.uiViewport.Height / 2 - Math.Min(MenuHeight, Game1.uiViewport.Height - 64) / 2,
@@ -39,30 +41,55 @@ internal sealed class WorkerTaskSelectionMenu : IClickableMenu
         this.ReturnToRoster = returnToRoster;
         this.SelectTask = selectTask;
 
+        int taskCount = includeStorageSorting ? 3 : 2;
+        int buttonGap = 16;
         int buttonWidth = this.width - HorizontalPadding * 2;
         int buttonX = this.xPositionOnScreen + HorizontalPadding;
-        int firstButtonY = this.yPositionOnScreen + 214;
+        int firstButtonY = this.yPositionOnScreen + 184;
+        int availableTaskHeight = this.yPositionOnScreen + this.height - 78 - firstButtonY;
+        int taskButtonHeight = Math.Min(
+            ButtonHeight,
+            (availableTaskHeight - buttonGap * (taskCount - 1)) / taskCount);
         this.WateringButton = new ClickableComponent(
-            new Rectangle(buttonX, firstButtonY, buttonWidth, ButtonHeight),
+            new Rectangle(buttonX, firstButtonY, buttonWidth, taskButtonHeight),
             translation.Get("task-selection.watering"))
         {
             myID = 100,
             downNeighborID = 101
         };
         this.HarvestingButton = new ClickableComponent(
-            new Rectangle(buttonX, firstButtonY + ButtonHeight + 16, buttonWidth, ButtonHeight),
+            new Rectangle(
+                buttonX,
+                firstButtonY + taskButtonHeight + buttonGap,
+                buttonWidth,
+                taskButtonHeight),
             translation.Get("task-selection.harvesting"))
         {
             myID = 101,
             upNeighborID = 100,
-            downNeighborID = 102
+            downNeighborID = includeStorageSorting ? 102 : 103
         };
+        if (includeStorageSorting)
+        {
+            this.StorageSortingButton = new ClickableComponent(
+                new Rectangle(
+                    buttonX,
+                    firstButtonY + (taskButtonHeight + buttonGap) * 2,
+                    buttonWidth,
+                    taskButtonHeight),
+                translation.Get("task-selection.storage-sorting"))
+            {
+                myID = 102,
+                upNeighborID = 101,
+                downNeighborID = 103
+            };
+        }
         this.BackButton = new ClickableComponent(
             new Rectangle(buttonX, this.yPositionOnScreen + this.height - 66, 180, 48),
             translation.Get("contract.back"))
         {
-            myID = 102,
-            upNeighborID = 101
+            myID = 103,
+            upNeighborID = includeStorageSorting ? 102 : 101
         };
 
         this.allClickableComponents = new List<ClickableComponent>
@@ -71,6 +98,8 @@ internal sealed class WorkerTaskSelectionMenu : IClickableMenu
             this.HarvestingButton,
             this.BackButton
         };
+        if (this.StorageSortingButton is not null)
+            this.allClickableComponents.Add(this.StorageSortingButton);
         if (this.upperRightCloseButton is not null)
             this.allClickableComponents.Add(this.upperRightCloseButton);
 
@@ -91,6 +120,13 @@ internal sealed class WorkerTaskSelectionMenu : IClickableMenu
         {
             Game1.playSound("smallSelect");
             this.SelectTask(NamedFarmTask.Harvesting);
+            return;
+        }
+
+        if (this.StorageSortingButton?.containsPoint(x, y) == true)
+        {
+            Game1.playSound("smallSelect");
+            this.SelectTask(NamedFarmTask.StorageSorting);
             return;
         }
 
@@ -156,6 +192,13 @@ internal sealed class WorkerTaskSelectionMenu : IClickableMenu
             batch,
             this.HarvestingButton,
             this.Translation.Get("task-selection.harvesting.description"));
+        if (this.StorageSortingButton is not null)
+        {
+            this.DrawTaskButton(
+                batch,
+                this.StorageSortingButton,
+                this.Translation.Get("task-selection.storage-sorting.description"));
+        }
         this.DrawBackButton(batch);
 
         base.draw(batch);
@@ -179,12 +222,12 @@ internal sealed class WorkerTaskSelectionMenu : IClickableMenu
         batch.DrawString(
             Game1.smallFont,
             button.name,
-            new Vector2(button.bounds.X + 20, button.bounds.Y + 15),
+            new Vector2(button.bounds.X + 20, button.bounds.Y + 12),
             Game1.textColor);
         batch.DrawString(
             Game1.smallFont,
             Game1.parseText(description, Game1.smallFont, button.bounds.Width - 40),
-            new Vector2(button.bounds.X + 20, button.bounds.Y + 50),
+            new Vector2(button.bounds.X + 20, button.bounds.Y + 42),
             Color.DimGray);
     }
 

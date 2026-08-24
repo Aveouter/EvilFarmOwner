@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  Pay named NPC farmhands to water crops and deliver harvested produce.
+  Pay named NPC farmhands to water crops, harvest produce, and sort farm chests.
 </p>
 
 <p align="center">
@@ -29,17 +29,18 @@
 
 `Evil Farm Owner` is a Stardew Valley mod for players who want to turn repetitive farm chores into paid labor.
 
-`v0.1.0-beta.1` is a public test release. Named watering and harvesting have production implementations, and multiplayer uses a host-authoritative protocol, but the real remote host/farmhand matrix and forced storage-recovery matrix are still explicitly unverified. Back up the save before testing and report issues with both peers' SMAPI logs.
+`v0.1.0-beta.1` is the current public test release. The development branch also includes manually confirmed named chest sorting, but it is not a released or verified feature until its disposable-save acceptance gate passes. Multiplayer uses a host-authoritative protocol, while the real remote host/farmhand matrix and forced storage-recovery matrix remain explicitly unverified. Back up the save before testing and report issues with both peers' SMAPI logs.
 
-Press one key to review only the named adult NPCs who are currently available for hire. NPCs in protected vanilla activities such as chores, exercise, scripted animation, or movement pauses are omitted instead of being interrupted. An available adult NPC can be assigned a visible watering or harvest contract with an itemized wage, lossless harvest delivery, and a protected return to their original schedule position.
+Press one key to review only the named adult NPCs who are currently available for hire. NPCs in protected vanilla activities such as chores, exercise, scripted animation, or movement pauses are omitted instead of being interrupted. An available adult NPC can be assigned a visible watering, harvest, or manual chest-sorting contract with an itemized wage, lossless item handling, and a protected return to their original schedule position.
 
 ### Current Features
 
 - Open the currently available named-worker roster with the `K` key; each compact row shows friendship, today's hourly wage, and the six-hour maximum.
 - Omit NPCs who cannot be hired safely at that moment; their availability is reevaluated each time the roster opens.
-- Choose watering or harvesting, then confirm a named contract after reviewing the itemized wage.
+- Choose watering, harvesting, or manual chest sorting, then confirm a named contract after reviewing the itemized wage.
 - Watch the selected NPC prefer the right/east farm entrance, safely fall back to another genuine boundary entrance when needed, walk between reachable crops, return to the selected entrance, and resume their prior state.
 - Watch a selected NPC harvest every reachable mature crop through the vanilla crop logic, carry every exact output, deliver it to a content-classified ordinary farm chest, and return safely.
+- Watch a selected NPC execute one immutable chest-sorting plan: visit every source and destination visibly, move only complete stacks under both chest locks, then return safely.
 - Route around kegs, chests, machines, fences, trellis crops, and other occupied tiles without moving or destroying them; dynamically retry another interaction edge if a route becomes blocked.
 - Infer each chest's purpose from its contents and rank it by exact compatible stack, same item, exact game item category, then empty chest. Prefer purer category chests and use stable tile order so the worker's position cannot change an otherwise equal choice. A candidate must accept the complete stack; if no classified or empty chest can do that, the contract stops. Already harvested cargo uses the lossless emergency path, but work never continues from that fallback.
 - Reserve the six-hour maximum on dispatch, charge each started work hour (minimum one), and refund the unused authorization on return.
@@ -61,7 +62,11 @@ Load a save and press:
 K
 ```
 
-Select a green available row, choose watering or harvesting, then review the six-hour maximum authorization, one-hour minimum callout, friendship multiplier, workday or rest-day multiplier, the selected worker's task efficiency, and overtime policy. Confirm while standing on the main farm. The mod rechecks the NPC, funds, target, required paths, and the presence of an ordinary farm chest before changing money or NPC state. Watering handles every reachable dry crop before 9 PM. Harvesting handles every reachable mature crop before 9 PM and classifies every exact output from chest contents: compatible stack, same item, exact item category, then empty chest. Category purity and fixed chest coordinates determine the destination before walking distance. The selected chest must accept the complete stack; otherwise the contract stops immediately and preserves only the already harvested cargo through emergency overflow, a visible drop, quarantine, or a validated recovery record. It never auto-ships or continues harvesting after that storage stop. Both tasks prefer the right/east entrance, then try other genuine boundary entrances in a deterministic order when a safe round trip is unavailable, and return through the entrance they selected. A single-source shortest-path scan uses live collision, reachable adjacent interaction tiles, and actual walking cost. Ordinary crop tiles remain walkable according to vanilla collision, while trellises and placed objects are routed around rather than altered. If another activity takes control of the worker, the contract waits briefly for full restoration and then releases only this mod's lease without overriding the other controller. Settlement charges each started work hour up to six and refunds the unused authorization. Rest-day confirmation explicitly authorizes triple pay.
+Select a green available row, choose watering, harvesting, or chest sorting, then review the six-hour maximum authorization, one-hour minimum callout, friendship multiplier, workday or rest-day multiplier, task efficiency, and overtime policy. Confirm while standing on the main farm. The mod rechecks the NPC, funds, targets or storage snapshot, and every required path before changing money or NPC state. Watering handles every reachable dry crop before 9 PM. Harvesting handles every reachable mature crop before 9 PM and classifies every exact output from chest contents: compatible stack, same item, exact item category, then empty chest. Category purity and fixed chest coordinates determine the destination before walking distance. The selected chest must accept the complete stack; otherwise the contract stops immediately and preserves only the already harvested cargo through emergency overflow, a visible drop, quarantine, or a validated recovery record. It never auto-ships or continues harvesting after that storage stop.
+
+Chest sorting uses only ordinary player-owned chests placed on the main farm. It snapshots all eligible contents and simulates the complete result before reserving wages. Each source stack ranks other chests by exact compatible stack, same item, exact `Item.Category`, then a completely empty fallback; matching content, category purity, remaining capacity, and fixed tile order break ties. A destination must accept the whole stack, and a second pass over the planned result must produce no work. The worker visibly visits every source and destination. Each transfer acquires both chest mutexes in stable order, verifies that neither chest changed, and commits exactly once. A runtime lock/content conflict stops the contract and restores the exact stack; if direct restoration cannot be verified, the stack enters persistent emergency recovery and blocks new affected work. The shipping bin is never a fallback. `efo_report` lists every completed and skipped source/destination transfer plus the actual wage and refund. Automatic chest sorting is intentionally unavailable until this manual flow passes live acceptance.
+
+All three tasks prefer the right/east entrance, then try other genuine boundary entrances in a deterministic order when a safe round trip is unavailable, and return through the entrance they selected. A single-source shortest-path scan uses live collision, reachable adjacent interaction tiles, and actual walking cost. Ordinary crop tiles remain walkable according to vanilla collision, while trellises and placed objects are routed around rather than altered. If another activity takes control of the worker, the contract waits briefly for full restoration and then releases only this mod's lease without overriding the other controller. Settlement charges each started work hour up to six and refunds the unused authorization. Rest-day confirmation explicitly authorizes triple pay.
 
 The host can select **Automatic contract** at the bottom of the roster to create one save-specific standing authorization. Choose a preferred worker and task, then authorize either that worker alone or the currently listed adults as a fixed substitute pool. The authorization begins on the next game day. Between 6:10 AM and 4:00 PM, the host evaluates it once when entering the main farm: the preferred worker wins when eligible, otherwise only an explicitly saved substitute can be considered. The candidate must still pass every live availability, budget, target, route, and storage preflight. Rest days are off unless the authorization screen separately enables the displayed triple-pay cap; overtime and automatic shipping remain unavailable. The same manager pauses, resumes, replaces, or deletes future authorization and shows the latest selection, rejection reasons, work count, payment, and refund.
 
@@ -71,7 +76,7 @@ The route algorithm and object-safety invariants are documented in [`docs/ROUTE_
 
 Named contracts must start by 4:00 PM and stop at the 10:00 PM safety boundary. Only one named contract can run at a time. There is no instant global work command in the release build: all production farm mutation must pass through a named contract.
 
-In multiplayer, both the host and a connected farmhand can request watering or harvest contracts. A farmhand confirmation sends a versioned request to the host and never mutates money, NPCs, crops, cargo, or chests locally. The host revalidates the player, worker, funds, target, paths, and save/day/version identity; accepted contracts, phase changes, cargo/transfer state, actions, and final results are synchronized back to peers. The bounded processed-request ledger and latest per-player results are saved with the host, then rebound to a fresh network session after restart. Retries reuse the same processed result instead of charging or dispatching twice. An incompatible, inconsistent, or unclean recovery record disables new contracts rather than guessing.
+In multiplayer, both the host and a connected farmhand can request watering, harvest, or manual chest-sorting contracts. A farmhand confirmation sends a versioned request to the host and never mutates money, NPCs, crops, cargo, or chests locally. The host revalidates the player, worker, funds, targets or storage plan, paths, and save/day/version identity; accepted contracts, phase changes, cargo/transfer state, actions, and final results are synchronized back to peers. Protocol 7 includes validated completed/skipped chest-transfer reports. The bounded processed-request ledger and latest per-player results are saved with the host, then rebound to a fresh network session after restart. Retries reuse the same processed result instead of charging or dispatching twice. An incompatible, inconsistent, or unclean recovery record disables new contracts rather than guessing. Real remote acceptance is still required before chest-sorting multiplayer is advertised as verified.
 
 New configurations default to `K`. If an older config still uses `H` while UI Info Suite 2 is installed, the mod shows a conflict warning; change `OpenMenuKey` to `K` or use `efo_roster`.
 
@@ -88,7 +93,7 @@ efo_auto
 
 `efo_overflow` opens the persistent team inventory used only to preserve cargo already captured when a storage failure stops the contract. It is not a normal destination and never permits more harvesting. Emergency ground drops are announced explicitly and placed at the on-farm requester or a collision-free farmhouse/selected-entrance delivery tile before the worker position is considered.
 
-`efo_quarantine` opens the separate persistent emergency inventory used only when both ordinary overflow and a visible drop cannot be verified. Every quarantined stack carries its transfer ID. If even that inventory is temporarily unavailable, the host stores a size-bounded validated recovery record, blocks new harvest contracts, and retries exact reconstruction before allowing further harvest work. Day end, ordinary saving, and initial save creation recheck this ownership before the game writes the save; any transient remainder is forced into the private team quarantine before the contract can settle.
+`efo_quarantine` opens the separate persistent emergency inventory used when an already-owned harvest or chest-sorting stack cannot be restored to ordinary storage. Every quarantined stack carries its transfer ID. If even that inventory is temporarily unavailable, the host stores a size-bounded validated recovery record, blocks new affected contracts, and retries exact reconstruction before allowing further work. Day end, ordinary saving, and initial save creation recheck this ownership before the game writes the save; any transient remainder is forced into the private team quarantine before the contract can settle.
 
 `efo_netstatus` reports the local network role, host session, active contract, pending request, processed-request count, replay recovery health, host quarantine health, and synchronized state version for multiplayer acceptance testing.
 
@@ -118,17 +123,18 @@ Mods/EvilFarmOwner/config.json
 
 `邪恶农场主` 是一个《星露谷物语》SMAPI Mod。它的核心玩法是：你花钱雇佣农工，把重复农活交给他们处理。
 
-`v0.1.0-beta.1` 是公开测试版本。具名浇水、收获以及主机权威多人协议均已有生产实现，但真实远程主机/农场工矩阵和强制储存恢复矩阵仍明确标记为“未验证”。测试前请备份存档；反馈问题时请同时提供两端 SMAPI 日志。
+`v0.1.0-beta.1` 是当前公开测试版本。开发分支还加入了手动确认的具名箱子整理，但在一次性存档验收通过前，它还不是已发布或已验证功能。多人协议采用主机权威模式，真实远程主机/农场工矩阵和强制储存恢复矩阵仍明确标记为“未验证”。测试前请备份存档；反馈问题时请同时提供两端 SMAPI 日志。
 
-当前名单只显示此刻可以雇佣的具名成年 NPC。正在做家务、锻炼、脚本动画或处于移动暂停等原版活动的 NPC 会直接从名单中隐藏，不会被强行中断。有空的成年 NPC 可以接受可见执行的浇水或收获合同；工资会逐项显示，收获成果会无损交付，NPC 完成后安全返回原位置并恢复日程。
+当前名单只显示此刻可以雇佣的具名成年 NPC。正在做家务、锻炼、脚本动画或处于移动暂停等原版活动的 NPC 会直接从名单中隐藏，不会被强行中断。有空的成年 NPC 可以接受可见执行的浇水、收获或手动箱子整理合同；工资会逐项显示，物品会无损处理，NPC 完成后安全返回原位置并恢复日程。
 
 ### 当前功能
 
 - 按 `K` 打开当前可雇佣工人名单；紧凑列表直接显示好感度、今日时薪和六小时最高工钱。
 - 不显示此刻不能安全雇佣的 NPC；每次打开名单都会重新判断可用性。
-- 选择浇水或收获，查看逐项工资后确认具名合同。
+- 选择浇水、收获或手动箱子整理，查看逐项工资后确认具名合同。
 - 观看所选 NPC 优先从农场右侧入口进入；右侧没有安全往返路线时使用其他真实边界入口，逐格完成可到达的农活，再从所选入口返回并恢复原状态。
 - 观看所选 NPC 通过游戏原生作物逻辑收获全部可到达的成熟作物，携带每一件实际产物、送入根据箱内物品分类的普通农场箱子，再安全返回。
+- 观看所选 NPC 执行一份不可变的箱子整理计划：逐一走到来源箱与目标箱、只在同时持有两个箱锁时搬运完整堆叠，然后安全返回。
 - 木桶、箱子、机器、栅栏、棚架作物和其他占用格都作为不可破坏的障碍绕行；途中路线失效时会换一个交互边重新规划，不会移动或清除摆件。
 - 根据箱内物品推断箱子用途，依次按“同品质可堆叠、同物品、游戏中的同一物品类别、空箱”选择。类别越纯、匹配格越多越优先；最后用固定箱子坐标消除 NPC 位置造成的跳箱。候选箱必须一次容纳完整堆叠；没有匹配箱或足够空间时立即终止合同。已经采下的货物进入无损应急流程，但不会因此继续收获。
 - 出工时预留六小时最高工资，完成后按已开始的工作小时计费（最少一小时）并退还未使用的授权金额。
@@ -150,7 +156,11 @@ Mods/EvilFarmOwner/config.json
 K
 ```
 
-选择绿色“当前可雇佣”行，再选择浇水或收获，可以查看六小时最高授权金额、一小时最低出工费、好感度系数、工作日或休息日系数、所选工人在该任务上的效率和加班政策。站在主农场确认后，模组会重新检查 NPC、资金、目标、所需路线以及是否存在普通农场箱子；所有检查通过后才预留工资并让 NPC 出工。浇水会处理晚上 9 点前全部可到达的缺水作物；收获会处理晚上 9 点前全部可到达的成熟作物，并根据箱内物品按“同品质可堆叠、同物品、游戏中的同一物品类别、空箱”分类。类别纯度和固定箱子坐标先于步行距离决定目标。候选箱必须完整容纳当前堆叠；否则合同立即终止，只把已经采下来的货物保存在应急溢出仓、明确可见的地面掉落、隔离仓或经过验证的恢复记录中，不会继续收获，也绝不会自动出售。两种任务都优先从农场右侧入口进入；右侧无法安全往返时，才按确定顺序尝试其他真实边界入口，完成后从实际选中的入口返回。每次动作后只做一次基于实时碰撞的单源最短路扫描，以可到达的相邻交互格和实际步行成本选择下一个目标；普通作物格按原版规则可以通行，棚架作物和玩家摆件则会绕行。若其他活动接管工人，合同会短暂等待完整恢复，之后只归还本 Mod 的租约，不会覆盖对方控制器。工资按已开始的小时结算，未使用的授权金额会退还；休息日按钮会明确要求授权三倍工资。
+选择绿色“当前可雇佣”行，再选择浇水、收获或箱子整理，可以查看六小时最高授权金额、一小时最低出工费、好感度系数、工作日或休息日系数、任务效率和加班政策。站在主农场确认后，模组会重新检查 NPC、资金、作物目标或箱子快照，以及全部所需路线；所有检查通过后才预留工资并让 NPC 出工。浇水会处理晚上 9 点前全部可到达的缺水作物；收获会处理晚上 9 点前全部可到达的成熟作物，并根据箱内物品按“同品质可堆叠、同物品、游戏中的同一物品类别、空箱”分类。类别纯度和固定箱子坐标先于步行距离决定目标。候选箱必须完整容纳当前堆叠；否则合同立即终止，只把已经采下来的货物保存在应急溢出仓、明确可见的地面掉落、隔离仓或经过验证的恢复记录中，不会继续收获，也绝不会自动出售。
+
+箱子整理只处理放在主农场上的普通玩家箱子。系统会先快照全部合格内容并模拟完整结果，再预留工资。每个来源堆叠依次按“同品质可堆叠、同物品、完全相同的 `Item.Category`、全空箱”给其他箱子排序，再按匹配内容、类别纯度、剩余容量和固定坐标消除并列。目标箱必须容纳完整堆叠；对模拟结果再次规划必须得到零项工作。工人会实际走到每个来源箱和目标箱；每次转移都按固定顺序同时取得两个箱锁，重新验证内容没有变化，再且只提交一次。若运行时锁或内容冲突，合同立即停止并把精确堆叠放回原处；无法验证直接恢复时，物品进入持久应急恢复并禁止新的相关工作。出售箱绝不会成为兜底。`efo_report` 会列出每项完成和跳过的来源箱/目标箱、实际工资和退款。手动流程通过实机验收前，不提供自动箱子整理。
+
+三种任务都优先从农场右侧入口进入；右侧无法安全往返时，才按确定顺序尝试其他真实边界入口，完成后从实际选中的入口返回。每次动作后只做一次基于实时碰撞的单源最短路扫描，以可到达的相邻交互格和实际步行成本选择下一个目标；普通作物格按原版规则可以通行，棚架作物和玩家摆件则会绕行。若其他活动接管工人，合同会短暂等待完整恢复，之后只归还本 Mod 的租约，不会覆盖对方控制器。工资按已开始的小时结算，未使用的授权金额会退还；休息日按钮会明确要求授权三倍工资。
 
 主机可以点击名单底部的“自动合同”，为当前存档创建一份常驻授权。选择首选工人和任务后，可以只授权该工人，也可以把当时名单中明确显示的成年 NPC 固定为替补池；候选池保存后不会自行扩大。授权从下一游戏日开始：主机在上午 6:10 至下午 4:00 第一次进入主农场时只评估一次，首选工人符合条件时必定优先，否则只会考虑已批准替补。实际候选仍须重新通过 NPC 活动、预算、目标、路线和储存前置检查。休息日默认跳过，只有单独打开并接受页面显示的三倍工资上限后才会执行；自动加班和自动出售始终关闭。同一界面可以暂停、恢复、替换或删除未来授权，并显示最近选择、拒绝原因、工作数量、实付与退款。
 
@@ -158,7 +168,7 @@ K
 
 具名合同最迟必须在下午 4:00 开始，并受晚上 10:00 安全停止时间约束；同一时间只能执行一份。发布构建不提供瞬时全局工作命令：所有生产环境农场变更都必须经过具名合同。
 
-多人游戏中，主机和已连接的农场工都可以请求浇水或收获合同。农场工确认后只会向主机发送带版本的请求，本地绝不会直接改动金币、NPC、作物、货物或箱子。主机会重新检查玩家、工人、资金、目标、路线以及存档、日期和版本身份，再把已接受合同、阶段、货物与转移状态、动作和最终结果同步给其他玩家。主机会随存档保存有界请求账本和每位请求者的最近结果，重启后把它们绑定到新的网络会话；重试只返回原结果，不会重复扣钱或出工。若恢复记录不兼容、内部不一致或保存时仍有未收尾合同，模组会禁用新合同，而不是猜测恢复。
+多人游戏中，主机和已连接的农场工都可以请求浇水、收获或手动箱子整理合同。农场工确认后只会向主机发送带版本的请求，本地绝不会直接改动金币、NPC、作物、货物或箱子。主机会重新检查玩家、工人、资金、作物目标或箱子计划、路线以及存档、日期和版本身份，再把已接受合同、阶段、货物与转移状态、动作和最终结果同步给其他玩家。协议 7 还会验证并保存箱子整理中已完成与已跳过的转移报告。主机会随存档保存有界请求账本和每位请求者的最近结果，重启后把它们绑定到新的网络会话；重试只返回原结果，不会重复扣钱或出工。若恢复记录不兼容、内部不一致或保存时仍有未收尾合同，模组会禁用新合同，而不是猜测恢复。箱子整理仍须通过真实远程多人验收，才能标记为已验证。
 
 新配置默认使用 `K`。如果旧配置仍使用 `H` 且安装了 UI Info Suite 2，模组会显示冲突警告；请把 `OpenMenuKey` 改成 `K`，或使用 `efo_roster`。
 
@@ -175,7 +185,7 @@ efo_auto
 
 `efo_overflow` 用于打开持久化队伍溢出仓；它只保全因储存失败而终止合同时已经采下的货物，不是普通目标，也不会让工人继续收获。紧急地面掉落一定会明确提示，并优先落在仍在农场的请求者处；否则选择农舍交付区或本次入口附近无碰撞的空格，最后才考虑工人位置。
 
-`efo_quarantine` 用于打开独立的持久应急隔离仓；仅在普通溢出和明确掉落都无法验证时使用。每一组隔离物品都保留转移 ID。若隔离仓也暂时不可用，主机会保存经过大小限制和验证的恢复记录、禁止新的收获合同，并在允许后续收获前重试精确恢复。日终、普通保存和首次创建存档都会在写盘前再次核对货物所有权；任何仍处于临时合同中的余货都会先强制进入私有队伍隔离仓，合同才能结算。
+`efo_quarantine` 用于打开独立的持久应急隔离仓；已经取得所有权的收获物或箱子整理堆叠无法恢复到普通储存时才会使用。每一组隔离物品都保留转移 ID。若隔离仓也暂时不可用，主机会保存经过大小限制和验证的恢复记录、禁止新的相关合同，并在允许后续工作前重试精确恢复。日终、普通保存和首次创建存档都会在写盘前再次核对物品所有权；任何仍处于临时合同中的余货都会先强制进入私有队伍隔离仓，合同才能结算。
 
 `efo_netstatus` 用于多人验收，显示本地网络角色、主机会话、活动合同、待处理请求、已处理请求数量、请求账本恢复状态、主机隔离仓恢复状态和同步状态版本。
 
@@ -203,13 +213,14 @@ Mods/EvilFarmOwner/config.json
 
 ### Plan List
 
+- Validate the visible manual chest-sorting flow, mutex conflict recovery, detailed report, and second-pass no-work result in a disposable live save.
 - Validate the visible multi-crop named harvest, obstacle-safe routing, and lossless delivery flow in a live save.
 - Validate host-authoritative network multiplayer with a real host and remote farmhand for watering and harvest delivery.
 - Add a warehouse or office anchor for storage and hiring.
 
 ### Idea List
 
-- Sort chests by item type, quality, season, or custom labels.
+- Add optional player-authored chest labels only after deterministic content-based sorting is stable.
 - Refill machines and collect finished products.
 - Add animal care jobs.
 - Add worker tiers with different wages and speeds.
@@ -218,6 +229,7 @@ Mods/EvilFarmOwner/config.json
 ### Bug List / Known Limitations
 
 - Host-authoritative multiplayer is implemented but still requires the release-gate test with a real remote host/farmhand session; split-screen alone is not accepted as proof.
+- Manual named chest sorting is implemented on the development branch but still requires disposable-save single-player and real remote multiplayer acceptance; recurring sorting remains disabled.
 - This beta is not the stable `v0.1.0`; use a backed-up save until the remaining multiplayer and forced-recovery gates pass.
 - Named watering and multi-crop harvest contracts are visible; debris cleanup, fertilizing, planting, and automatic shipping are not part of v0.1.0.
 - Every peer must install the same Evil Farm Owner version; mismatched protocol/save/day/player/task messages are rejected without mutation.

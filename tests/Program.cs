@@ -77,6 +77,7 @@ List<(string Name, Action Test)> tests = new()
     ("multiplayer stale sync-state rejection", TestMultiplayerStaleSyncStateRejection),
     ("multiplayer snapshot serialization", TestMultiplayerSnapshotSerialization),
     ("multiplayer result serialization", TestMultiplayerResultSerialization),
+    ("multiplayer storage result validation", TestMultiplayerStorageResultValidation),
     ("named contract report grouping", TestNamedContractReportGrouping)
 };
 
@@ -188,6 +189,15 @@ static void TestWorkerEfficiencyContractSnapshot()
     Equal(WorkerEfficiencyBackground.ManualFieldwork, first.EfficiencyBackground);
     Equal(1.05m, harvesting.EfficiencyMultiplier);
     Equal(first.MaximumAuthorizedWage, harvesting.MaximumAuthorizedWage);
+
+    WorkContractPreview sorting = ContractPreviewService.Create(
+        friendshipHearts: 4,
+        dayOfMonth: 1,
+        workerName: "Alex",
+        task: NamedFarmTask.StorageSorting);
+    Equal(1.00m, sorting.EfficiencyMultiplier);
+    Equal(WorkerEfficiencyBackground.Baseline, sorting.EfficiencyBackground);
+    Equal(first.MaximumAuthorizedWage, sorting.MaximumAuthorizedWage);
 }
 
 static void TestRecurringContractStateValidation()
@@ -198,6 +208,10 @@ static void TestRecurringContractStateValidation()
     RecurringContractSaveData wrongSchema = NewRecurringContractState();
     wrongSchema.SchemaVersion++;
     Equal(false, RecurringContractPolicy.IsValid(wrongSchema));
+
+    RecurringContractSaveData unsupportedStorageTask = NewRecurringContractState();
+    unsupportedStorageTask.Template!.Task = NamedFarmTask.StorageSorting;
+    Equal(false, RecurringContractPolicy.IsValid(unsupportedStorageTask));
 
     RecurringContractSaveData unknownWorker = NewRecurringContractState();
     unknownWorker.Template!.PreferredWorkerName = "UnknownCustomNpc";
@@ -1249,7 +1263,9 @@ static void TestStorageSortReportAccounting()
     StorageSortCompletedTransfer first = new(
         Sequence: 1,
         ItemId: "(O)24",
+        DisplayName: "Parsnip",
         Category: -75,
+        Quality: 0,
         Quantity: 8,
         SourceChest: new GridPoint(1, 1),
         DestinationChest: new GridPoint(2, 2));
@@ -1627,6 +1643,11 @@ static void TestMultiplayerRequestAuthorization()
         ContractRequestValidator.Validate(valid, playerId, context));
 
     valid.TotalDays = 12;
+    valid.Task = NamedFarmTask.StorageSorting;
+    Equal(
+        ContractRequestValidationFailure.None,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
     valid.Task = (NamedFarmTask)999;
     Equal(
     ContractRequestValidationFailure.InvalidTask,
@@ -1748,6 +1769,15 @@ static void TestMultiplayerRestartRecoveryState()
     foreach (ContractResultMessage legacyResult in legacyPlacement.RecentResults)
         legacyResult.SchemaVersion = 5;
     Equal(true, MultiplayerRecoveryState.IsValid(legacyPlacement, 445566));
+
+    MultiplayerRecoverySaveData legacyEfficiency =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json)!;
+    legacyEfficiency.ProtocolSchemaVersion = 6;
+    foreach (ContractStartResponseMessage legacyResponse in legacyEfficiency.ProcessedRequests)
+        legacyResponse.SchemaVersion = 6;
+    foreach (ContractResultMessage legacyResult in legacyEfficiency.RecentResults)
+        legacyResult.SchemaVersion = 6;
+    Equal(true, MultiplayerRecoveryState.IsValid(legacyEfficiency, 445566));
 
     MultiplayerRecoveryState.RebindResponse(
         restored!.ProcessedRequests[0],
@@ -2013,7 +2043,7 @@ static void TestMultiplayerSnapshotSerialization()
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(6, MultiplayerContractProtocol.SchemaVersion);
+    Equal(7, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
@@ -2039,6 +2069,113 @@ static void TestMultiplayerResultSerialization()
     Equal(1, restored.ChestItems);
     Equal(4, restored.QuarantinedItems);
     Equal(13L, restored.StateVersion);
+}
+
+static void TestMultiplayerStorageResultValidation()
+{
+    string contractId = Guid.NewGuid().ToString("N");
+    string requestId = Guid.NewGuid().ToString("N");
+    string transferId = Guid.NewGuid().ToString("N");
+    ContractResultMessage result = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "host-session",
+        ContractId = contractId,
+        Sequence = 2,
+        StateVersion = 3,
+        RequestId = requestId,
+        RequestingPlayerId = 55,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.StorageSorting,
+        Succeeded = true,
+        CompletedWork = 1,
+        ChestItems = 10,
+        BillableHours = 1,
+        ChargedGold = 100,
+        RefundedGold = 500,
+        ProducedItems = new[]
+        {
+            new ContractCargoSnapshotMessage
+            {
+                TransferId = transferId,
+                QualifiedItemId = "(O)24",
+                DisplayName = "Parsnip",
+                Stack = 10
+            }
+        },
+        CompletedTransferIds = new[] { transferId },
+        CompletedTransfers = new[]
+        {
+            new ContractTransferReportMessage
+            {
+                Sequence = 1,
+                QualifiedItemId = "(O)24",
+                DisplayName = "Parsnip",
+                Category = -75,
+                Quantity = 10,
+                SourceX = 4,
+                SourceY = 8,
+                DestinationX = 10,
+                DestinationY = 8
+            }
+        }
+    };
+
+    Equal(true, MultiplayerRecoveryState.IsValidResult(
+        result,
+        expectedSaveId: 445566,
+        expectedProtocolSchemaVersion: MultiplayerContractProtocol.SchemaVersion));
+
+    ContractResultMessage restored = JsonSerializer.Deserialize<ContractResultMessage>(
+        JsonSerializer.Serialize(result))!;
+    Equal(NamedFarmTask.StorageSorting, restored.Task);
+    Equal(1, restored.CompletedTransfers.Length);
+    Equal(-75, restored.CompletedTransfers[0].Category);
+    Equal(4, restored.CompletedTransfers[0].SourceX);
+    Equal(10, restored.CompletedTransfers[0].DestinationX);
+
+    result.CompletedTransfers[0].Quantity = 9;
+    Equal(false, MultiplayerRecoveryState.IsValidResult(
+        result,
+        445566,
+        MultiplayerContractProtocol.SchemaVersion));
+    result.CompletedTransfers[0].Quantity = 10;
+
+    result.CompletedTransfers[0].DestinationX = result.CompletedTransfers[0].SourceX;
+    result.CompletedTransfers[0].DestinationY = result.CompletedTransfers[0].SourceY;
+    Equal(false, MultiplayerRecoveryState.IsValidResult(
+        result,
+        445566,
+        MultiplayerContractProtocol.SchemaVersion));
+    result.CompletedTransfers[0].DestinationX = 10;
+
+    result.SkippedTransfers = new[]
+    {
+        new ContractTransferReportMessage
+        {
+            Sequence = 2,
+            QualifiedItemId = "(O)188",
+            DisplayName = "Green Bean",
+            Category = -75,
+            Quantity = 1,
+            SourceX = 6,
+            SourceY = 8,
+            DestinationX = 10,
+            DestinationY = 8
+        }
+    };
+    Equal(false, MultiplayerRecoveryState.IsValidResult(
+        result,
+        445566,
+        MultiplayerContractProtocol.SchemaVersion));
+
+    result.Succeeded = false;
+    result.ReasonKey = "contract.failure.storage-changed";
+    Equal(true, MultiplayerRecoveryState.IsValidResult(
+        result,
+        445566,
+        MultiplayerContractProtocol.SchemaVersion));
 }
 
 static void TestNamedContractReportGrouping()

@@ -16,6 +16,7 @@ public sealed class ModEntry : Mod
     private WateringContractExecutionController? WateringContracts;
     private HarvestingContractExecutionController? HarvestingContracts;
     private StorageSortRecoveryManager? StorageSortRecovery;
+    private StorageSortContractExecutionController? StorageSortContracts;
     private MultiplayerContractCoordinator? MultiplayerContracts;
     private RecurringContractCoordinator? RecurringContracts;
     private readonly HarvestAcceptanceFaults AcceptanceFaults = new();
@@ -36,13 +37,19 @@ public sealed class ModEntry : Mod
             this.WorkerRoster,
             this.AcceptanceFaults);
         this.StorageSortRecovery = new StorageSortRecoveryManager(this.Monitor);
+        this.StorageSortContracts = new StorageSortContractExecutionController(
+            helper.Translation,
+            this.Monitor,
+            this.WorkerRoster,
+            this.StorageSortRecovery);
         this.MultiplayerContracts = new MultiplayerContractCoordinator(
             helper,
             this.ModManifest,
             helper.Translation,
             this.Monitor,
             this.WateringContracts,
-            this.HarvestingContracts);
+            this.HarvestingContracts,
+            this.StorageSortContracts);
         this.RecurringContracts = new RecurringContractCoordinator(
             helper,
             helper.Translation,
@@ -264,6 +271,7 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.Update();
         this.HarvestingContracts?.Update();
+        this.StorageSortContracts?.Update();
         this.StorageSortRecovery?.Update();
         this.MultiplayerContracts?.Update();
         this.RecurringContracts?.Update(this.HasActiveNamedContract());
@@ -273,6 +281,7 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.OnDayEnding();
         this.HarvestingContracts?.OnDayEnding();
+        this.StorageSortContracts?.OnSaving();
         this.MultiplayerContracts?.Update();
     }
 
@@ -290,6 +299,7 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.OnDayEnding();
         this.HarvestingContracts?.OnSaving();
+        this.StorageSortContracts?.OnSaving();
         this.MultiplayerContracts?.Update();
         this.MultiplayerContracts?.OnSaving();
         this.RecurringContracts?.OnSaving();
@@ -299,6 +309,7 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.OnReturnedToTitle();
         this.HarvestingContracts?.OnReturnedToTitle();
+        this.StorageSortContracts?.OnReturnedToTitle();
         this.StorageSortRecovery?.OnReturnedToTitle();
         this.MultiplayerContracts?.Update();
         this.MultiplayerContracts?.OnReturnedToTitle();
@@ -309,6 +320,7 @@ public sealed class ModEntry : Mod
     {
         return this.WateringContracts?.HasActiveContract == true
             || this.HarvestingContracts?.HasActiveContract == true
+            || this.StorageSortContracts?.HasActiveContract == true
             || this.MultiplayerContracts?.HasObservedActiveContract == true
             || this.MultiplayerContracts?.HasPendingRequest == true;
     }
@@ -373,7 +385,8 @@ public sealed class ModEntry : Mod
             worker,
             this.Helper.Translation,
             () => this.OpenRecurringWorkerRoster(rosterPage),
-            task => this.OpenRecurringAuthorization(worker, rosterPage, task, availableWorkers));
+            task => this.OpenRecurringAuthorization(worker, rosterPage, task, availableWorkers),
+            includeStorageSorting: false);
     }
 
     private void OpenRecurringAuthorization(
@@ -546,9 +559,13 @@ public sealed class ModEntry : Mod
             return;
         }
 
-        string task = this.Helper.Translation.Get(result.Task == NamedFarmTask.Watering
-            ? "contract.task.watering"
-            : "contract.task.harvesting");
+        string task = this.Helper.Translation.Get(result.Task switch
+        {
+            NamedFarmTask.Watering => "contract.task.watering",
+            NamedFarmTask.Harvesting => "contract.task.harvesting",
+            NamedFarmTask.StorageSorting => "contract.task.storage-sorting",
+            _ => "contract.task.harvesting"
+        });
         string status = result.Succeeded
             ? this.Helper.Translation.Get("report.status.completed")
             : this.Helper.Translation.Get("report.status.stopped", new
@@ -565,11 +582,23 @@ public sealed class ModEntry : Mod
             task,
             status
         }), LogLevel.Info);
-        this.Monitor.Log(this.Helper.Translation.Get("report.work", new
+        if (result.Task == NamedFarmTask.StorageSorting)
         {
-            completed = result.CompletedWork,
-            items
-        }), LogLevel.Info);
+            this.Monitor.Log(this.Helper.Translation.Get("storage-sort.report.work", new
+            {
+                completed = result.CompletedTransfers.Length,
+                items = result.ChestItems,
+                skipped = result.SkippedTransfers.Length
+            }), LogLevel.Info);
+        }
+        else
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("report.work", new
+            {
+                completed = result.CompletedWork,
+                items
+            }), LogLevel.Info);
+        }
         this.Monitor.Log(this.Helper.Translation.Get("report.destinations", new
         {
             player = result.PlayerItems,
@@ -583,6 +612,38 @@ public sealed class ModEntry : Mod
             hours = result.BillableHours,
             paid = result.ChargedGold,
             refunded = result.RefundedGold
+        }), LogLevel.Info);
+
+        if (result.Task == NamedFarmTask.StorageSorting)
+        {
+            foreach (ContractTransferReportMessage transfer in result.CompletedTransfers
+                         .OrderBy(transfer => transfer.Sequence))
+            {
+                this.LogStorageSortTransfer("storage-sort.report.completed-transfer", transfer);
+            }
+            foreach (ContractTransferReportMessage transfer in result.SkippedTransfers
+                         .OrderBy(transfer => transfer.Sequence))
+            {
+                this.LogStorageSortTransfer("storage-sort.report.skipped-transfer", transfer);
+            }
+        }
+    }
+
+    private void LogStorageSortTransfer(
+        string translationKey,
+        ContractTransferReportMessage transfer)
+    {
+        this.Monitor.Log(this.Helper.Translation.Get(translationKey, new
+        {
+            transfer.Sequence,
+            item = transfer.DisplayName,
+            transfer.Quality,
+            transfer.Category,
+            transfer.Quantity,
+            transfer.SourceX,
+            transfer.SourceY,
+            transfer.DestinationX,
+            transfer.DestinationY
         }), LogLevel.Info);
     }
 

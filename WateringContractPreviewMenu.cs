@@ -129,17 +129,13 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
 
         batch.DrawString(
             Game1.dialogueFont,
-            this.Translation.Get(this.Task == NamedFarmTask.Watering
-                ? "contract.title.watering"
-                : "contract.title.harvesting"),
+            this.Translation.Get(this.GetTaskKey("contract.title")),
             new Vector2(contentX, contentY),
             Game1.textColor);
 
         contentY += 58;
         string subtitle = Game1.parseText(
-            this.Translation.Get(this.Task == NamedFarmTask.Watering
-                ? "contract.subtitle.watering"
-                : "contract.subtitle.harvesting"),
+            this.Translation.Get(this.GetTaskKey("contract.subtitle")),
             Game1.smallFont,
             contentWidth);
         batch.DrawString(Game1.smallFont, subtitle, new Vector2(contentX, contentY), Color.DimGray);
@@ -158,18 +154,14 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
             detailsY,
             columnWidth,
             "contract.task",
-            this.Translation.Get(this.Task == NamedFarmTask.Watering
-                ? "contract.task.watering"
-                : "contract.task.harvesting"));
+            this.Translation.Get(this.GetTaskKey("contract.task")));
         this.DrawDetailRow(
             batch,
             contentX,
             detailsY + 42,
             columnWidth,
             "contract.limit",
-            this.Translation.Get(this.Task == NamedFarmTask.Watering
-                ? "contract.limit.value.watering"
-                : "contract.limit.value.harvesting"));
+            this.Translation.Get(this.GetTaskKey("contract.limit.value")));
         this.DrawDetailRow(batch, contentX, detailsY + 84, columnWidth, "contract.day", this.GetDayText());
         this.DrawDetailRow(batch, contentX, detailsY + 126, columnWidth, "contract.base-rate", this.Translation.Get("contract.base-rate.value", new { gold = this.Preview.BaseHourlyWage }));
         this.DrawDetailRow(batch, contentX, detailsY + 168, columnWidth, "contract.friendship", this.Translation.Get("contract.friendship.value", new
@@ -288,14 +280,22 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
     {
         if (this.Preview.DayKind == ContractDayKind.RestDay)
         {
-            return this.Translation.Get(this.Task == NamedFarmTask.Watering
-                ? "contract.confirm.rest-day.watering"
-                : "contract.confirm.rest-day.harvesting");
+            return this.Translation.Get(this.GetTaskKey("contract.confirm.rest-day"));
         }
 
-        return this.Translation.Get(this.Task == NamedFarmTask.Watering
-            ? "contract.confirm.regular.watering"
-            : "contract.confirm.regular.harvesting");
+        return this.Translation.Get(this.GetTaskKey("contract.confirm.regular"));
+    }
+
+    private string GetTaskKey(string prefix)
+    {
+        string suffix = this.Task switch
+        {
+            NamedFarmTask.Watering => "watering",
+            NamedFarmTask.Harvesting => "harvesting",
+            NamedFarmTask.StorageSorting => "storage-sorting",
+            _ => throw new InvalidOperationException($"Unsupported contract task {this.Task}.")
+        };
+        return $"{prefix}.{suffix}";
     }
 
     private string GetFriendshipBandText()
