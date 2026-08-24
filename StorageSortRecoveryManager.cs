@@ -135,6 +135,64 @@ internal sealed class StorageSortRecoveryManager
         }
     }
 
+    public bool TryForceQuarantineAtSaveBoundary(Guid transferId, Item detachedItem)
+    {
+        if (!Context.IsWorldReady
+            || !Context.IsMainPlayer
+            || transferId == Guid.Empty
+            || detachedItem.Stack <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            // This private inventory is host-only and cannot be opened while a named
+            // contract is active. At the synchronous save boundary, retaining the
+            // original detached Item instance is safer than leaving it in transient
+            // controller memory when the serializable recovery record is unavailable.
+            string transferKey = transferId.ToString("N");
+            Inventory quarantine = Game1.player.team.GetOrCreateGlobalInventory(
+                HarvestingContractExecutionController.QuarantineInventoryId);
+            Item? existing = quarantine.FirstOrDefault(item => item is not null
+                && item.modData.TryGetValue(RecoveryTransferDataKey, out string? existingId)
+                && string.Equals(existingId, transferKey, StringComparison.Ordinal));
+            if (existing is not null)
+            {
+                if (!ReferenceEquals(existing, detachedItem))
+                {
+                    throw new InvalidDataException(
+                        $"Storage-sort transfer {transferKey} already identifies a different item instance.");
+                }
+
+                return true;
+            }
+
+            detachedItem.modData[RecoveryTransferDataKey] = transferKey;
+            quarantine.Add(detachedItem);
+            if (!quarantine.Any(item => ReferenceEquals(item, detachedItem)))
+            {
+                throw new InvalidDataException(
+                    $"Quarantine did not retain storage-sort transfer {transferKey} at save time.");
+            }
+
+            this.Monitor.Log(
+                $"Forced detached storage-sort transfer {transferKey} "
+                + $"('{detachedItem.QualifiedItemId}' q{detachedItem.Quality} x{detachedItem.Stack}) "
+                + "into the private team quarantine at the save boundary.",
+                LogLevel.Error);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log(
+                $"CRITICAL: save-boundary storage-sort quarantine failed for transfer "
+                + $"{transferId:N}: {ex}",
+                LogLevel.Error);
+            return false;
+        }
+    }
+
     private bool TryRestore()
     {
         if (!Context.IsWorldReady || !Context.IsMainPlayer)

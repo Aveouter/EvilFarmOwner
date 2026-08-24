@@ -61,6 +61,19 @@ internal static class StorageSortContractAudit
     }
 }
 
+internal static class StorageSortSaveBoundaryPolicy
+{
+    public static bool CanForceQuarantine(
+        bool hasUnresolvedItem,
+        bool unresolvedItemDetached,
+        Guid transferId)
+    {
+        return hasUnresolvedItem
+            && unresolvedItemDetached
+            && transferId != Guid.Empty;
+    }
+}
+
 internal sealed class StorageSortContractExecutionController
 {
     private const int LatestStartTime = 1600;
@@ -357,6 +370,31 @@ internal sealed class StorageSortContractExecutionController
         {
             this.ReleaseLocks(contract);
             this.TryResolveBlockedRecovery(contract);
+            if (StorageSortSaveBoundaryPolicy.CanForceQuarantine(
+                    contract.UnresolvedItem is not null,
+                    contract.UnresolvedItemDetached,
+                    contract.UnresolvedTransferId)
+                && contract.UnresolvedItem is { } detachedItem)
+            {
+                int stack = detachedItem.Stack;
+                if (this.RecoveryManager.TryForceQuarantineAtSaveBoundary(
+                        contract.UnresolvedTransferId,
+                        detachedItem))
+                {
+                    contract.PersistedRecoveryItems += stack;
+                    contract.UnresolvedItem = null;
+                    contract.UnresolvedItemDetached = false;
+                }
+            }
+
+            if (contract.UnresolvedItem is not null)
+            {
+                this.Monitor.Log(
+                    $"CRITICAL: storage-sort contract {contract.Id:N} reached the save boundary "
+                    + "without verified durable ownership; retaining the active contract and refusing "
+                    + "to report finalization.",
+                    LogLevel.Error);
+            }
             this.FinishContract(
                 contract,
                 succeeded: false,

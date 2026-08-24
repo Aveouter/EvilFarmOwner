@@ -58,6 +58,7 @@ List<(string Name, Action Test)> tests = new()
     ("storage transfer recovery ownership", TestStorageTransferRecoveryOwnership),
     ("storage sort interaction ordering", TestStorageSortInteractionOrdering),
     ("storage sort report accounting", TestStorageSortReportAccounting),
+    ("storage sort save-boundary policy", TestStorageSortSaveBoundaryPolicy),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
@@ -1307,6 +1308,27 @@ static void TestStorageSortReportAccounting()
         skipped: new[] { second },
         movedItems: 8,
         persistedRecoveryItems: 4));
+}
+
+static void TestStorageSortSaveBoundaryPolicy()
+{
+    Guid transferId = Guid.NewGuid();
+    Equal(true, StorageSortSaveBoundaryPolicy.CanForceQuarantine(
+        hasUnresolvedItem: true,
+        unresolvedItemDetached: true,
+        transferId));
+    Equal(false, StorageSortSaveBoundaryPolicy.CanForceQuarantine(
+        hasUnresolvedItem: false,
+        unresolvedItemDetached: true,
+        transferId));
+    Equal(false, StorageSortSaveBoundaryPolicy.CanForceQuarantine(
+        hasUnresolvedItem: true,
+        unresolvedItemDetached: false,
+        transferId));
+    Equal(false, StorageSortSaveBoundaryPolicy.CanForceQuarantine(
+        hasUnresolvedItem: true,
+        unresolvedItemDetached: true,
+        Guid.Empty));
 }
 
 static StorageSortChestSnapshot SortChest(
