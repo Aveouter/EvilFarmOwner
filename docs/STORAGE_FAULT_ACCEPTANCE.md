@@ -21,8 +21,10 @@ SMAPI must log `ACCEPTANCE TEST BUILD` at startup. The command
 
 ## Scenario A: persistent recovery record
 
-1. Prepare one mature crop. Remove eligible chests and completely fill the
-   requesting player's inventory.
+1. Prepare one mature crop. Keep at least one ordinary eligible main-farm chest
+   so the harvest dispatch preflight can pass, but fill every eligible chest so
+   none can accept the harvested stack. Completely fill the requesting player's
+   inventory too.
 2. Run:
 
    ```text
@@ -41,7 +43,7 @@ SMAPI must log `ACCEPTANCE TEST BUILD` at startup. The command
 
 ## Scenario B: save-boundary forced quarantine
 
-1. Prepare the same no-chest/full-inventory setup and run:
+1. Prepare the same full-chest/full-inventory setup and run:
 
    ```text
    efo_acceptance_faults arm overflow-lock visible-drop quarantine-lock recovery-record-write
