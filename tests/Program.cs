@@ -56,6 +56,7 @@ List<(string Name, Action Test)> tests = new()
     ("storage transfer sequence", TestStorageTransferSequence),
     ("storage transfer conservation", TestStorageTransferConservation),
     ("storage transfer recovery ownership", TestStorageTransferRecoveryOwnership),
+    ("storage sort interaction ordering", TestStorageSortInteractionOrdering),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
@@ -1224,6 +1225,22 @@ static StorageSortItemFingerprint SortFingerprint(
         quantity,
         MaximumStackSize: 999,
         SerializedXml: xml);
+}
+
+static void TestStorageSortInteractionOrdering()
+{
+    StorageSortInteractionOption[] options =
+    {
+        new(new GridPoint(5, 4), Distance: 9, OffsetPriority: 0),
+        new(new GridPoint(4, 5), Distance: 3, OffsetPriority: 2),
+        new(new GridPoint(6, 5), Distance: 3, OffsetPriority: 1),
+        new(new GridPoint(5, 6), Distance: 3, OffsetPriority: 1)
+    };
+
+    Equal(
+        "6,5|5,6|4,5|5,4",
+        string.Join("|", StorageSortRouteSelection.Order(options)
+            .Select(option => $"{option.InteractionTile.X},{option.InteractionTile.Y}")));
 }
 
 static StorageSortChestSnapshot SortChest(
