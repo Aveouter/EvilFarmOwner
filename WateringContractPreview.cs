@@ -14,7 +14,7 @@ internal enum FriendshipWageBand
     Trusted
 }
 
-internal sealed record WateringContractPreview(
+internal sealed record WorkContractPreview(
     int FriendshipHearts,
     FriendshipWageBand FriendshipBand,
     decimal FriendshipMultiplier,
@@ -27,4 +27,5 @@ internal sealed record WateringContractPreview(
     decimal OvertimeMultiplier,
     int MaximumOvertimeHours,
     int EstimatedRegularWage,
-    int MaximumAuthorizedWage);
+    int MaximumAuthorizedWage,
+    int MinimumCalloutWage);

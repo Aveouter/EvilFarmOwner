@@ -1,0 +1,48 @@
+name: Source validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-source:
+    name: Repository source checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate repository source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bash -n scripts/verify-release.sh
+          git diff --check 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD
+
+          jq empty manifest.json i18n/default.json i18n/zh.json
+          jq -e '
+            .Name == "Evil Farm Owner"
+            and .Author == "Aveouter"
+            and .Version == "0.1.0"
+            and .UniqueID == "Aveouter.EvilFarmOwner"
+            and .EntryDll == "EvilFarmOwner.dll"
+            and (.UpdateKeys | index("GitHub:Aveouter/EvilFarmOwner") != null)
+          ' manifest.json >/dev/null
+
+          grep -Eq '<Version>0\.1\.0</Version>' EvilFarmOwner.csproj
+          grep -Eq 'Stardew Valley SMAPI Mod · v0\.1\.0' README.md
+
+          jq -r 'keys[]' i18n/default.json | LC_ALL=C sort > "$RUNNER_TEMP/efo-default-keys.txt"
+          jq -r 'keys[]' i18n/zh.json | LC_ALL=C sort > "$RUNNER_TEMP/efo-zh-keys.txt"
+          diff -u "$RUNNER_TEMP/efo-default-keys.txt" "$RUNNER_TEMP/efo-zh-keys.txt"

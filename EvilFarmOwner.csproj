@@ -5,6 +5,11 @@
     <AssemblyName>EvilFarmOwner</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <EnableAcceptanceFaults Condition="'$(EnableAcceptanceFaults)' == ''">false</EnableAcceptanceFaults>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(EnableAcceptanceFaults)' == 'true'">
+    <DefineConstants>$(DefineConstants);EFO_ACCEPTANCE_FAULTS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,8 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="config.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="i18n\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

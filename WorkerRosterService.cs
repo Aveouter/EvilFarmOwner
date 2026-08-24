@@ -58,7 +58,11 @@ internal sealed class WorkerRosterService
 
                 try
                 {
-                    entries.Add(this.CreateEntry(npc));
+                    WorkerAvailabilityResult availability = this.Evaluate(npc);
+                    if (!WorkerRosterPolicy.ShouldDisplay(availability.State))
+                        continue;
+
+                    entries.Add(this.CreateEntry(npc, availability));
                 }
                 catch (Exception ex)
                 {
@@ -74,6 +78,37 @@ internal sealed class WorkerRosterService
         return entries
             .OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
+    }
+
+    public bool TryGetWorker(
+        string internalName,
+        out NPC? worker,
+        out WorkerAvailabilityResult availability)
+    {
+        worker = null;
+        availability = Unavailable(WorkerAvailabilityReason.MissingLocation);
+
+        try
+        {
+            worker = Utility.getAllCharacters()
+                .FirstOrDefault(npc => string.Equals(npc.Name, internalName, StringComparison.OrdinalIgnoreCase));
+
+            if (worker is null || !this.ShouldDisplay(worker))
+            {
+                worker = null;
+                return false;
+            }
+
+            availability = this.Evaluate(worker);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Could not resolve named worker '{internalName}' safely: {ex.Message}", LogLevel.Warn);
+            availability = Unknown(WorkerAvailabilityReason.EvaluationFailed);
+            worker = null;
+            return false;
+        }
     }
 
     private bool ShouldDisplay(NPC npc)
@@ -93,19 +128,22 @@ internal sealed class WorkerRosterService
         }
     }
 
-    private WorkerRosterEntry CreateEntry(NPC npc)
+    private WorkerRosterEntry CreateEntry(NPC npc, WorkerAvailabilityResult availability)
     {
         string displayName = string.IsNullOrWhiteSpace(npc.displayName) ? npc.Name : npc.displayName;
         Texture2D portrait = npc.Portrait;
+        int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(npc.Name);
+        WorkContractPreview wagePreview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
 
         return new WorkerRosterEntry(
             npc.Name,
             displayName,
             portrait,
-            this.Evaluate(npc));
+            availability,
+            wagePreview);
     }
 
-    private WorkerAvailabilityResult Evaluate(NPC npc)
+    public WorkerAvailabilityResult Evaluate(NPC npc)
     {
         try
         {
@@ -143,7 +181,18 @@ internal sealed class WorkerRosterService
             if (npc.controller is not null || npc.temporaryController is not null)
                 return Unavailable(WorkerAvailabilityReason.ControlledActivity);
 
-            if (npc.Sprite?.CurrentAnimation is not null)
+            if (npc.isMoving())
+                return Unavailable(WorkerAvailabilityReason.MovementActivity);
+
+            if (npc.CurrentDialogue.Count > 0 && npc.CurrentDialogue.Peek().removeOnNextMove)
+                return Unavailable(WorkerAvailabilityReason.DialogueActivity);
+
+            if (NpcActivityPolicy.HasProtectedActivity(
+                    npc.doingEndOfRouteAnimation.Value,
+                    npc.goingToDoEndOfRouteAnimation.Value,
+                    npc.IsWalkingInSquare,
+                    npc.Sprite?.CurrentAnimation is not null,
+                    npc.movementPause))
                 return Unavailable(WorkerAvailabilityReason.ScriptedAnimation);
 
             return new WorkerAvailabilityResult(
