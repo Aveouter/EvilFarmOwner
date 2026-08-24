@@ -79,11 +79,19 @@ internal sealed class HarvestingContractExecutionController
         return this.TryRestoreQuarantineRecovery(showHud: true);
     }
 
-    public bool TryStart(long requestingPlayerId, string workerInternalName, string requestId)
+    public bool TryStart(
+        long requestingPlayerId,
+        string workerInternalName,
+        string requestId,
+        HarvestDestinationMode destinationMode = HarvestDestinationMode.ClassifiedChests)
     {
         this.LastStartFailureKey = null;
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
             return this.FailStart("contract.start.host-only");
+        if (!HarvestDestinationPolicy.IsValidForTask(
+                NamedFarmTask.Harvesting,
+                destinationMode))
+            return this.FailStart("multiplayer.reject.destination");
 
         if ((this.HasPendingQuarantineRecovery || this.HasStoredQuarantineRecovery())
             && !this.TryRestoreQuarantineRecovery(showHud: false))
@@ -135,7 +143,8 @@ internal sealed class HarvestingContractExecutionController
         if (!planResult.IsSuccess || planResult.Plan is null)
             return this.FailStart(this.GetPlanFailureTranslationKey(planResult.Failure));
 
-        if (!HarvestChestRouter.HasEligibleChest(mainFarm))
+        if (destinationMode == HarvestDestinationMode.ClassifiedChests
+            && !HarvestChestRouter.HasEligibleChest(mainFarm))
             return this.FailStart("harvest.start.no-storage-chest");
 
         if (!NpcWorkLease.TryAcquire(
@@ -153,7 +162,8 @@ internal sealed class HarvestingContractExecutionController
             lease,
             preview,
             mainFarm,
-            planResult.Plan);
+            planResult.Plan,
+            destinationMode);
         this.ActiveContract = contract;
         requester.Money -= preview.MaximumAuthorizedWage;
 
@@ -173,7 +183,8 @@ internal sealed class HarvestingContractExecutionController
             worker.Halt();
             this.Monitor.Log(
                 $"Dispatching harvest worker '{worker.Name}' from {planResult.Plan.ArrivalSide} "
-                + $"farm-boundary tile {planResult.Plan.ArrivalTile}.",
+                + $"farm-boundary tile {planResult.Plan.ArrivalTile}; "
+                + $"destination={destinationMode}.",
                 LogLevel.Debug);
 
             if (worker.TilePoint == planResult.Plan.FirstTarget.InteractionTile)
@@ -324,7 +335,7 @@ internal sealed class HarvestingContractExecutionController
                         && contract.HarvestedTargets > 0
                         && contract.Cargo.Count == 0,
                     contract.StorageUnavailable
-                        ? "harvest.failure.storage-unavailable"
+                        ? contract.StorageFailureTranslationKey
                         : contract.HarvestedTargets > 0
                             ? null
                             : "harvest.failure.target-invalidated");
@@ -423,7 +434,10 @@ internal sealed class HarvestingContractExecutionController
                 entry.Item.DisplayName,
                 entry.Item.Quality,
                 entry.Item.Stack)).ToArray(),
-            contract.TransferLedger.GetCompletedTransferIds());
+            contract.TransferLedger.GetCompletedTransferIds())
+        {
+            HarvestDestination = contract.DestinationMode
+        };
     }
 
     public NamedContractCompletionState? ConsumeCompletion()
@@ -842,6 +856,12 @@ internal sealed class HarvestingContractExecutionController
         }
 
         HarvestCargoEntry entry = contract.Cargo[0];
+        if (contract.DestinationMode == HarvestDestinationMode.RequesterInventory)
+        {
+            this.DeliverToRequesterOrStop(contract, entry);
+            return;
+        }
+
         HashSet<Point> attempted = contract.GetAttemptedChests(entry.TransferId);
         HashSet<HarvestChestRouteKey> attemptedRoutes =
             contract.GetAttemptedChestRoutes(entry.TransferId);
@@ -907,6 +927,141 @@ internal sealed class HarvestingContractExecutionController
                 contract,
                 $"controller setup failed: {ex.Message}");
         }
+    }
+
+    private void DeliverToRequesterOrStop(
+        ActiveHarvestContract contract,
+        HarvestCargoEntry entry)
+    {
+        Farmer? requester = Game1.GetPlayer(
+            contract.Requester.UniqueMultiplayerID,
+            onlyOnline: true);
+        bool requesterIsOnline = requester is not null;
+        bool requesterIsOnMainFarm = requesterIsOnline
+            && ReferenceEquals(requester!.currentLocation, contract.Farm);
+        bool canAcceptCompleteStack = requesterIsOnMainFarm
+            && CanInventoryAcceptCompleteStack(requester!, entry.Item);
+        HarvestDestinationAction action = HarvestDestinationPolicy.SelectAction(
+            contract.DestinationMode,
+            requesterIsOnline,
+            requesterIsOnMainFarm,
+            canAcceptCompleteStack);
+        if (action != HarvestDestinationAction.DeliverToRequester)
+        {
+            this.StopForUnavailableStorage(
+                contract,
+                "the contract-selected requester inventory is offline, off-farm, or cannot accept the complete stack",
+                "harvest.failure.requester-destination-unavailable");
+            return;
+        }
+
+        int requested = entry.Item.Stack;
+        int inventoryBefore = CountStackCompatibleItems(requester!, entry.Item);
+        Item? remainder = entry.Item;
+        try
+        {
+            bool applied = contract.TransferLedger.TryApply(
+                entry.TransferId,
+                () => remainder = requester!.addItemToInventory(entry.Item));
+            if (!applied)
+            {
+                contract.Cargo.RemoveAt(0);
+                this.BeginNextOrReturn(contract);
+                return;
+            }
+
+            int remaining = remainder?.Stack ?? 0;
+            int delivered = HarvestTransferMath.GetDeliveredCount(requested, remaining);
+            contract.PlayerInventoryItems += delivered;
+            this.Monitor.Log(
+                $"Delivered harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{delivered} "
+                + $"to contract-selected requester {requester!.UniqueMultiplayerID}; remainder={remaining}.",
+                LogLevel.Debug);
+            if (remainder is null)
+            {
+                contract.Cargo.RemoveAt(0);
+                this.BeginNextOrReturn(contract);
+                return;
+            }
+
+            entry.Item = remainder;
+            entry.TransferId = Guid.NewGuid().ToString("N");
+            this.StopForUnavailableStorage(
+                contract,
+                "the contract-selected requester inventory stopped accepting the complete stack",
+                "harvest.failure.requester-destination-unavailable");
+        }
+        catch (Exception ex)
+        {
+            int inventoryAfter = CountStackCompatibleItems(requester!, entry.Item);
+            int delivered = HarvestDestinationPolicy.GetRetainedCount(
+                inventoryBefore,
+                inventoryAfter,
+                requested);
+            if (delivered > 0)
+            {
+                contract.TransferLedger.TryApply(entry.TransferId, () => { });
+                contract.PlayerInventoryItems += delivered;
+                if (delivered >= requested)
+                {
+                    contract.Cargo.RemoveAt(0);
+                    this.Monitor.Log(
+                        $"Requester delivery threw after retaining the complete x{delivered} stack; "
+                        + $"continuing without replay: {ex}",
+                        LogLevel.Error);
+                    this.BeginNextOrReturn(contract);
+                    return;
+                }
+
+                entry.Item.Stack = requested - delivered;
+                entry.TransferId = Guid.NewGuid().ToString("N");
+                this.Monitor.Log(
+                    $"Requester delivery threw after retaining x{delivered}; "
+                    + $"x{entry.Item.Stack} remains in contract cargo: {ex}",
+                    LogLevel.Error);
+            }
+            else
+            {
+                entry.Item.Stack = requested;
+                this.Monitor.Log(
+                    $"Requester delivery failed before retaining cargo; the exact x{requested} stack "
+                    + $"remains owned by the contract: {ex}",
+                    LogLevel.Error);
+            }
+
+            this.StopForUnavailableStorage(
+                contract,
+                "the contract-selected requester inventory changed or rejected delivery",
+                "harvest.failure.requester-destination-unavailable");
+        }
+    }
+
+    private static int CountStackCompatibleItems(Farmer requester, Item sample)
+    {
+        return requester.Items
+            .Where(item => item is not null && sample.canStackWith(item))
+            .Sum(item => item?.Stack ?? 0);
+    }
+
+    private static bool CanInventoryAcceptCompleteStack(Farmer requester, Item item)
+    {
+        if (item.IsRecipe
+            || item.QualifiedItemId is "(O)73" or "(O)930" or "(O)102" or "(O)858" or "(O)GoldCoin")
+            return true;
+
+        for (int index = 0; index < requester.MaxItems && index < requester.Items.Count; index++)
+        {
+            Item? existing = requester.Items[index];
+            if (existing is null)
+                return true;
+            if (item is StardewValley.Object
+                && existing is StardewValley.Object
+                && existing.Stack + item.Stack <= existing.maximumStackSize()
+                && existing.canStackWith(item))
+                return true;
+        }
+
+        return false;
     }
 
     private void OnChestLockAcquired(Guid contractId, HarvestChestRoute route)
@@ -1318,7 +1473,10 @@ internal sealed class HarvestingContractExecutionController
                 item.Name,
                 item.Quality,
                 item.Stack)).ToArray(),
-            contract.TransferLedger.GetCompletedTransferIds());
+            contract.TransferLedger.GetCompletedTransferIds())
+        {
+            HarvestDestination = contract.DestinationMode
+        };
 
         if (restoreResult != NpcLeaseRestoreResult.Restored)
         {
@@ -1332,6 +1490,10 @@ internal sealed class HarvestingContractExecutionController
         }
 
         string items = FormatHarvestedItems(contract.HarvestedItems);
+        string destination = this.Translation.Get(
+            contract.DestinationMode == HarvestDestinationMode.RequesterInventory
+                ? "contract.destination.requester"
+                : "contract.destination.chests");
         if (contract.PendingSucceeded)
         {
             Game1.addHUDMessage(new HUDMessage(
@@ -1342,6 +1504,7 @@ internal sealed class HarvestingContractExecutionController
                     skipped = contract.SkippedTargets,
                     unreachable = contract.UnreachableTargets,
                     remaining = contract.RemainingTargets,
+                    destination,
                     items,
                     player = contract.PlayerInventoryItems,
                     chest = contract.ChestDeliveredItems,
@@ -1368,6 +1531,7 @@ internal sealed class HarvestingContractExecutionController
                 skipped = contract.SkippedTargets,
                 unreachable = contract.UnreachableTargets,
                 remaining = contract.RemainingTargets,
+                destination,
                 items,
                 player = contract.PlayerInventoryItems,
                 chest = contract.ChestDeliveredItems,
@@ -1500,7 +1664,10 @@ internal sealed class HarvestingContractExecutionController
         contract.OverflowLockRequested = false;
     }
 
-    private void StopForUnavailableStorage(ActiveHarvestContract contract, string detail)
+    private void StopForUnavailableStorage(
+        ActiveHarvestContract contract,
+        string detail,
+        string failureTranslationKey = "harvest.failure.storage-unavailable")
     {
         if (!ReferenceEquals(this.ActiveContract, contract))
             return;
@@ -1508,6 +1675,7 @@ internal sealed class HarvestingContractExecutionController
         if (!contract.StorageUnavailable)
         {
             contract.StorageUnavailable = true;
+            contract.StorageFailureTranslationKey = failureTranslationKey;
             contract.RemainingTargets = HarvestTargetPlanner.CountRemainingMatureCrops(
                 contract.Farm,
                 contract.CompletedTargets);
@@ -2243,7 +2411,8 @@ internal sealed class HarvestingContractExecutionController
             NpcWorkLease lease,
             WorkContractPreview preview,
             Farm farm,
-            HarvestWorkPlan plan)
+            HarvestWorkPlan plan,
+            HarvestDestinationMode destinationMode)
         {
             this.Id = id;
             this.RequestId = requestId;
@@ -2256,6 +2425,7 @@ internal sealed class HarvestingContractExecutionController
                 preview.EfficiencyMultiplier);
             this.Farm = farm;
             this.Plan = plan;
+            this.DestinationMode = destinationMode;
             this.CurrentTarget = plan.FirstTarget;
         }
 
@@ -2266,6 +2436,7 @@ internal sealed class HarvestingContractExecutionController
         public WorkContractPreview Preview { get; }
         public int ActionDurationTicks { get; }
         public Farm Farm { get; }
+        public HarvestDestinationMode DestinationMode { get; }
         public HarvestWorkPlan Plan { get; set; }
         public HarvestTargetPlan CurrentTarget { get; set; }
         public HashSet<Point> CompletedTargets { get; } = new();
@@ -2284,6 +2455,8 @@ internal sealed class HarvestingContractExecutionController
         public bool Dispatched { get; set; }
         public bool ActionApplied { get; set; }
         public bool StorageUnavailable { get; set; }
+        public string StorageFailureTranslationKey { get; set; } =
+            "harvest.failure.storage-unavailable";
         public bool DepositOverflowOnReturn { get; set; }
         public bool OverflowLockRequested { get; set; }
         public int HarvestedTargets { get; set; }

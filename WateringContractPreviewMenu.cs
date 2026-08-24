@@ -22,9 +22,11 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
     private readonly NamedFarmTask Task;
     private readonly ITranslationHelper Translation;
     private readonly Action ReturnToRoster;
-    private readonly Func<bool> ConfirmContract;
+    private readonly Func<HarvestDestinationMode, bool> ConfirmContract;
     private readonly ClickableComponent BackButton;
     private readonly ClickableComponent ConfirmButton;
+    private readonly ClickableComponent? DestinationButton;
+    private HarvestDestinationMode DestinationMode = HarvestDestinationPolicy.DefaultManualMode;
 
     public WorkContractPreviewMenu(
         WorkerRosterEntry worker,
@@ -32,7 +34,7 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         NamedFarmTask task,
         ITranslationHelper translation,
         Action returnToRoster,
-        Func<bool> confirmContract)
+        Func<HarvestDestinationMode, bool> confirmContract)
         : base(
             GetMenuX(),
             GetMenuY(),
@@ -67,7 +69,27 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         this.ConfirmButton.myID = 101;
         this.ConfirmButton.leftNeighborID = 100;
 
+        int contentWidth = this.width - HorizontalPadding * 2;
+        int columnGap = 52;
+        int columnWidth = (contentWidth - columnGap) / 2;
+        int detailsY = this.yPositionOnScreen + 132 + 112;
+        if (task == NamedFarmTask.Harvesting)
+        {
+            this.DestinationButton = new ClickableComponent(
+                new Rectangle(
+                    this.xPositionOnScreen + HorizontalPadding,
+                    detailsY + 202,
+                    columnWidth,
+                    38),
+                this.GetDestinationText());
+            this.DestinationButton.myID = 102;
+            this.DestinationButton.downNeighborID = 101;
+            this.ConfirmButton.upNeighborID = 102;
+        }
+
         this.allClickableComponents = new List<ClickableComponent> { this.BackButton, this.ConfirmButton };
+        if (this.DestinationButton is not null)
+            this.allClickableComponents.Add(this.DestinationButton);
         if (this.upperRightCloseButton is not null)
             this.allClickableComponents.Add(this.upperRightCloseButton);
 
@@ -77,10 +99,20 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
+        if (this.DestinationButton?.containsPoint(x, y) == true)
+        {
+            this.DestinationMode = this.DestinationMode == HarvestDestinationMode.ClassifiedChests
+                ? HarvestDestinationMode.RequesterInventory
+                : HarvestDestinationMode.ClassifiedChests;
+            this.DestinationButton.name = this.GetDestinationText();
+            Game1.playSound("shwip");
+            return;
+        }
+
         if (this.ConfirmButton.containsPoint(x, y))
         {
             Game1.playSound("smallSelect");
-            if (this.ConfirmContract())
+            if (this.ConfirmContract(this.DestinationMode))
                 Game1.activeClickableMenu = null;
             return;
         }
@@ -177,6 +209,17 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
             hearts = this.Preview.FriendshipHearts,
             band = this.GetFriendshipBandText()
         }));
+        if (this.Task == NamedFarmTask.Harvesting)
+        {
+            this.DrawDetailRow(
+                batch,
+                contentX,
+                detailsY + 210,
+                columnWidth,
+                "contract.destination.toggle",
+                this.GetDestinationText(),
+                highlight: true);
+        }
 
         this.DrawDetailRow(batch, rightColumnX, detailsY, columnWidth, "contract.friendship-multiplier", FormatMultiplier(this.Preview.FriendshipMultiplier));
         this.DrawDetailRow(batch, rightColumnX, detailsY + 42, columnWidth, "contract.day-multiplier", FormatMultiplier(this.Preview.DayMultiplier));
@@ -328,6 +371,14 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
             multiplier = FormatMultiplier(this.Preview.EfficiencyMultiplier),
             reason = this.Translation.Get(reasonKey)
         });
+    }
+
+    private string GetDestinationText()
+    {
+        return this.Translation.Get(
+            this.DestinationMode == HarvestDestinationMode.RequesterInventory
+                ? "contract.destination.requester"
+                : "contract.destination.chests");
     }
 
     private static string FormatMultiplier(decimal multiplier)

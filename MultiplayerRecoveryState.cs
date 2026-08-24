@@ -20,6 +20,7 @@ internal static class MultiplayerRecoveryState
     private const int LegacyHandshakeProtocolSchemaVersion = 3;
     private const int LegacyQuarantineProtocolSchemaVersion = 4;
     private const int LegacyPlacementProtocolSchemaVersion = 5;
+    private const int LegacyEfficiencyProtocolSchemaVersion = 6;
 
     public static MultiplayerRecoverySaveData Create(
         string modVersion,
@@ -123,12 +124,13 @@ internal static class MultiplayerRecoveryState
     private static bool IsSupportedProtocolSchemaVersion(int protocolSchemaVersion)
     {
         // Protocol 4 only adds the reconnect sync nonce. Protocol 5 adds a nonnegative
-        // quarantine destination count. Protocol 6 adds efficiency only to live snapshots,
-        // which are never persisted here. Persisted transaction identities remain compatible
-        // after full validation.
+        // quarantine destination count. Protocol 6 adds efficiency only to live snapshots.
+        // Protocol 7 adds a harvest destination whose zero value preserves legacy classified-
+        // chest behavior. Persisted transaction identities remain compatible after validation.
         return protocolSchemaVersion is LegacyHandshakeProtocolSchemaVersion
             or LegacyQuarantineProtocolSchemaVersion
             or LegacyPlacementProtocolSchemaVersion
+            or LegacyEfficiencyProtocolSchemaVersion
             or MultiplayerContractProtocol.SchemaVersion;
     }
 
@@ -168,6 +170,9 @@ internal static class MultiplayerRecoveryState
             || string.IsNullOrWhiteSpace(result.WorkerName)
             || result.WorkerName.Length > 100
             || !Enum.IsDefined(result.Task)
+            || !HarvestDestinationPolicy.IsValidForTask(
+                result.Task,
+                result.HarvestDestination)
             || result.CompletedWork < 0
             || (result.Succeeded && result.CompletedWork == 0)
             || result.PlayerItems < 0
