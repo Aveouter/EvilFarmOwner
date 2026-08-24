@@ -11,6 +11,12 @@ List<(string Name, Action Test)> tests = new()
     ("worker efficiency fallback", TestWorkerEfficiencyFallback),
     ("worker efficiency timing", TestWorkerEfficiencyTiming),
     ("worker efficiency contract snapshot", TestWorkerEfficiencyContractSnapshot),
+    ("recurring contract state validation", TestRecurringContractStateValidation),
+    ("recurring contract candidate pool", TestRecurringContractCandidatePool),
+    ("recurring contract ranking", TestRecurringContractRanking),
+    ("recurring contract budget gates", TestRecurringContractBudgetGates),
+    ("recurring contract daily idempotency", TestRecurringContractDailyIdempotency),
+    ("recurring contract persistence", TestRecurringContractPersistence),
     ("pre-dispatch settlement", TestPreDispatchSettlement),
     ("dispatched one-hour settlement", TestDispatchedSettlement),
     ("elapsed multi-hour settlement", TestElapsedMultiHourSettlement),
@@ -167,6 +173,123 @@ static void TestWorkerEfficiencyContractSnapshot()
     Equal(WorkerEfficiencyBackground.ManualFieldwork, first.EfficiencyBackground);
     Equal(1.05m, harvesting.EfficiencyMultiplier);
     Equal(first.MaximumAuthorizedWage, harvesting.MaximumAuthorizedWage);
+}
+
+static void TestRecurringContractStateValidation()
+{
+    RecurringContractSaveData valid = NewRecurringContractState();
+    Equal(true, RecurringContractPolicy.IsValid(valid));
+
+    RecurringContractSaveData wrongSchema = NewRecurringContractState();
+    wrongSchema.SchemaVersion++;
+    Equal(false, RecurringContractPolicy.IsValid(wrongSchema));
+
+    RecurringContractSaveData unknownWorker = NewRecurringContractState();
+    unknownWorker.Template!.PreferredWorkerName = "UnknownCustomNpc";
+    Equal(false, RecurringContractPolicy.IsValid(unknownWorker));
+
+    RecurringContractSaveData duplicateSubstitute = NewRecurringContractState();
+    duplicateSubstitute.Template!.ApprovedSubstituteNames = new[] { "Leah", "leah" };
+    Equal(false, RecurringContractPolicy.IsValid(duplicateSubstitute));
+
+    RecurringContractSaveData widenedFixedPool = NewRecurringContractState();
+    widenedFixedPool.Template!.WorkerMode = RecurringWorkerMode.FixedWorkerOnly;
+    Equal(false, RecurringContractPolicy.IsValid(widenedFixedPool));
+
+    RecurringContractSaveData invalidRestCap = NewRecurringContractState();
+    invalidRestCap.Template!.MaximumRestDayGold = 500;
+    Equal(false, RecurringContractPolicy.IsValid(invalidRestCap));
+
+    RecurringContractSaveData mismatchedRun = NewRecurringContractState();
+    mismatchedRun.Template!.LastRunId = Guid.NewGuid().ToString("N");
+    Equal(false, RecurringContractPolicy.IsValid(mismatchedRun));
+
+    RecurringContractSaveData completed = NewRecurringContractState();
+    string runId = Guid.NewGuid().ToString("N");
+    completed.Template!.LastRunId = runId;
+    completed.Template.LastEvaluation = new RecurringEvaluationData
+    {
+        TotalDays = 11,
+        RunId = runId,
+        Status = RecurringEvaluationStatus.Completed,
+        SelectedWorkerName = "Alex",
+        AuthorizedGold = 720,
+        CompletedWork = 12,
+        ChargedGold = 120,
+        RefundedGold = 600
+    };
+    Equal(true, RecurringContractPolicy.IsValid(completed));
+    completed.Template.LastEvaluation.RefundedGold = 601;
+    Equal(false, RecurringContractPolicy.IsValid(completed));
+
+    RecurringContractSaveData nullReason = NewRecurringContractState();
+    nullReason.Template!.LastEvaluation.ReasonKey = null!;
+    Equal(false, RecurringContractPolicy.IsValid(nullReason));
+}
+
+static void TestRecurringContractCandidatePool()
+{
+    RecurringContractTemplateData template = NewRecurringContractState().Template!;
+    IReadOnlyList<string> names = RecurringContractPolicy.GetAuthorizedWorkerNames(template);
+    Equal(3, names.Count);
+    Equal("Alex", names[0]);
+    Equal("Leah", names[1]);
+    Equal("Robin", names[2]);
+
+    template.WorkerMode = RecurringWorkerMode.FixedWorkerOnly;
+    template.ApprovedSubstituteNames = Array.Empty<string>();
+    names = RecurringContractPolicy.GetAuthorizedWorkerNames(template);
+    Equal(1, names.Count);
+    Equal("Alex", names[0]);
+}
+
+static void TestRecurringContractRanking()
+{
+    RecurringWorkerCandidate[] preferredPool =
+    {
+        new("Leah", false, 1.10m, 540, 8, true),
+        new("Alex", true, 1.05m, 720, 0, false)
+    };
+    Equal("Alex", RecurringContractPolicy.SelectCandidate(preferredPool)!.WorkerName);
+
+    RecurringWorkerCandidate[] substitutePool =
+    {
+        new("Robin", false, 1.05m, 600, 4, false),
+        new("Leah", false, 1.10m, 720, 0, false),
+        new("Linus", false, 1.10m, 600, 4, false)
+    };
+    Equal("Linus", RecurringContractPolicy.SelectCandidate(substitutePool)!.WorkerName);
+    Equal(true, RecurringContractPolicy.SelectCandidate(Array.Empty<RecurringWorkerCandidate>()) is null);
+}
+
+static void TestRecurringContractBudgetGates()
+{
+    Equal(RecurringBudgetFailure.None, RecurringContractPolicy.CheckBudget(600, 600, 600));
+    Equal(RecurringBudgetFailure.ExceedsAuthorizedCap, RecurringContractPolicy.CheckBudget(601, 600, 1000));
+    Equal(RecurringBudgetFailure.InsufficientFunds, RecurringContractPolicy.CheckBudget(600, 720, 599));
+    Equal(RecurringBudgetFailure.ExceedsAuthorizedCap, RecurringContractPolicy.CheckBudget(0, 720, 1000));
+}
+
+static void TestRecurringContractDailyIdempotency()
+{
+    Equal(true, RecurringContractPolicy.CanWaitForEvaluation(true, 12, 11, 610));
+    Equal(true, RecurringContractPolicy.CanWaitForEvaluation(true, 12, 11, 1600));
+    Equal(false, RecurringContractPolicy.CanWaitForEvaluation(true, 12, 12, 900));
+    Equal(false, RecurringContractPolicy.CanWaitForEvaluation(false, 12, 11, 900));
+    Equal(false, RecurringContractPolicy.CanWaitForEvaluation(true, 12, 11, 600));
+    Equal(false, RecurringContractPolicy.CanWaitForEvaluation(true, 12, 11, 1610));
+}
+
+static void TestRecurringContractPersistence()
+{
+    RecurringContractSaveData source = NewRecurringContractState();
+    string json = JsonSerializer.Serialize(source);
+    RecurringContractSaveData? restored = JsonSerializer.Deserialize<RecurringContractSaveData>(json);
+    Equal(true, RecurringContractPolicy.IsValid(restored));
+    Equal("Alex", restored!.Template!.PreferredWorkerName);
+    Equal(NamedFarmTask.Harvesting, restored.Template.Task);
+    Equal(2, restored.Template.ApprovedSubstituteNames.Length);
+    Equal(2160, restored.Template.MaximumRestDayGold);
 }
 
 static void TestPreDispatchSettlement()
@@ -1366,6 +1489,29 @@ static ContractStartRequestMessage NewMultiplayerRequest(long playerId)
         RequestingPlayerId = playerId,
         WorkerName = "Leah",
         Task = NamedFarmTask.Watering
+    };
+}
+
+static RecurringContractSaveData NewRecurringContractState()
+{
+    return new RecurringContractSaveData
+    {
+        SchemaVersion = RecurringContractPolicy.SchemaVersion,
+        Template = new RecurringContractTemplateData
+        {
+            Enabled = true,
+            Task = NamedFarmTask.Harvesting,
+            PreferredWorkerName = "Alex",
+            WorkerMode = RecurringWorkerMode.PreferredWithApprovedSubstitutes,
+            ApprovedSubstituteNames = new[] { "Leah", "Robin" },
+            MaximumRegularDayGold = 720,
+            AllowRestDays = true,
+            MaximumRestDayGold = 2160,
+            LastProcessedTotalDays = 11,
+            LastRunId = "",
+            PreviousSelectedWorkerName = "Leah",
+            LastEvaluation = new RecurringEvaluationData()
+        }
     };
 }
 
