@@ -15,6 +15,7 @@ public sealed class ModEntry : Mod
     private WorkerRosterService? WorkerRoster;
     private WateringContractExecutionController? WateringContracts;
     private HarvestingContractExecutionController? HarvestingContracts;
+    private StorageSortRecoveryManager? StorageSortRecovery;
     private MultiplayerContractCoordinator? MultiplayerContracts;
     private RecurringContractCoordinator? RecurringContracts;
     private readonly HarvestAcceptanceFaults AcceptanceFaults = new();
@@ -34,6 +35,7 @@ public sealed class ModEntry : Mod
             this.Monitor,
             this.WorkerRoster,
             this.AcceptanceFaults);
+        this.StorageSortRecovery = new StorageSortRecoveryManager(this.Monitor);
         this.MultiplayerContracts = new MultiplayerContractCoordinator(
             helper,
             this.ModManifest,
@@ -167,6 +169,7 @@ public sealed class ModEntry : Mod
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
+        this.StorageSortRecovery?.OnSaveLoaded();
         this.HarvestingContracts?.OnSaveLoaded();
         this.MultiplayerContracts?.OnSaveLoaded();
         this.RecurringContracts?.OnSaveLoaded();
@@ -261,6 +264,7 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.Update();
         this.HarvestingContracts?.Update();
+        this.StorageSortRecovery?.Update();
         this.MultiplayerContracts?.Update();
         this.RecurringContracts?.Update(this.HasActiveNamedContract());
     }
@@ -295,6 +299,7 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.OnReturnedToTitle();
         this.HarvestingContracts?.OnReturnedToTitle();
+        this.StorageSortRecovery?.OnReturnedToTitle();
         this.MultiplayerContracts?.Update();
         this.MultiplayerContracts?.OnReturnedToTitle();
         this.RecurringContracts?.OnReturnedToTitle();
@@ -477,7 +482,8 @@ public sealed class ModEntry : Mod
             return;
         }
 
-        if (this.HarvestingContracts?.TryRecoverQuarantinedCargo() != true)
+        if (this.StorageSortRecovery?.TryRecover() != true
+            || this.HarvestingContracts?.TryRecoverQuarantinedCargo() != true)
             return;
 
         NetMutex mutex = Game1.player.team.GetOrCreateGlobalInventoryMutex(
