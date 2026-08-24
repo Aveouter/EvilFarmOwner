@@ -5,6 +5,11 @@
     <AssemblyName>EvilFarmOwner</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <EnableAcceptanceFaults Condition="'$(EnableAcceptanceFaults)' == ''">false</EnableAcceptanceFaults>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(EnableAcceptanceFaults)' == 'true'">
+    <DefineConstants>$(DefineConstants);EFO_ACCEPTANCE_FAULTS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

@@ -17,6 +17,8 @@ internal static class MultiplayerRecoveryState
 {
     public const int SchemaVersion = 1;
     public const string SaveDataKey = "multiplayer-recovery";
+    private const int LegacyHandshakeProtocolSchemaVersion = 3;
+    private const int LegacyQuarantineProtocolSchemaVersion = 4;
 
     public static MultiplayerRecoverySaveData Create(
         string modVersion,
@@ -56,7 +58,7 @@ internal static class MultiplayerRecoveryState
     {
         if (state is null
             || state.SchemaVersion != SchemaVersion
-            || state.ProtocolSchemaVersion != MultiplayerContractProtocol.SchemaVersion
+            || !IsSupportedProtocolSchemaVersion(state.ProtocolSchemaVersion)
             || string.IsNullOrWhiteSpace(state.ModVersion)
             || state.SaveId != expectedSaveId
             || !state.IsClean
@@ -70,7 +72,7 @@ internal static class MultiplayerRecoveryState
         Dictionary<(long PlayerId, string RequestId), ContractStartResponseMessage> accepted = new();
         foreach (ContractStartResponseMessage response in state.ProcessedRequests)
         {
-            if (!IsValidResponse(response, expectedSaveId)
+            if (!IsValidResponse(response, expectedSaveId, state.ProtocolSchemaVersion)
                 || !requestKeys.Add((response.RequestingPlayerId, response.RequestId)))
                 return false;
 
@@ -81,7 +83,7 @@ internal static class MultiplayerRecoveryState
         HashSet<long> resultPlayers = new();
         foreach (ContractResultMessage result in state.RecentResults)
         {
-            if (!IsValidResult(result, expectedSaveId)
+            if (!IsValidResult(result, expectedSaveId, state.ProtocolSchemaVersion)
                 || !resultPlayers.Add(result.RequestingPlayerId)
                 || !accepted.TryGetValue(
                     (result.RequestingPlayerId, result.RequestId),
@@ -117,10 +119,23 @@ internal static class MultiplayerRecoveryState
         result.StateVersion = stateVersion;
     }
 
-    private static bool IsValidResponse(ContractStartResponseMessage? response, ulong expectedSaveId)
+    private static bool IsSupportedProtocolSchemaVersion(int protocolSchemaVersion)
+    {
+        // Protocol 4 only adds the reconnect sync nonce. Protocol 5 adds a nonnegative
+        // quarantine destination count which defaults to zero in older result payloads.
+        // Their persisted transaction identities remain compatible after full validation.
+        return protocolSchemaVersion is LegacyHandshakeProtocolSchemaVersion
+            or LegacyQuarantineProtocolSchemaVersion
+            or MultiplayerContractProtocol.SchemaVersion;
+    }
+
+    private static bool IsValidResponse(
+        ContractStartResponseMessage? response,
+        ulong expectedSaveId,
+        int expectedProtocolSchemaVersion)
     {
         return response is not null
-            && response.SchemaVersion == MultiplayerContractProtocol.SchemaVersion
+            && response.SchemaVersion == expectedProtocolSchemaVersion
             && response.SaveId == expectedSaveId
             && !string.IsNullOrWhiteSpace(response.HostSessionId)
             && response.HostOrder > 0
@@ -133,35 +148,71 @@ internal static class MultiplayerRecoveryState
                     && !string.IsNullOrWhiteSpace(response.ReasonKey));
     }
 
-    private static bool IsValidResult(ContractResultMessage? result, ulong expectedSaveId)
+    private static bool IsValidResult(
+        ContractResultMessage? result,
+        ulong expectedSaveId,
+        int expectedProtocolSchemaVersion)
     {
-        return result is not null
-            && result.SchemaVersion == MultiplayerContractProtocol.SchemaVersion
-            && result.SaveId == expectedSaveId
-            && !string.IsNullOrWhiteSpace(result.HostSessionId)
-            && Guid.TryParseExact(result.ContractId, "N", out _)
-            && result.Sequence > 0
-            && result.StateVersion > 0
-            && Guid.TryParseExact(result.RequestId, "N", out _)
-            && result.RequestingPlayerId > 0
-            && !string.IsNullOrWhiteSpace(result.WorkerName)
-            && Enum.IsDefined(result.Task)
-            && result.CompletedWork >= 0
-            && result.PlayerItems >= 0
-            && result.ChestItems >= 0
-            && result.OverflowItems >= 0
-            && result.DroppedItems >= 0
-            && result.BillableHours >= 0
-            && result.ChargedGold >= 0
-            && result.RefundedGold >= 0
-            && result.ProducedItems is not null
-            && result.CompletedTransferIds is not null
-            && result.ProducedItems.All(item => item is not null
-                && Guid.TryParseExact(item.TransferId, "N", out _)
-                && !string.IsNullOrWhiteSpace(item.QualifiedItemId)
-                && !string.IsNullOrWhiteSpace(item.DisplayName)
-                && item.Quality >= 0
-                && item.Stack > 0)
-            && result.CompletedTransferIds.All(id => Guid.TryParseExact(id, "N", out _));
+        if (result is null
+            || result.SchemaVersion != expectedProtocolSchemaVersion
+            || result.SaveId != expectedSaveId
+            || string.IsNullOrWhiteSpace(result.HostSessionId)
+            || !Guid.TryParseExact(result.ContractId, "N", out _)
+            || result.Sequence <= 0
+            || result.StateVersion <= 0
+            || !Guid.TryParseExact(result.RequestId, "N", out _)
+            || result.RequestingPlayerId <= 0
+            || string.IsNullOrWhiteSpace(result.WorkerName)
+            || result.WorkerName.Length > 100
+            || !Enum.IsDefined(result.Task)
+            || result.CompletedWork < 0
+            || (result.Succeeded && result.CompletedWork == 0)
+            || result.PlayerItems < 0
+            || result.ChestItems < 0
+            || result.OverflowItems < 0
+            || result.QuarantinedItems < 0
+            || result.DroppedItems < 0
+            || result.BillableHours < 0
+            || result.BillableHours > ContractPreviewService.RegularShiftHours
+            || (result.Succeeded && result.BillableHours == 0)
+            || result.ChargedGold < 0
+            || result.RefundedGold < 0
+            || (result.Succeeded
+                ? !string.IsNullOrWhiteSpace(result.ReasonKey)
+                : string.IsNullOrWhiteSpace(result.ReasonKey))
+            || result.ProducedItems is null
+            || result.CompletedTransferIds is null)
+            return false;
+
+        HashSet<string> producedTransferIds = new(StringComparer.Ordinal);
+        long producedItems = 0;
+        foreach (ContractCargoSnapshotMessage item in result.ProducedItems)
+        {
+            if (item is null
+                || !Guid.TryParseExact(item.TransferId, "N", out _)
+                || !producedTransferIds.Add(item.TransferId)
+                || string.IsNullOrWhiteSpace(item.QualifiedItemId)
+                || string.IsNullOrWhiteSpace(item.DisplayName)
+                || item.Quality < 0
+                || item.Stack <= 0)
+                return false;
+
+            producedItems += item.Stack;
+        }
+
+        HashSet<string> completedTransferIds = new(StringComparer.Ordinal);
+        foreach (string transferId in result.CompletedTransferIds)
+        {
+            if (!Guid.TryParseExact(transferId, "N", out _)
+                || !completedTransferIds.Add(transferId))
+                return false;
+        }
+
+        long placedItems = (long)result.PlayerItems
+            + result.ChestItems
+            + result.OverflowItems
+            + result.QuarantinedItems
+            + result.DroppedItems;
+        return producedItems == placedItems;
     }
 }
