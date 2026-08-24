@@ -25,7 +25,7 @@ List<(string Name, Action Test)> tests = new()
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
-    ("harvest fallback capacity ordering", TestHarvestFallbackCapacityOrdering),
+    ("harvest route cost before spare capacity", TestHarvestRouteCostBeforeSpareCapacity),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest overflow fallback", TestHarvestOverflowFallback),
@@ -388,7 +388,7 @@ static void TestHarvestChestFullAcceptance()
     Equal(true, ordered[0].CanFullyAccept);
 }
 
-static void TestHarvestFallbackCapacityOrdering()
+static void TestHarvestRouteCostBeforeSpareCapacity()
 {
     HarvestChestOption[] options =
     {
@@ -398,8 +398,8 @@ static void TestHarvestFallbackCapacityOrdering()
     };
 
     IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
-    Equal(new GridPoint(8, 8), ordered[0].ChestTile);
-    Equal(new GridPoint(2, 2), ordered[1].ChestTile);
+    Equal(new GridPoint(2, 2), ordered[0].ChestTile);
+    Equal(new GridPoint(8, 8), ordered[1].ChestTile);
     Equal(new GridPoint(1, 1), ordered[2].ChestTile);
 }
 

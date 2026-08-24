@@ -11,6 +11,7 @@
 - Added vanilla-compatible harvest capture for exact quality, quantity, regrowth, metadata, and by-products.
 - Fixed regrowing crop capture by treating `Crop.harvest`'s return value as the crop-removal signal while using captured items as the success source of truth.
 - Added deterministic chest ranking, mutex-protected partial delivery, persistent team overflow, replay protection, and explicit emergency ground drops.
+- Aligned same-tier chest selection with the approved rule: full acceptance, shortest reachable route, greater capacity, then stable tile order.
 - Fixed dense-field routing by using vanilla live crop collision instead of spawn suitability; ordinary crop tiles are traversable while trellises remain blocking.
 - Changed worker arrival to prefer the right/east farm entrance and use other genuine boundary entrances only as safe fallbacks.
 - Added runtime entrance failover so a worker stalled on the first live step excludes that side instead of retrying every crop edge.

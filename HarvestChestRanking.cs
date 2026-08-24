@@ -26,8 +26,8 @@ internal static class HarvestChestRanking
         return options
             .OrderBy(option => option.MatchKind)
             .ThenByDescending(option => option.CanFullyAccept)
-            .ThenByDescending(option => option.AcceptableCapacity)
             .ThenBy(option => option.TravelDistance)
+            .ThenByDescending(option => option.AcceptableCapacity)
             .ThenBy(option => option.ChestTile.Y)
             .ThenBy(option => option.ChestTile.X)
             .ThenBy(option => option.InteractionTile.Y)
