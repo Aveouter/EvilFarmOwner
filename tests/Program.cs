@@ -1,4 +1,5 @@
 using EvilFarmOwner;
+using System.Text.Json;
 
 List<(string Name, Action Test)> tests = new()
 {
@@ -9,13 +10,44 @@ List<(string Name, Action Test)> tests = new()
     ("dispatched one-hour settlement", TestDispatchedSettlement),
     ("elapsed multi-hour settlement", TestElapsedMultiHourSettlement),
     ("target ordering", TestTargetOrdering),
-    ("left entrance selection", TestLeftEntranceSelection),
+    ("dry crop eligibility", TestDryCropEligibility),
+    ("actual path cost ordering", TestActualPathCostOrdering),
+    ("trellis detour route", TestTrellisDetourRoute),
+    ("failed interaction edge isolation", TestFailedInteractionEdgeIsolation),
+    ("controller path skips current tile", TestControllerPathSkipsCurrentTile),
+    ("destination tile alignment", TestDestinationTileAlignment),
+    ("travel progress watchdog", TestTravelProgressWatchdog),
+    ("NPC protected activity policy", TestNpcProtectedActivityPolicy),
+    ("path first-step offsets", TestPathFirstStepOffsets),
+    ("external boundary arrival ordering", TestExternalBoundaryArrivalOrdering),
+    ("right entrance priority", TestRightEntrancePriority),
+    ("stalled entrance fallback ordering", TestStalledEntranceFallbackOrdering),
+    ("nearest arrival boundary side", TestNearestArrivalBoundarySide),
+    ("NPC lease recovery policy", TestNpcLeaseRecoveryPolicy),
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
+    ("harvest semantic groups", TestHarvestSemanticGroups),
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
+    ("harvest route cost before spare capacity", TestHarvestRouteCostBeforeSpareCapacity),
     ("harvest partial remainder", TestHarvestPartialRemainder),
+    ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest overflow fallback", TestHarvestOverflowFallback),
-    ("harvest transfer replay protection", TestHarvestTransferReplayProtection)
+    ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
+    ("harvest placement conservation", TestHarvestPlacementConservation),
+    ("harvest quarantine recovery state", TestHarvestQuarantineRecoveryState),
+    ("harvest acceptance fault controls", TestHarvestAcceptanceFaultControls),
+    ("emergency drop tile ordering", TestEmergencyDropTileOrdering),
+    ("multiplayer request authorization", TestMultiplayerRequestAuthorization),
+    ("multiplayer request replay", TestMultiplayerRequestReplay),
+    ("multiplayer deterministic order", TestMultiplayerDeterministicOrder),
+    ("multiplayer reconnect ledger", TestMultiplayerReconnectLedger),
+    ("multiplayer restart recovery state", TestMultiplayerRestartRecoveryState),
+    ("multiplayer host session handshake", TestMultiplayerHostSessionHandshake),
+    ("multiplayer sync handshake serialization", TestMultiplayerSyncHandshakeSerialization),
+    ("multiplayer stale snapshot rejection", TestMultiplayerStaleSnapshotRejection),
+    ("multiplayer stale sync-state rejection", TestMultiplayerStaleSyncStateRejection),
+    ("multiplayer snapshot serialization", TestMultiplayerSnapshotSerialization),
+    ("multiplayer result serialization", TestMultiplayerResultSerialization)
 };
 
 int failures = 0;
@@ -92,35 +124,305 @@ static void TestElapsedMultiHourSettlement()
 
 static void TestTargetOrdering()
 {
-    GridPoint start = new(5, 5);
-    WateringTargetOption[] unordered =
+    FarmTaskRouteOption[] unordered =
     {
-        new(new GridPoint(9, 5), new GridPoint(8, 5)),
-        new(new GridPoint(5, 7), new GridPoint(5, 6)),
-        new(new GridPoint(4, 6), new GridPoint(5, 6)),
-        new(new GridPoint(2, 5), new GridPoint(3, 5))
+        new(new GridPoint(9, 5), new GridPoint(8, 5), PathCost: 3),
+        new(new GridPoint(5, 7), new GridPoint(5, 6), PathCost: 2),
+        new(new GridPoint(4, 6), new GridPoint(5, 6), PathCost: 2),
+        new(new GridPoint(2, 5), new GridPoint(3, 5), PathCost: 3)
     };
 
-    IReadOnlyList<WateringTargetOption> ordered = WateringTargetSelection.Order(start, unordered);
+    IReadOnlyList<FarmTaskRouteOption> ordered = FarmTaskRouteSelection.Order(unordered);
     Equal(new GridPoint(4, 6), ordered[0].Target);
     Equal(new GridPoint(5, 7), ordered[1].Target);
     Equal(new GridPoint(2, 5), ordered[2].Target);
     Equal(new GridPoint(9, 5), ordered[3].Target);
 }
 
-static void TestLeftEntranceSelection()
+static void TestDryCropEligibility()
 {
-    GridPoint selected = FarmEntranceSelection.SelectLeftEntrance(
-        mapWidth: 100,
-        mapHeight: 80,
+    Equal(true, WateringTargetPlanner.IsEligibleDryCropState(
+        hasCrop: true,
+        isDead: false,
+        isWatered: false));
+    Equal(false, WateringTargetPlanner.IsEligibleDryCropState(
+        hasCrop: true,
+        isDead: true,
+        isWatered: false));
+    Equal(false, WateringTargetPlanner.IsEligibleDryCropState(
+        hasCrop: true,
+        isDead: false,
+        isWatered: true));
+    Equal(false, WateringTargetPlanner.IsEligibleDryCropState(
+        hasCrop: false,
+        isDead: false,
+        isWatered: false));
+}
+
+static void TestActualPathCostOrdering()
+{
+    FarmTaskRouteOption[] options =
+    {
+        new(new GridPoint(2, 0), new GridPoint(1, 0), PathCost: 10),
+        new(new GridPoint(6, 0), new GridPoint(5, 0), PathCost: 5),
+        new(new GridPoint(5, 1), new GridPoint(5, 0), PathCost: 5)
+    };
+
+    IReadOnlyList<FarmTaskRouteOption> ordered = FarmTaskRouteSelection.Order(options);
+    Equal(new GridPoint(6, 0), ordered[0].Target);
+    Equal(new GridPoint(5, 1), ordered[1].Target);
+    Equal(new GridPoint(2, 0), ordered[2].Target);
+}
+
+static void TestTrellisDetourRoute()
+{
+    HashSet<GridPoint> blocked = new()
+    {
+        new(3, 0),
+        new(3, 1),
+        new(3, 2),
+        new(3, 3)
+    };
+    GridRouteMap routes = GridRouteMap.Build(
+        width: 7,
+        height: 5,
+        start: new GridPoint(0, 2),
+        isPassable: tile => !blocked.Contains(tile));
+
+    Equal(false, routes.IsReachable(new GridPoint(3, 2)));
+    Equal(true, routes.TryGetDistance(new GridPoint(4, 2), out int distance));
+    Equal(8, distance);
+    Equal(true, routes.TryGetPath(new GridPoint(4, 2), out IReadOnlyList<GridPoint> path));
+    Equal(new GridPoint(0, 2), path[0]);
+    Equal(new GridPoint(4, 2), path[^1]);
+    Equal(9, path.Count);
+}
+
+static void TestFailedInteractionEdgeIsolation()
+{
+    FarmTaskRouteEdge blocked = new(
+        new GridPoint(8, 8),
+        new GridPoint(8, 9));
+    HashSet<FarmTaskRouteEdge> failed = new() { blocked };
+
+    Equal(true, failed.Contains(blocked));
+    Equal(false, failed.Contains(new FarmTaskRouteEdge(
+        new GridPoint(8, 8),
+        new GridPoint(7, 8))));
+}
+
+static void TestControllerPathSkipsCurrentTile()
+{
+    IReadOnlyList<GridPoint> steps = FarmNavigationMap.ToControllerSteps(new[]
+    {
+        new GridPoint(78, 15),
+        new GridPoint(77, 15),
+        new GridPoint(76, 15)
+    });
+
+    Equal(2, steps.Count);
+    Equal(new GridPoint(77, 15), steps[0]);
+    Equal(new GridPoint(76, 15), steps[1]);
+}
+
+static void TestDestinationTileAlignment()
+{
+    GridPoint pixel = FarmNavigationMap.GetAlignedCharacterPixel(new GridPoint(45, 32), 64);
+    Equal(new GridPoint(45 * 64, 32 * 64), pixel);
+}
+
+static void TestTravelProgressWatchdog()
+{
+    TravelProgressWatchdog watchdog = new();
+    watchdog.Reset(100f, 200f);
+    Equal(false, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
+    Equal(false, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
+    Equal(true, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
+    Equal(false, watchdog.Tick(102f, 200f, maximumStalledTicks: 3));
+}
+
+static void TestNpcProtectedActivityPolicy()
+{
+    Equal(false, NpcActivityPolicy.HasProtectedActivity(
+        doingEndOfRouteAnimation: false,
+        goingToDoEndOfRouteAnimation: false,
+        isWalkingInSquare: false,
+        hasSpriteAnimation: false,
+        movementPause: 0));
+
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, 1));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(true, false, false, false, 0));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, true, false, false, 0));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, true, false, 0));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, true, 0));
+    Equal(false, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, -1));
+
+    Equal(true, WorkerRosterPolicy.ShouldDisplay(WorkerAvailabilityState.EligibleForPreview));
+    Equal(false, WorkerRosterPolicy.ShouldDisplay(WorkerAvailabilityState.TemporarilyUnavailable));
+    Equal(false, WorkerRosterPolicy.ShouldDisplay(WorkerAvailabilityState.Ineligible));
+    Equal(false, WorkerRosterPolicy.ShouldDisplay(WorkerAvailabilityState.Unknown));
+}
+
+static void TestPathFirstStepOffsets()
+{
+    Equal(true, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(9, 10),
+        2,
+        out GridPoint left));
+    Equal(new GridPoint(-2, 0), left);
+
+    Equal(true, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(11, 10),
+        2,
+        out GridPoint right));
+    Equal(new GridPoint(2, 0), right);
+
+    Equal(true, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(10, 9),
+        2,
+        out GridPoint up));
+    Equal(new GridPoint(0, -2), up);
+
+    Equal(true, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(10, 11),
+        2,
+        out GridPoint down));
+    Equal(new GridPoint(0, 2), down);
+
+    Equal(false, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(11, 11),
+        2,
+        out _));
+    Equal(false, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(10, 10),
+        2,
+        out _));
+    Equal(false, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(11, 10),
+        0,
+        out _));
+}
+
+static void TestExternalBoundaryArrivalOrdering()
+{
+    IReadOnlyList<GridPoint> candidates = FarmEntranceSelection.OrderBoundaryArrivalCandidates(
+        mapWidth: 80,
+        mapHeight: 65,
         new[]
         {
-            new GridPoint(99, 20),
-            new GridPoint(40, 79),
-            new GridPoint(0, 24)
+            new GridPoint(34, 5), // interior cave warp
+            new GridPoint(41, -1), // backwoods
+            new GridPoint(40, 65), // forest
+            new GridPoint(80, 15) // bus stop
         });
 
-    Equal(new GridPoint(1, 24), selected);
+    Equal(new GridPoint(79, 15), candidates[0]);
+    int firstSouth = Array.FindIndex(
+        candidates.ToArray(),
+        candidate => FarmEntranceSelection.GetNearestBoundarySide(80, 65, candidate) == FarmBoundarySide.South);
+    int firstNorth = Array.FindIndex(
+        candidates.ToArray(),
+        candidate => FarmEntranceSelection.GetNearestBoundarySide(80, 65, candidate) == FarmBoundarySide.North);
+    Equal(true, firstSouth > 0);
+    Equal(new GridPoint(40, 64), candidates[firstSouth]);
+    Equal(true, firstNorth > firstSouth);
+    Equal(new GridPoint(41, 0), candidates[firstNorth]);
+    for (int index = 0; index < firstSouth; index++)
+    {
+        Equal(
+            FarmBoundarySide.East,
+            FarmEntranceSelection.GetNearestBoundarySide(80, 65, candidates[index]));
+    }
+    Equal(false, candidates.Contains(new GridPoint(34, 7)));
+}
+
+static void TestRightEntrancePriority()
+{
+    Equal(0, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.East));
+    Equal(1, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.South));
+    Equal(2, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.North));
+    Equal(3, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.West));
+}
+
+static void TestStalledEntranceFallbackOrdering()
+{
+    IReadOnlyList<GridPoint> candidates = FarmEntranceSelection.OrderBoundaryArrivalCandidates(
+        mapWidth: 80,
+        mapHeight: 65,
+        new[]
+        {
+            new GridPoint(41, -1),
+            new GridPoint(40, 65),
+            new GridPoint(80, 15)
+        },
+        excludedSides: new HashSet<FarmBoundarySide> { FarmBoundarySide.East });
+
+    Equal(new GridPoint(40, 64), candidates[0]);
+    Equal(false, candidates.Any(candidate =>
+        FarmEntranceSelection.GetNearestBoundarySide(80, 65, candidate) == FarmBoundarySide.East));
+}
+
+static void TestNearestArrivalBoundarySide()
+{
+    Equal(FarmBoundarySide.East, FarmEntranceSelection.GetNearestBoundarySide(
+        mapWidth: 80,
+        mapHeight: 65,
+        new GridPoint(78, 15)));
+    Equal(FarmBoundarySide.South, FarmEntranceSelection.GetNearestBoundarySide(
+        mapWidth: 80,
+        mapHeight: 65,
+        new GridPoint(40, 61)));
+    Equal(FarmBoundarySide.North, FarmEntranceSelection.GetNearestBoundarySide(
+        mapWidth: 80,
+        mapHeight: 65,
+        new GridPoint(41, 1)));
+}
+
+static void TestNpcLeaseRecoveryPolicy()
+{
+    Equal(
+        NpcLeaseRecoveryAction.Retry,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.ConflictingController,
+            deferredTicks: 0,
+            mustFinalizeNow: false));
+    Equal(
+        NpcLeaseRecoveryAction.Relinquish,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.ConflictingController,
+            NpcLeaseRecoveryPolicy.MaximumDeferredTicks,
+            mustFinalizeNow: false));
+    Equal(
+        NpcLeaseRecoveryAction.Relinquish,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.ConflictingController,
+            deferredTicks: 0,
+            mustFinalizeNow: true));
+    Equal(
+        NpcLeaseRecoveryAction.Complete,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.Restored,
+            deferredTicks: 0,
+            mustFinalizeNow: false));
+    Equal(
+        NpcLeaseRecoveryAction.Complete,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.LeaseOwnershipLost,
+            deferredTicks: 0,
+            mustFinalizeNow: false));
+    Equal(
+        NpcLeaseRecoveryAction.Complete,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.Relinquished,
+            deferredTicks: 0,
+            mustFinalizeNow: false));
 }
 
 static void TestSixHourWageCap()
@@ -138,13 +440,40 @@ static void TestHarvestChestMatchPriority()
     {
         new(new GridPoint(1, 1), new GridPoint(1, 2), HarvestChestMatchKind.SameItem, 999, 10, 1),
         new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.ExactStack, 1, 10, 20),
-        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.SameGroup, 999, 10, 2)
+        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.SameGroup, 999, 10, 2),
+        new(new GridPoint(3, 3), new GridPoint(3, 4), HarvestChestMatchKind.AvailableCapacity, 9999, 10, 1)
     };
 
     IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
     Equal(HarvestChestMatchKind.ExactStack, ordered[0].MatchKind);
     Equal(HarvestChestMatchKind.SameItem, ordered[1].MatchKind);
     Equal(HarvestChestMatchKind.SameGroup, ordered[2].MatchKind);
+    Equal(HarvestChestMatchKind.AvailableCapacity, ordered[3].MatchKind);
+}
+
+static void TestHarvestSemanticGroups()
+{
+    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.MetalResources,
+        HarvestItemCategory.BuildingResources));
+    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.Vegetable,
+        HarvestItemCategory.Fruit));
+    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.Seed,
+        HarvestItemCategory.Fertilizer));
+    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.Gem,
+        HarvestItemCategory.Mineral));
+    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.Clothing,
+        HarvestItemCategory.Boots));
+    Equal(false, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.Furniture,
+        HarvestItemCategory.Clothing));
+    Equal(false, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        leftCategory: 123456,
+        rightCategory: 123456));
 }
 
 static void TestHarvestChestFullAcceptance()
@@ -160,6 +489,21 @@ static void TestHarvestChestFullAcceptance()
     Equal(true, ordered[0].CanFullyAccept);
 }
 
+static void TestHarvestRouteCostBeforeSpareCapacity()
+{
+    HarvestChestOption[] options =
+    {
+        new(new GridPoint(1, 1), new GridPoint(1, 2), HarvestChestMatchKind.AvailableCapacity, 5, 10, 1),
+        new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.AvailableCapacity, 20, 10, 20),
+        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.AvailableCapacity, 12, 10, 2)
+    };
+
+    IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
+    Equal(new GridPoint(2, 2), ordered[0].ChestTile);
+    Equal(new GridPoint(8, 8), ordered[1].ChestTile);
+    Equal(new GridPoint(1, 1), ordered[2].ChestTile);
+}
+
 static void TestHarvestPartialRemainder()
 {
     Equal(6, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 4));
@@ -167,14 +511,254 @@ static void TestHarvestPartialRemainder()
     Equal(10, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 0));
 }
 
+static void TestRegrowingHarvestCaptureSemantics()
+{
+    Equal(true, ContractHarvestSemantics.HasCapturedOutput(
+        vanillaRequestsCropRemoval: false,
+        capturedItemCount: 3));
+    Equal(true, ContractHarvestSemantics.HasCapturedOutput(
+        vanillaRequestsCropRemoval: true,
+        capturedItemCount: 1));
+    Equal(false, ContractHarvestSemantics.HasCapturedOutput(
+        vanillaRequestsCropRemoval: false,
+        capturedItemCount: 0));
+    Equal(false, ContractHarvestSemantics.HasCapturedOutput(
+        vanillaRequestsCropRemoval: true,
+        capturedItemCount: 0));
+}
+
+static void TestHarvestPlacementConservation()
+{
+    Equal(true, HarvestPlacementAudit.IsBalanced(
+        harvested: 17,
+        playerInventory: 3,
+        chest: 7,
+        overflow: 4,
+        quarantine: 2,
+        dropped: 1,
+        unresolved: 0));
+    Equal(false, HarvestPlacementAudit.IsBalanced(
+        harvested: 17,
+        playerInventory: 3,
+        chest: 7,
+        overflow: 4,
+        quarantine: 2,
+        dropped: 2,
+        unresolved: 0));
+    Equal(true, HarvestPlacementAudit.IsBalanced(
+        harvested: 17,
+        playerInventory: 3,
+        chest: 7,
+        overflow: 4,
+        quarantine: 1,
+        dropped: 1,
+        unresolved: 1));
+}
+
+static void TestHarvestQuarantineRecoveryState()
+{
+    string contractId = Guid.NewGuid().ToString("N");
+    string firstTransfer = Guid.NewGuid().ToString("N");
+    string secondTransfer = Guid.NewGuid().ToString("N");
+    HarvestCargoRecoverySaveData state = HarvestCargoRecoveryState.Create(
+        445566,
+        contractId,
+        new[]
+        {
+            new HarvestCargoRecoveryItemData
+            {
+                TransferId = firstTransfer,
+                QualifiedItemId = "(O)24",
+                DisplayName = "Parsnip",
+                RuntimeType = "StardewValley.Object",
+                RuntimeAssembly = "Stardew Valley",
+                SerializedItemXml = "<Object />",
+                Quality = 2,
+                Stack = 3,
+                ModData = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["example/key"] = "value"
+                }
+            },
+            new HarvestCargoRecoveryItemData
+            {
+                TransferId = secondTransfer,
+                QualifiedItemId = "(O)188",
+                DisplayName = "Green Bean",
+                RuntimeType = "StardewValley.Object",
+                RuntimeAssembly = "Stardew Valley",
+                SerializedItemXml = "<Object />",
+                Stack = 2
+            }
+        });
+    Equal(true, HarvestCargoRecoveryState.IsValid(state, 445566));
+    Equal(5, HarvestCargoRecoveryState.CountItems(state));
+
+    string json = JsonSerializer.Serialize(state);
+    HarvestCargoRecoverySaveData? restored =
+        JsonSerializer.Deserialize<HarvestCargoRecoverySaveData>(json);
+    Equal(true, HarvestCargoRecoveryState.IsValid(restored, 445566));
+    Equal("value", restored!.Items[0].ModData["example/key"]);
+
+    restored.Items[1].TransferId = firstTransfer;
+    Equal(false, HarvestCargoRecoveryState.IsValid(restored, 445566));
+    restored.Items[1].TransferId = secondTransfer;
+    restored.Items[1].Stack = 0;
+    Equal(false, HarvestCargoRecoveryState.IsValid(restored, 445566));
+    restored.Items[1].Stack = 2;
+    Equal(false, HarvestCargoRecoveryState.IsValid(restored, 123));
+
+    Equal(true, HarvestCargoRecoveryState.IsSerializedPayloadValid("{}"));
+    Equal(false, HarvestCargoRecoveryState.IsSerializedPayloadValid(""));
+    Equal(false, HarvestCargoRecoveryState.IsSerializedPayloadValid(
+        new string('x', HarvestCargoRecoveryState.MaximumSerializedPayloadLength + 1)));
+
+    HarvestCargoRecoverySaveData excessiveModData = HarvestCargoRecoveryState.Create(
+        445566,
+        contractId,
+        new[]
+        {
+            new HarvestCargoRecoveryItemData
+            {
+                TransferId = Guid.NewGuid().ToString("N"),
+                QualifiedItemId = "(O)24",
+                DisplayName = "Parsnip",
+                RuntimeType = "StardewValley.Object",
+                RuntimeAssembly = "Stardew Valley",
+                SerializedItemXml = "<Object />",
+                Stack = 1,
+                ModData = Enumerable.Range(
+                        0,
+                        HarvestCargoRecoveryState.MaximumModDataEntriesPerItem + 1)
+                    .ToDictionary(index => $"key-{index}", index => $"value-{index}")
+            }
+        });
+    Equal(false, HarvestCargoRecoveryState.IsValid(excessiveModData, 445566));
+
+    HarvestCargoRecoverySaveData excessivePayload = HarvestCargoRecoveryState.Create(
+        445566,
+        contractId,
+        new[]
+        {
+            new HarvestCargoRecoveryItemData
+            {
+                TransferId = Guid.NewGuid().ToString("N"),
+                QualifiedItemId = "(O)24",
+                DisplayName = "Parsnip",
+                RuntimeType = "StardewValley.Object",
+                RuntimeAssembly = "Stardew Valley",
+                SerializedItemXml = new string(
+                    'x',
+                    HarvestCargoRecoveryState.MaximumSerializedPayloadLength / 2 + 1),
+                Stack = 1
+            },
+            new HarvestCargoRecoveryItemData
+            {
+                TransferId = Guid.NewGuid().ToString("N"),
+                QualifiedItemId = "(O)188",
+                DisplayName = "Green Bean",
+                RuntimeType = "StardewValley.Object",
+                RuntimeAssembly = "Stardew Valley",
+                SerializedItemXml = new string(
+                    'y',
+                    HarvestCargoRecoveryState.MaximumSerializedPayloadLength / 2 + 1),
+                Stack = 1
+            }
+        });
+    Equal(false, HarvestCargoRecoveryState.IsValid(excessivePayload, 445566));
+}
+
+static void TestHarvestAcceptanceFaultControls()
+{
+    HarvestAcceptanceFaults faults = new();
+    Equal("none", faults.Describe());
+    Equal(true, HarvestAcceptanceFaults.TryParse("overflow-lock", out HarvestAcceptanceFault overflow));
+    Equal(true, HarvestAcceptanceFaults.TryParse("VISIBLE-DROP", out HarvestAcceptanceFault visibleDrop));
+    Equal(true, HarvestAcceptanceFaults.TryParse("quarantine-lock", out HarvestAcceptanceFault quarantineLock));
+    Equal(true, HarvestAcceptanceFaults.TryParse("recovery-record-write", out HarvestAcceptanceFault recoveryWrite));
+    Equal(true, HarvestAcceptanceFaults.TryParse("quarantine-write", out HarvestAcceptanceFault quarantineWrite));
+    Equal(false, HarvestAcceptanceFaults.TryParse("unknown", out _));
+
+    faults.Arm(overflow);
+    faults.Arm(visibleDrop);
+    faults.Arm(quarantineLock);
+    faults.Arm(recoveryWrite);
+    faults.Arm(quarantineWrite);
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.OverflowLock));
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.VisibleDrop));
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.QuarantineLock));
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.RecoveryRecordWrite));
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.QuarantineWrite));
+    Equal(
+        "overflow-lock,visible-drop,quarantine-lock,recovery-record-write,quarantine-write",
+        faults.Describe());
+
+    faults.Clear();
+    Equal("none", faults.Describe());
+    Equal(false, faults.IsArmed(HarvestAcceptanceFault.OverflowLock));
+}
+
+static void TestEmergencyDropTileOrdering()
+{
+    HashSet<GridPoint> blocked = new()
+    {
+        new(4, 4),
+        new(4, 3),
+        new(3, 4)
+    };
+    GridPoint? selected = HarvestEmergencyDropSelection.FindNearest(
+        mapWidth: 10,
+        mapHeight: 10,
+        anchor: new GridPoint(4, 4),
+        isEligible: tile => !blocked.Contains(tile),
+        maximumRadius: 2);
+
+    Equal(new GridPoint(5, 4), selected!.Value);
+    Equal(true, HarvestEmergencyDropSelection.FindNearest(
+        mapWidth: 2,
+        mapHeight: 2,
+        anchor: new GridPoint(0, 0),
+        isEligible: _ => false,
+        maximumRadius: 1) is null);
+}
+
 static void TestHarvestOverflowFallback()
 {
     Equal(
+        HarvestFallbackDestination.Chest,
+        HarvestDeliveryFallback.Select(
+            hasEligibleChest: true,
+            requesterOnFarm: true,
+            playerInventoryCanAccept: true,
+            persistentOverflowAvailable: true));
+    Equal(
+        HarvestFallbackDestination.PlayerInventory,
+        HarvestDeliveryFallback.Select(
+            hasEligibleChest: false,
+            requesterOnFarm: true,
+            playerInventoryCanAccept: true,
+            persistentOverflowAvailable: true));
+    Equal(
         HarvestFallbackDestination.PersistentOverflow,
-        HarvestDeliveryFallback.Select(hasEligibleChest: false, persistentOverflowAvailable: true));
+        HarvestDeliveryFallback.Select(
+            hasEligibleChest: false,
+            requesterOnFarm: false,
+            playerInventoryCanAccept: true,
+            persistentOverflowAvailable: true));
+    Equal(
+        HarvestFallbackDestination.PersistentOverflow,
+        HarvestDeliveryFallback.Select(
+            hasEligibleChest: false,
+            requesterOnFarm: true,
+            playerInventoryCanAccept: false,
+            persistentOverflowAvailable: true));
     Equal(
         HarvestFallbackDestination.VisibleGroundDrop,
-        HarvestDeliveryFallback.Select(hasEligibleChest: false, persistentOverflowAvailable: false));
+        HarvestDeliveryFallback.Select(
+            hasEligibleChest: false,
+            requesterOnFarm: true,
+            playerInventoryCanAccept: false,
+            persistentOverflowAvailable: false));
 }
 
 static void TestHarvestTransferReplayProtection()
@@ -184,6 +768,490 @@ static void TestHarvestTransferReplayProtection()
     Equal(true, ledger.TryApply("transfer-1", () => applied++));
     Equal(false, ledger.TryApply("transfer-1", () => applied++));
     Equal(1, applied);
+}
+
+static void TestMultiplayerRequestAuthorization()
+{
+    long playerId = 112233;
+    ContractProtocolContext context = new(
+        ModVersion: "0.1.0",
+        SaveId: 445566,
+        TotalDays: 12,
+        KnownPlayerIds: new HashSet<long> { playerId });
+    ContractStartRequestMessage valid = NewMultiplayerRequest(playerId);
+
+    Equal(
+        ContractRequestValidationFailure.None,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.RequestingPlayerId = 998877;
+    Equal(
+        ContractRequestValidationFailure.SenderMismatch,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.RequestingPlayerId = playerId;
+    valid.ModVersion = "9.9.9";
+    Equal(
+        ContractRequestValidationFailure.WrongModVersion,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.ModVersion = "0.1.0";
+    valid.SaveId = 1;
+    Equal(
+        ContractRequestValidationFailure.WrongSave,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.SaveId = 445566;
+    valid.TotalDays = 11;
+    Equal(
+        ContractRequestValidationFailure.StaleDay,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.TotalDays = 12;
+    valid.Task = (NamedFarmTask)999;
+    Equal(
+    ContractRequestValidationFailure.InvalidTask,
+        ContractRequestValidator.Validate(valid, playerId, context));
+}
+
+static void TestMultiplayerRequestReplay()
+{
+    ProcessedContractRequestLedger ledger = new();
+    ContractStartResponseMessage first = NewStartResponse(playerId: 1, requestId: "request-a", order: 1);
+    ContractStartResponseMessage retry = NewStartResponse(playerId: 1, requestId: "request-a", order: 2);
+    ledger.Record(first);
+    ledger.Record(retry);
+
+    Equal(1, ledger.Count);
+    Equal(true, ledger.TryGet(1, "request-a", out ContractStartResponseMessage? stored));
+    Equal(1L, stored!.HostOrder);
+}
+
+static void TestMultiplayerDeterministicOrder()
+{
+    ProcessedContractRequestLedger ledger = new();
+    ledger.Record(NewStartResponse(playerId: 7, requestId: "first", order: 10));
+    ledger.Record(NewStartResponse(playerId: 7, requestId: "second", order: 11));
+
+    IReadOnlyList<ContractStartResponseMessage> responses = ledger.GetForPlayer(7);
+    Equal("first", responses[0].RequestId);
+    Equal("second", responses[1].RequestId);
+    Equal(10L, responses[0].HostOrder);
+    Equal(11L, responses[1].HostOrder);
+}
+
+static void TestMultiplayerReconnectLedger()
+{
+    ProcessedContractRequestLedger ledger = new(capacity: 2);
+    ledger.Record(NewStartResponse(playerId: 4, requestId: "old", order: 1));
+    ledger.Record(NewStartResponse(playerId: 5, requestId: "other", order: 2));
+    ledger.Record(NewStartResponse(playerId: 4, requestId: "recent", order: 3));
+
+    Equal(false, ledger.TryGet(4, "old", out _));
+    IReadOnlyList<ContractStartResponseMessage> reconnect = ledger.GetForPlayer(4);
+    Equal(1, reconnect.Count);
+    Equal("recent", reconnect[0].RequestId);
+}
+
+static void TestMultiplayerRestartRecoveryState()
+{
+    string requestId = Guid.NewGuid().ToString("N");
+    string contractId = Guid.NewGuid().ToString("N");
+    ContractStartResponseMessage response = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "old-host-session",
+        HostOrder = 8,
+        RequestId = requestId,
+        RequestingPlayerId = 55,
+        Accepted = true,
+        ContractId = contractId
+    };
+    ContractResultMessage result = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "old-host-session",
+        ContractId = contractId,
+        Sequence = 2,
+        StateVersion = 9,
+        RequestId = requestId,
+        RequestingPlayerId = 55,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.Watering,
+        Succeeded = true,
+        CompletedWork = 3,
+        BillableHours = 1,
+        ChargedGold = 100,
+        RefundedGold = 500
+    };
+    MultiplayerRecoverySaveData state = MultiplayerRecoveryState.Create(
+        "0.1.0",
+        445566,
+        new[] { response },
+        new[] { result });
+
+    Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
+    string json = JsonSerializer.Serialize(state);
+    MultiplayerRecoverySaveData? restored =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json);
+    Equal(true, MultiplayerRecoveryState.IsValid(restored, 445566));
+
+    MultiplayerRecoverySaveData legacy =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json)!;
+    legacy.ProtocolSchemaVersion = 3;
+    foreach (ContractStartResponseMessage legacyResponse in legacy.ProcessedRequests)
+        legacyResponse.SchemaVersion = 3;
+    foreach (ContractResultMessage legacyResult in legacy.RecentResults)
+        legacyResult.SchemaVersion = 3;
+    Equal(true, MultiplayerRecoveryState.IsValid(legacy, 445566));
+    legacy.ProcessedRequests[0].SchemaVersion = MultiplayerContractProtocol.SchemaVersion;
+    Equal(false, MultiplayerRecoveryState.IsValid(legacy, 445566));
+    legacy.ProcessedRequests[0].SchemaVersion = 3;
+    legacy.ProtocolSchemaVersion = 2;
+    Equal(false, MultiplayerRecoveryState.IsValid(legacy, 445566));
+
+    MultiplayerRecoverySaveData legacyQuarantine =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json)!;
+    legacyQuarantine.ProtocolSchemaVersion = 4;
+    foreach (ContractStartResponseMessage legacyResponse in legacyQuarantine.ProcessedRequests)
+        legacyResponse.SchemaVersion = 4;
+    foreach (ContractResultMessage legacyResult in legacyQuarantine.RecentResults)
+        legacyResult.SchemaVersion = 4;
+    Equal(true, MultiplayerRecoveryState.IsValid(legacyQuarantine, 445566));
+
+    MultiplayerRecoveryState.RebindResponse(
+        restored!.ProcessedRequests[0],
+        "new-host-session",
+        445566);
+    MultiplayerRecoveryState.RebindResult(
+        restored.RecentResults[0],
+        "new-host-session",
+        445566,
+        sequence: 1,
+        stateVersion: 1);
+    Equal("new-host-session", restored.ProcessedRequests[0].HostSessionId);
+    Equal("new-host-session", restored.RecentResults[0].HostSessionId);
+    Equal(1L, restored.RecentResults[0].Sequence);
+    Equal(1L, restored.RecentResults[0].StateVersion);
+
+    MultiplayerRecoverySaveData filteredResult = MultiplayerRecoveryState.Create(
+        "0.1.0",
+        445566,
+        Array.Empty<ContractStartResponseMessage>(),
+        new[] { result });
+    Equal(0, filteredResult.RecentResults.Length);
+
+    MultiplayerRecoverySaveData orphanedResult = MultiplayerRecoveryState.Create(
+        "0.1.0",
+        445566,
+        Array.Empty<ContractStartResponseMessage>(),
+        Array.Empty<ContractResultMessage>());
+    orphanedResult.RecentResults = new[] { result };
+    Equal(false, MultiplayerRecoveryState.IsValid(orphanedResult, 445566));
+
+    MultiplayerRecoverySaveData unclean = MultiplayerRecoveryState.Create(
+        "0.1.0",
+        445566,
+        new[] { response },
+        new[] { result },
+        isClean: false);
+    Equal(false, MultiplayerRecoveryState.IsValid(unclean, 445566));
+
+    state.ModVersion = "0.1.1";
+    Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
+
+    string transferId = Guid.NewGuid().ToString("N");
+    string partialTransferId = Guid.NewGuid().ToString("N");
+    ContractResultMessage recoveredResult = state.RecentResults[0];
+    recoveredResult.ProducedItems = new[]
+    {
+        new ContractCargoSnapshotMessage
+        {
+            TransferId = transferId,
+            QualifiedItemId = "(O)24",
+            DisplayName = "Parsnip",
+            Stack = 2
+        }
+    };
+    recoveredResult.CompletedTransferIds = new[] { transferId, partialTransferId };
+    recoveredResult.CompletedWork = 1;
+    recoveredResult.ChestItems = 2;
+    Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
+
+    recoveredResult.CompletedTransferIds = new[] { transferId, transferId };
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.CompletedTransferIds = new[] { transferId, partialTransferId };
+
+    recoveredResult.ProducedItems = new[]
+    {
+        recoveredResult.ProducedItems[0],
+        recoveredResult.ProducedItems[0]
+    };
+    recoveredResult.ChestItems = 4;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.ProducedItems = new[] { recoveredResult.ProducedItems[0] };
+    recoveredResult.ChestItems = 1;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+
+    recoveredResult.QuarantinedItems = 1;
+    Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.QuarantinedItems = -1;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.QuarantinedItems = 0;
+
+    recoveredResult.ChestItems = 2;
+    recoveredResult.ReasonKey = "contract.failure.unknown";
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.ReasonKey = "";
+
+    recoveredResult.Succeeded = false;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.ReasonKey = "contract.failure.unknown";
+    Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.Succeeded = true;
+    recoveredResult.ReasonKey = "";
+    recoveredResult.CompletedWork = 0;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.CompletedWork = 1;
+
+    recoveredResult.BillableHours = ContractPreviewService.RegularShiftHours + 1;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+}
+
+static void TestMultiplayerStaleSnapshotRejection()
+{
+    ContractSnapshotTracker tracker = new();
+    ContractSnapshotMessage first = NewSnapshot(session: "host-a", sequence: 1);
+    Equal(true, tracker.TryAccept(first, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+
+    ContractSnapshotMessage replay = NewSnapshot(session: "host-a", sequence: 1);
+    Equal(false, tracker.TryAccept(replay, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+
+    ContractSnapshotMessage next = NewSnapshot(session: "host-a", sequence: 2);
+    Equal(true, tracker.TryAccept(next, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+
+    ContractSnapshotMessage newHostSession = NewSnapshot(session: "host-b", sequence: 1);
+    Equal(false, tracker.TryAccept(newHostSession, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+    tracker.BeginSession("host-b");
+    Equal(true, tracker.TryAccept(newHostSession, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+
+    ContractSnapshotMessage wrongSave = NewSnapshot(session: "host-b", sequence: 2);
+    wrongSave.SaveId = 123;
+    Equal(false, tracker.TryAccept(wrongSave, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+
+    ContractResultMessage result = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "host-b",
+        ContractId = "contract-1",
+        Sequence = 2,
+        Task = NamedFarmTask.Watering
+    };
+    Equal(true, tracker.TryAccept(result, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+    Equal(false, tracker.TryAccept(result, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
+}
+
+static void TestMultiplayerHostSessionHandshake()
+{
+    HostSessionTracker tracker = new();
+    string syncA = Guid.NewGuid().ToString("N");
+    string syncB = Guid.NewGuid().ToString("N");
+    string hostA = Guid.NewGuid().ToString("N");
+    string hostB = Guid.NewGuid().ToString("N");
+    string oldHost = Guid.NewGuid().ToString("N");
+    Equal(false, tracker.HasSession);
+    Equal(false, tracker.Matches(hostA));
+    Equal(false, tracker.BeginHandshake("invalid"));
+    Equal(true, tracker.BeginHandshake(syncA));
+    Equal(false, tracker.TryEstablish(oldHost, syncB));
+    Equal(false, tracker.HasSession);
+    Equal(false, tracker.TryEstablish("invalid-host", syncA));
+    Equal(true, tracker.TryEstablish(hostA, syncA));
+    Equal(true, tracker.HasSession);
+    Equal(hostA, tracker.Current);
+    Equal(true, tracker.Matches(hostA));
+    Equal(false, tracker.Matches(hostB));
+    Equal(true, tracker.BeginHandshake(syncB));
+    Equal(false, tracker.TryEstablish(hostB, syncB));
+    Equal(hostA, tracker.Current);
+
+    tracker.Clear();
+    Equal(false, tracker.HasSession);
+    Equal(false, tracker.Matches(hostA));
+    Equal(true, tracker.BeginHandshake(syncB));
+    Equal(false, tracker.TryEstablish(oldHost, syncA));
+    Equal(true, tracker.TryEstablish(hostB, syncB));
+    Equal(hostB, tracker.Current);
+}
+
+static void TestMultiplayerSyncHandshakeSerialization()
+{
+    string syncRequestId = Guid.NewGuid().ToString("N");
+    string hostSessionId = Guid.NewGuid().ToString("N");
+    ContractSyncRequestMessage request = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        ModVersion = "0.1.0",
+        SaveId = 445566,
+        RequestingPlayerId = 55,
+        SyncRequestId = syncRequestId
+    };
+    ContractSyncRequestMessage? restoredRequest = JsonSerializer.Deserialize<ContractSyncRequestMessage>(
+        JsonSerializer.Serialize(request));
+    Equal(syncRequestId, restoredRequest!.SyncRequestId);
+
+    ContractSyncStateMessage state = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = hostSessionId,
+        SyncRequestId = syncRequestId,
+        StateVersion = 12
+    };
+    ContractSyncStateMessage? restoredState = JsonSerializer.Deserialize<ContractSyncStateMessage>(
+        JsonSerializer.Serialize(state));
+    Equal(hostSessionId, restoredState!.HostSessionId);
+    Equal(syncRequestId, restoredState.SyncRequestId);
+    Equal(12L, restoredState.StateVersion);
+}
+
+static void TestMultiplayerStaleSyncStateRejection()
+{
+    HostStateVersionTracker tracker = new();
+    Equal(true, tracker.CanAccept(1));
+    tracker.Commit(1);
+    Equal(true, tracker.CanAccept(1));
+    Equal(false, tracker.CanAccept(0));
+    Equal(true, tracker.CanAccept(2));
+    tracker.Commit(2);
+    Equal(2L, tracker.Latest);
+}
+
+static void TestMultiplayerSnapshotSerialization()
+{
+    ContractSnapshotMessage source = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "host-session",
+        ContractId = "contract-1",
+        Sequence = 7,
+        StateVersion = 12,
+        RequestId = "request-1",
+        RequestingPlayerId = 55,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.Harvesting,
+        Phase = "TravelingToChest",
+        ArrivalX = 78,
+        ArrivalY = 15,
+        ArrivalSide = FarmBoundarySide.East,
+        EntranceSwitches = 1,
+        TargetX = 10,
+        TargetY = 20,
+        ReservedGold = 600,
+        CargoCount = 3,
+        Cargo = new[]
+        {
+            new ContractCargoSnapshotMessage
+            {
+                TransferId = "transfer-1",
+                QualifiedItemId = "(O)24",
+                DisplayName = "Parsnip",
+                Quality = 2,
+                Stack = 3
+            }
+        },
+        CompletedTransferIds = new[] { "transfer-0" }
+    };
+
+    string json = JsonSerializer.Serialize(source);
+    ContractSnapshotMessage? restored = JsonSerializer.Deserialize<ContractSnapshotMessage>(json);
+    Equal("contract-1", restored!.ContractId);
+    Equal(12L, restored.StateVersion);
+    Equal(NamedFarmTask.Harvesting, restored.Task);
+    Equal(78, restored.ArrivalX);
+    Equal(15, restored.ArrivalY);
+    Equal(FarmBoundarySide.East, restored.ArrivalSide);
+    Equal(1, restored.EntranceSwitches);
+    Equal("(O)24", restored.Cargo[0].QualifiedItemId);
+    Equal(3, restored.Cargo[0].Stack);
+    Equal("transfer-0", restored.CompletedTransferIds[0]);
+}
+
+static void TestMultiplayerResultSerialization()
+{
+    Equal(5, MultiplayerContractProtocol.SchemaVersion);
+    ContractResultMessage source = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "host-session",
+        ContractId = "contract-1",
+        Sequence = 8,
+        StateVersion = 13,
+        RequestId = "request-1",
+        RequestingPlayerId = 55,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.Harvesting,
+        Succeeded = true,
+        CompletedWork = 3,
+        PlayerItems = 2,
+        ChestItems = 1,
+        QuarantinedItems = 4
+    };
+
+    string json = JsonSerializer.Serialize(source);
+    ContractResultMessage? restored = JsonSerializer.Deserialize<ContractResultMessage>(json);
+    Equal(2, restored!.PlayerItems);
+    Equal(1, restored.ChestItems);
+    Equal(4, restored.QuarantinedItems);
+    Equal(13L, restored.StateVersion);
+}
+
+static ContractStartRequestMessage NewMultiplayerRequest(long playerId)
+{
+    return new ContractStartRequestMessage
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        ModVersion = "0.1.0",
+        SaveId = 445566,
+        TotalDays = 12,
+        RequestId = Guid.NewGuid().ToString("N"),
+        RequestingPlayerId = playerId,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.Watering
+    };
+}
+
+static ContractStartResponseMessage NewStartResponse(long playerId, string requestId, long order)
+{
+    return new ContractStartResponseMessage
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "host-session",
+        HostOrder = order,
+        RequestId = requestId,
+        RequestingPlayerId = playerId,
+        Accepted = true,
+        ContractId = $"contract-{order}"
+    };
+}
+
+static ContractSnapshotMessage NewSnapshot(string session, long sequence)
+{
+    return new ContractSnapshotMessage
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = session,
+        ContractId = "contract-1",
+        Sequence = sequence,
+        Task = NamedFarmTask.Watering
+    };
 }
 
 static void Equal<T>(T expected, T actual)

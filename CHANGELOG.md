@@ -1,22 +1,39 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 - 2026-08-24
 
 - Added confirmation for a visible named-NPC watering contract.
 - Added fresh availability, funds, target, and two-way path checks before dispatch.
 - Added a recoverable NPC work lease with timeout and day-end cleanup.
 - Added six-hour wage reservation, per-started-hour settlement, and explicit rest-day triple-pay authorization.
-- Added deterministic wage, settlement, target-ordering, and left-entrance selection logic tests.
+- Added deterministic wage, settlement, target-ordering, and boundary-entrance selection logic tests.
 - Added task selection between whole-farm watering and one-crop visible harvesting.
 - Added vanilla-compatible harvest capture for exact quality, quantity, regrowth, metadata, and by-products.
+- Fixed regrowing crop capture by treating `Crop.harvest`'s return value as the crop-removal signal while using captured items as the success source of truth.
 - Added deterministic chest ranking, mutex-protected partial delivery, persistent team overflow, replay protection, and explicit emergency ground drops.
+- Replaced raw same-category routing with stable semantic groups for resources, crops/food, artisan goods, animal products, seeds/fertilizer, minerals/gems, furniture, and clothing/equipment; unknown categories remain capacity-only.
+- Aligned same-tier chest selection with the approved rule: full acceptance, shortest reachable route, greater capacity, then stable tile order.
+- Fixed dense-field routing by using vanilla live crop collision instead of spawn suitability; ordinary crop tiles are traversable while trellises remain blocking.
+- Changed worker arrival to prefer the right/east farm entrance and use other genuine boundary entrances only as safe fallbacks.
+- Added runtime entrance failover so a worker stalled on the first live step excludes that side instead of retrying every crop edge.
+- Protected active vanilla route animations, square-walk activities, sprite animations, and movement pauses from hiring without treating persisted route-end metadata as an active activity; unavailable NPCs are omitted from the roster.
+- Reworked the worker roster into compact rows that show friendship, today's hourly wage, and the six-hour maximum without redundant availability explanations or disabled footer controls.
+- Added an NPC-bounds first-pixel entrance probe so false-positive arrival tiles are rejected before wages or NPC state change.
+- Added bounded lease recovery: controller conflicts wait briefly, then release only this mod's lease and safety flags without overriding the other activity.
+- Moved emergency harvest drops to the on-farm requester or a deterministic collision-free delivery tile before falling back to the worker position.
+- Excluded dead crops from watering target acquisition.
+- Added exact requester-inventory delivery when no chest route can accept an item and the requester remains on the farm with capacity.
 - Added `efo_overflow` to retrieve harvest results which could not fit in an eligible farm chest.
-- Expanded the deterministic logic harness to 14 wage, routing, remainder, overflow, and replay tests.
-
-## 0.1.0
-
-- Added the first playable hired farmhand work pass.
-- Added watering, harvesting, debris clearing, fertilizing, and planting tasks.
-- Added config file support.
-- Added Chinese and English translations.
-- Added SMAPI console commands for testing.
+- Added host-authoritative multiplayer contract requests, bounded request replay protection, phase/cargo/transfer snapshots, reconnect synchronization, and host-only visual action messages.
+- Persisted the bounded processed-request ledger and latest per-player results so host restarts rebind prior transactions to the new network session without repeating work or charges.
+- Rejected internally inconsistent multiplayer recovery results with duplicate transfer IDs, unbalanced item destinations, impossible hours, or contradictory success reasons.
+- Required a nonce-correlated authoritative sync-state handshake before a farmhand binds a new host session or resends a pending request, so delayed responses or sync states from the prior host session cannot capture reconnect state; clean protocol-3 and protocol-4 recovery ledgers are fully validated before being rebound to protocol 5.
+- Bound wage reservation and refund to the requesting farmer instead of the host's local player.
+- Added mutex-aware persistent overflow delivery and save-time lease/cargo cleanup.
+- Added a separate persistent emergency cargo quarantine, idempotent transfer markers, a size-bounded host recovery record, and `efo_quarantine` retrieval so failed overflow and ground-drop operations cannot release the only owned item instances.
+- Required day end, ordinary saving, and initial save creation to verify cargo ownership and force any transient remainder into the private team quarantine before contract settlement.
+- Added a compile-gated, non-distributable storage fault-injection harness for live overflow, drop, quarantine, recovery-record, and terminal-write acceptance tests; the normal Release verifier rejects any DLL which exposes its command.
+- Expanded the deterministic logic harness to 45 wage, availability, routing, storage, quarantine recovery, acceptance-control, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
+- Removed the legacy instant `efo_work`, task toggles, player-centered scan settings, and bundled user config from the production release surface.
+- Corrected manifest ownership, release description, and GitHub update metadata.
+- Added English and Chinese UI, configuration, multiplayer, failure, storage, and settlement text.
