@@ -1,7 +1,7 @@
 {
   "Name": "Evil Farm Owner",
   "Author": "Aveouter",
-  "Version": "0.1.0",
+  "Version": "0.1.0-beta.1",
   "Description": "Hire named adult NPCs for visible watering and lossless harvest contracts.",
   "UniqueID": "Aveouter.EvilFarmOwner",
   "EntryDll": "EvilFarmOwner.dll",

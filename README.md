@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.1.0
+  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.1.0-beta.1
 </p>
 
 <p align="center">
@@ -28,6 +28,8 @@
 ### What is Evil Farm Owner?
 
 `Evil Farm Owner` is a Stardew Valley mod for players who want to turn repetitive farm chores into paid labor.
+
+`v0.1.0-beta.1` is a public test release. Named watering and harvesting have production implementations, and multiplayer uses a host-authoritative protocol, but the real remote host/farmhand matrix and forced storage-recovery matrix are still explicitly unverified. Back up the save before testing and report issues with both peers' SMAPI logs.
 
 Press one key to review only the named adult NPCs who are currently available for hire. NPCs in protected vanilla activities such as chores, exercise, scripted animation, or movement pauses are omitted instead of being interrupted. An available adult NPC can be assigned a visible watering or harvest contract with an itemized wage, lossless harvest delivery, and a protected return to their original schedule position.
 
@@ -115,6 +117,8 @@ Mods/EvilFarmOwner/config.json
 ### 这个 Mod 是做什么的？
 
 `邪恶农场主` 是一个《星露谷物语》SMAPI Mod。它的核心玩法是：你花钱雇佣农工，把重复农活交给他们处理。
+
+`v0.1.0-beta.1` 是公开测试版本。具名浇水、收获以及主机权威多人协议均已有生产实现，但真实远程主机/农场工矩阵和强制储存恢复矩阵仍明确标记为“未验证”。测试前请备份存档；反馈问题时请同时提供两端 SMAPI 日志。
 
 当前名单只显示此刻可以雇佣的具名成年 NPC。正在做家务、锻炼、脚本动画或处于移动暂停等原版活动的 NPC 会直接从名单中隐藏，不会被强行中断。有空的成年 NPC 可以接受可见执行的浇水或收获合同；工资会逐项显示，收获成果会无损交付，NPC 完成后安全返回原位置并恢复日程。
 
@@ -214,6 +218,7 @@ Mods/EvilFarmOwner/config.json
 ### Bug List / Known Limitations
 
 - Host-authoritative multiplayer is implemented but still requires the release-gate test with a real remote host/farmhand session; split-screen alone is not accepted as proof.
+- This beta is not the stable `v0.1.0`; use a backed-up save until the remaining multiplayer and forced-recovery gates pass.
 - Named watering and multi-crop harvest contracts are visible; debris cleanup, fertilizing, planting, and automatic shipping are not part of v0.1.0.
 - Every peer must install the same Evil Farm Owner version; mismatched protocol/save/day/player/task messages are rejected without mutation.
 - Named harvest supports content-classified ordinary player-owned main-farm chests. Persistent overflow is emergency preservation after a storage-triggered stop; special or modded chest subclasses are excluded for safety.
@@ -226,4 +231,4 @@ Mods/EvilFarmOwner/config.json
 
 ## License
 
-License not yet specified.
+[MIT](LICENSE) © 2026 Aveouter.
