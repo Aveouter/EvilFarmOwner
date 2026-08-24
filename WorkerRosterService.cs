@@ -72,6 +72,7 @@ internal sealed class WorkerRosterService
         }
 
         return entries
+            .Where(entry => WorkerRosterPolicy.ShouldDisplay(entry.Availability.State))
             .OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
     }
@@ -185,9 +186,7 @@ internal sealed class WorkerRosterService
                     npc.goingToDoEndOfRouteAnimation.Value,
                     npc.IsWalkingInSquare,
                     npc.Sprite?.CurrentAnimation is not null,
-                    npc.movementPause,
-                    npc.endOfRouteBehaviorName.Value,
-                    npc.endOfRouteMessage.Value))
+                    npc.movementPause))
                 return Unavailable(WorkerAvailabilityReason.ScriptedAnimation);
 
             return new WorkerAvailabilityResult(

@@ -248,18 +248,19 @@ static void TestNpcProtectedActivityPolicy()
         goingToDoEndOfRouteAnimation: false,
         isWalkingInSquare: false,
         hasSpriteAnimation: false,
-        movementPause: 0,
-        endOfRouteBehaviorName: null,
-        endOfRouteMessage: null));
+        movementPause: 0));
 
-    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, 1, null, null));
-    Equal(true, NpcActivityPolicy.HasProtectedActivity(true, false, false, false, 0, null, null));
-    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, 0, "jodi_dishes", null));
-    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, true, false, false, 0, null, null));
-    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, true, false, 0, null, null));
-    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, true, 0, null, null));
-    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, 0, null, "route dialogue"));
-    Equal(false, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, -1, " ", " "));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, 1));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(true, false, false, false, 0));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, true, false, false, 0));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, true, false, 0));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, true, 0));
+    Equal(false, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, -1));
+
+    Equal(true, WorkerRosterPolicy.ShouldDisplay(WorkerAvailabilityState.EligibleForPreview));
+    Equal(false, WorkerRosterPolicy.ShouldDisplay(WorkerAvailabilityState.TemporarilyUnavailable));
+    Equal(false, WorkerRosterPolicy.ShouldDisplay(WorkerAvailabilityState.Ineligible));
+    Equal(false, WorkerRosterPolicy.ShouldDisplay(WorkerAvailabilityState.Unknown));
 }
 
 static void TestPathFirstStepOffsets()

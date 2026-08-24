@@ -8,16 +8,12 @@ internal static class NpcActivityPolicy
         bool goingToDoEndOfRouteAnimation,
         bool isWalkingInSquare,
         bool hasSpriteAnimation,
-        int movementPause,
-        string? endOfRouteBehaviorName,
-        string? endOfRouteMessage)
+        int movementPause)
     {
         return doingEndOfRouteAnimation
             || goingToDoEndOfRouteAnimation
             || isWalkingInSquare
             || hasSpriteAnimation
-            || movementPause > 0
-            || !string.IsNullOrWhiteSpace(endOfRouteBehaviorName)
-            || !string.IsNullOrWhiteSpace(endOfRouteMessage);
+            || movementPause > 0;
     }
 }

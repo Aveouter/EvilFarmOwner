@@ -29,12 +29,12 @@
 
 `Evil Farm Owner` is a Stardew Valley mod for players who want to turn repetitive farm chores into paid labor.
 
-Press one key to review named worker candidates and see why someone is currently unavailable. Vanilla route-end activities such as chores, exercise, scripted animation, or movement pauses are protected instead of being interrupted. An available adult NPC can be assigned a visible watering or harvest contract with an itemized wage, lossless harvest delivery, and a protected return to their original schedule position.
+Press one key to review only the named adult NPCs who are currently available for hire. NPCs in protected vanilla activities such as chores, exercise, scripted animation, or movement pauses are omitted instead of being interrupted. An available adult NPC can be assigned a visible watering or harvest contract with an itemized wage, lossless harvest delivery, and a protected return to their original schedule position.
 
 ### Current Features
 
-- Open a named worker roster with the `K` key.
-- Show each NPC's current availability and an explicit reason when they cannot be hired.
+- Open the currently available named-worker roster with the `K` key.
+- Omit NPCs who cannot be hired safely at that moment; their availability is reevaluated each time the roster opens.
 - Choose watering or harvesting, then confirm a named contract after reviewing the itemized wage.
 - Watch the selected NPC prefer the right/east farm entrance, safely fall back to another genuine boundary entrance when needed, walk between reachable crops, return to the selected entrance, and resume their prior state.
 - Watch a selected NPC harvest every reachable mature crop through the vanilla crop logic, carry every exact output, deliver it to ranked ordinary farm chests or the on-farm requester, and return safely.
@@ -108,12 +108,12 @@ Mods/EvilFarmOwner/config.json
 
 `邪恶农场主` 是一个《星露谷物语》SMAPI Mod。它的核心玩法是：你花钱雇佣农工，把重复农活交给他们处理。
 
-当前版本可以查看具名 NPC 候选人及其当前不可雇佣原因。做家务、锻炼、脚本动画或处于移动暂停等原版路线活动的 NPC 会受到保护，不会被强行中断。有空的成年 NPC 可以接受可见执行的浇水或收获合同；工资会逐项显示，收获成果会无损交付，NPC 完成后安全返回原位置并恢复日程。
+当前名单只显示此刻可以雇佣的具名成年 NPC。正在做家务、锻炼、脚本动画或处于移动暂停等原版活动的 NPC 会直接从名单中隐藏，不会被强行中断。有空的成年 NPC 可以接受可见执行的浇水或收获合同；工资会逐项显示，收获成果会无损交付，NPC 完成后安全返回原位置并恢复日程。
 
 ### 当前功能
 
-- 按 `K` 打开具名工人候选名单。
-- 显示 NPC 当前是否可雇佣，以及不能雇佣的明确原因。
+- 按 `K` 打开当前可雇佣工人名单。
+- 不显示此刻不能安全雇佣的 NPC；每次打开名单都会重新判断可用性。
 - 选择浇水或收获，查看逐项工资后确认具名合同。
 - 观看所选 NPC 优先从农场右侧入口进入；右侧没有安全往返路线时使用其他真实边界入口，逐格完成可到达的农活，再从所选入口返回并恢复原状态。
 - 观看所选 NPC 通过游戏原生作物逻辑收获全部可到达的成熟作物，携带每一件实际产物、送入按规则选择的普通农场箱子或交给仍在农场的合同请求者，再安全返回。
@@ -165,7 +165,7 @@ efo_netstatus
 
 ### 配置文件
 
-如果安装了 Generic Mod Config Menu，“邪恶农场主”会出现在它的“MOD 选项”列表中，并提供本地化的候选名单快捷键设置。该集成是可选的，仍可直接编辑 `config.json`。工作范围、任务规则和工资属于每份具名 NPC 合同，不存在以玩家为中心的全局扫描设置。
+如果安装了 Generic Mod Config Menu，“邪恶农场主”会出现在它的“MOD 选项”列表中，并提供本地化的可雇佣工人名单快捷键设置。该集成是可选的，仍可直接编辑 `config.json`。工作范围、任务规则和工资属于每份具名 NPC 合同，不存在以玩家为中心的全局扫描设置。
 
 配置文件位置：
 

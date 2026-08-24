@@ -39,3 +39,11 @@ internal sealed record WorkerRosterEntry(
     string DisplayName,
     Texture2D Portrait,
     WorkerAvailabilityResult Availability);
+
+internal static class WorkerRosterPolicy
+{
+    public static bool ShouldDisplay(WorkerAvailabilityState state)
+    {
+        return state == WorkerAvailabilityState.EligibleForPreview;
+    }
+}

@@ -12,7 +12,7 @@ Before wages or NPC state change, each otherwise valid arrival route translates 
 
 - Kegs, chests, machines, fence segments, raised-seed trellises, blocking terrain features, and other occupied tiles are obstacles. Ordinary non-trellis crop tiles follow vanilla passability. A gate is the only placed-object exception: it may be opened for passage, but it is never removed.
 - The work lease disables `willDestroyObjectsUnderfoot`, charging, and accumulated blocked movement for the full contract, then restores the original values.
-- NPCs with a vanilla route-end behavior, pending or active route animation, square-walk activity, sprite animation, end message, or movement pause are unavailable. Dispatch never clears those animations to force a lease; the vanilla activity keeps ownership.
+- NPCs with a pending or active route animation, square-walk activity, sprite animation, or movement pause are unavailable and omitted from the roster. Persisted route-end behavior names and messages are not treated as active-state proof by themselves. Dispatch never clears active animations to force a lease; the vanilla activity keeps ownership.
 - Every attached path controller must use `nonDestructivePathing`; the lease rejects any controller which does not.
 - Contract travel completes as soon as the worker enters the planned interaction tile, then aligns the worker to that tile's canonical pixel position before the next route starts. This avoids both the vanilla controller's final centering pin and a half-entered tile blocking the following route.
 - The dispatch HUD identifies the actual selected entrance so a fallback arrival is explicit instead of looking like a missing worker.

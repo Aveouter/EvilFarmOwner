@@ -158,10 +158,9 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         batch.DrawString(Game1.smallFont, subtitle, new Vector2(contentX, contentY), Game1.textColor);
 
         contentY = this.yPositionOnScreen + 140;
-        int eligibleCount = this.Entries.Count(entry => entry.Availability.State == WorkerAvailabilityState.EligibleForPreview);
         batch.DrawString(
             Game1.smallFont,
-            this.Translation.Get("roster.summary", new { total = this.Entries.Count, eligible = eligibleCount }),
+            this.Translation.Get("roster.summary", new { total = this.Entries.Count }),
             new Vector2(contentX, contentY),
             Color.DimGray);
 
