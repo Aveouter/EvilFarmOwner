@@ -138,7 +138,7 @@ internal sealed class WateringContractExecutionController
                     {
                         worker = worker.displayName,
                         gold = preview.MaximumAuthorizedWage,
-                        entrance = this.GetArrivalDescription(mainFarm, planResult.Plan.ArrivalTile)
+                        entrance = this.GetArrivalDescription()
                     }),
                     HUDMessage.newQuest_type));
                 return true;
@@ -160,7 +160,7 @@ internal sealed class WateringContractExecutionController
                 {
                     worker = worker.displayName,
                     gold = preview.MaximumAuthorizedWage,
-                    entrance = this.GetArrivalDescription(mainFarm, planResult.Plan.ArrivalTile)
+                    entrance = this.GetArrivalDescription()
                 }),
                 HUDMessage.newQuest_type));
             return true;
@@ -388,6 +388,7 @@ internal sealed class WateringContractExecutionController
         if (ReferenceEquals(worker.controller, contract.Controller))
             worker.controller = null;
         contract.Controller = null;
+        worker.Position = FarmNavigationMap.GetAlignedCharacterPosition(destination);
         worker.Halt();
         this.Monitor.Log(
             $"Watering worker '{worker.Name}' entered destination tile {destination}; completing travel before vanilla pixel centering.",
@@ -762,13 +763,9 @@ internal sealed class WateringContractExecutionController
         };
     }
 
-    private string GetArrivalDescription(Farm farm, Point arrivalTile)
+    private string GetArrivalDescription()
     {
-        FarmBoundarySide side = FarmEntranceSelection.GetNearestBoundarySide(
-            farm.Map.Layers[0].LayerWidth,
-            farm.Map.Layers[0].LayerHeight,
-            new GridPoint(arrivalTile.X, arrivalTile.Y));
-        return this.Translation.Get($"contract.entrance.{side.ToString().ToLowerInvariant()}");
+        return this.Translation.Get("contract.entrance.fixed-main");
     }
 
     private enum WateringContractPhase

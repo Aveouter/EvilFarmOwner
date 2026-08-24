@@ -147,7 +147,7 @@ internal sealed class HarvestingContractExecutionController
                     {
                         worker = worker.displayName,
                         gold = preview.MaximumAuthorizedWage,
-                        entrance = this.GetArrivalDescription(mainFarm, planResult.Plan.ArrivalTile)
+                        entrance = this.GetArrivalDescription()
                     }),
                     HUDMessage.newQuest_type));
                 return true;
@@ -169,7 +169,7 @@ internal sealed class HarvestingContractExecutionController
                 {
                     worker = worker.displayName,
                     gold = preview.MaximumAuthorizedWage,
-                    entrance = this.GetArrivalDescription(mainFarm, planResult.Plan.ArrivalTile)
+                    entrance = this.GetArrivalDescription()
                 }),
                 HUDMessage.newQuest_type));
             return true;
@@ -364,6 +364,7 @@ internal sealed class HarvestingContractExecutionController
         if (ReferenceEquals(worker.controller, contract.Controller))
             worker.controller = null;
         contract.Controller = null;
+        worker.Position = FarmNavigationMap.GetAlignedCharacterPosition(destination.Value);
         worker.Halt();
         this.Monitor.Log(
             $"Harvest worker '{worker.Name}' entered destination tile {destination.Value} during {contract.Phase}; completing travel before vanilla pixel centering.",
@@ -514,6 +515,10 @@ internal sealed class HarvestingContractExecutionController
                 item.DisplayName,
                 item.Quality,
                 item.Stack));
+            this.Monitor.Log(
+                $"Captured harvest '{item.QualifiedItemId}' q{item.Quality} x{item.Stack} "
+                + $"from crop {contract.CurrentTarget.TargetTile}; transfer={transferId}.",
+                LogLevel.Debug);
         }
 
         this.ShowHarvestedItem(contract, collector.Items[0]);
@@ -537,17 +542,24 @@ internal sealed class HarvestingContractExecutionController
             contract.Farm,
             contract.Lease.Worker,
             contract.Lease.Worker.TilePoint,
-            contract.Plan.ArrivalTile,
             entry.Item,
             attempted);
         if (route is null)
         {
+            this.Monitor.Log(
+                $"No reachable eligible chest can accept harvest cargo '{entry.Item.QualifiedItemId}' "
+                + $"q{entry.Item.Quality} x{entry.Item.Stack}; using persistent overflow.",
+                LogLevel.Debug);
             this.BeginOverflowDeposit(contract);
             return;
         }
 
         try
         {
+            this.Monitor.Log(
+                $"Routing harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{entry.Item.Stack} "
+                + $"to chest {route.ChestTile} (match={route.MatchKind}, capacity={route.AcceptableCapacity}).",
+                LogLevel.Debug);
             contract.CurrentChestRoute = route;
             contract.Phase = HarvestContractPhase.TravelingToChest;
             contract.PhaseTicks = 0;
@@ -618,7 +630,12 @@ internal sealed class HarvestingContractExecutionController
                 else
                 {
                     int remaining = remainder?.Stack ?? 0;
-                    contract.ChestDeliveredItems += HarvestTransferMath.GetDeliveredCount(requested, remaining);
+                    int delivered = HarvestTransferMath.GetDeliveredCount(requested, remaining);
+                    contract.ChestDeliveredItems += delivered;
+                    this.Monitor.Log(
+                        $"Placed harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{delivered} "
+                        + $"in chest {route.ChestTile}; remainder={remaining}.",
+                        LogLevel.Debug);
                     if (remainder is null)
                     {
                         contract.Cargo.RemoveAt(0);
@@ -823,6 +840,25 @@ internal sealed class HarvestingContractExecutionController
         if (contract.Cargo.Count > 0)
             this.PersistOrDropCargo(contract);
 
+        int harvestedItems = contract.HarvestedItems.Sum(item => item.Stack);
+        int unresolvedItems = contract.Cargo.Sum(entry => entry.Item.Stack);
+        bool placementBalanced = HarvestPlacementAudit.IsBalanced(
+            harvestedItems,
+            contract.ChestDeliveredItems,
+            contract.OverflowItems,
+            contract.DroppedItems,
+            unresolvedItems);
+        this.Monitor.Log(
+            $"Harvest placement audit for contract {contract.Id:N}: harvested={harvestedItems}, "
+            + $"chest={contract.ChestDeliveredItems}, overflow={contract.OverflowItems}, "
+            + $"dropped={contract.DroppedItems}, unresolved={unresolvedItems}, balanced={placementBalanced}.",
+            placementBalanced && unresolvedItems == 0 ? LogLevel.Debug : LogLevel.Error);
+        if (!placementBalanced || unresolvedItems > 0)
+        {
+            succeeded = false;
+            failureTranslationKey = "harvest.failure.placement-audit";
+        }
+
         NpcLeaseRestoreResult restoreResult = contract.Lease.Restore();
         WateringContractSettlement settlement = WateringContractSettlement.Create(
             contract.Preview,
@@ -1020,7 +1056,13 @@ internal sealed class HarvestingContractExecutionController
                 entry.TransferId,
                 () => overflow.Add(entry.Item));
             if (applied)
+            {
                 contract.OverflowItems += stack;
+                this.Monitor.Log(
+                    $"Placed harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{stack} "
+                    + "in persistent overflow.",
+                    LogLevel.Debug);
+            }
             contract.Cargo.Remove(entry);
         }
     }
@@ -1050,6 +1092,10 @@ internal sealed class HarvestingContractExecutionController
                 Game1.createItemDebris(entry.Item, contract.Lease.Worker.Position, -1, contract.Farm);
                 contract.DroppedItems += stack;
                 contract.Cargo.Remove(entry);
+                this.Monitor.Log(
+                    $"Dropped harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{stack} "
+                    + $"visibly at {contract.Lease.Worker.TilePoint}.",
+                    LogLevel.Warn);
             }
             catch (Exception dropException)
             {
@@ -1137,13 +1183,9 @@ internal sealed class HarvestingContractExecutionController
         };
     }
 
-    private string GetArrivalDescription(Farm farm, Point arrivalTile)
+    private string GetArrivalDescription()
     {
-        FarmBoundarySide side = FarmEntranceSelection.GetNearestBoundarySide(
-            farm.Map.Layers[0].LayerWidth,
-            farm.Map.Layers[0].LayerHeight,
-            new GridPoint(arrivalTile.X, arrivalTile.Y));
-        return this.Translation.Get($"contract.entrance.{side.ToString().ToLowerInvariant()}");
+        return this.Translation.Get("contract.entrance.fixed-main");
     }
 
     private static int GetFacingDirection(Point interaction, Point target)

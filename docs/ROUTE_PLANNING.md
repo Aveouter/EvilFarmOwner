@@ -1,16 +1,16 @@
 # Farm Work Route Planning
 
-Named watering and harvesting contracts dispatch the leased NPC at a genuine external farm entrance. They do not reuse the NPC's vanilla schedule path because vanilla NPC movement may clear player-placed objects when blocked.
+Named watering and harvesting contracts dispatch the leased NPC only at the fixed main road/BusStop farm entrance (called the left-side entrance in the Chinese UI). They do not reuse the NPC's vanilla schedule path because vanilla NPC movement may clear player-placed objects when blocked.
 
-The arrival planner reads the farm map's boundary warps, clamps their off-map source tiles to visible edge anchors, and interleaves a bounded search around every entrance. Interior transfer tiles such as farmhouse, greenhouse, cave, and custom-map doors are excluded because their source tiles are not on the map boundary. Dispatch is committed only after the worker is present at the planned farm-edge tile and an object-safe route to a real target has been found.
+The arrival planner reads only the farm map's east-boundary main-road warp, clamps its off-map source tile to a visible edge anchor, and performs a bounded search around that entrance. South, north, farmhouse, greenhouse, cave, and custom-map transfers are not fallback entrances. Dispatch is committed only after the worker is present at the planned farm-edge tile and an object-safe route to a real target has been found.
 
 ## Safety invariants
 
 - Kegs, chests, machines, fence segments, crops, terrain features, and other occupied tiles are obstacles. A gate is the only placed-object exception: it may be opened for passage, but it is never removed.
 - The work lease disables `willDestroyObjectsUnderfoot`, charging, and accumulated blocked movement for the full contract, then restores the original values.
 - Every attached path controller must use `nonDestructivePathing`; the lease rejects any controller which does not.
-- Contract travel completes as soon as the worker enters the planned interaction tile. This avoids the vanilla controller's final pixel-centering step getting pinned against an adjacent mature crop or trellis.
-- The dispatch HUD identifies the selected boundary entrance so an off-screen arrival is explicit instead of looking like a missing worker.
+- Contract travel completes as soon as the worker enters the planned interaction tile, then aligns the worker to that tile's canonical pixel position before the next route starts. This avoids both the vanilla controller's final centering pin and a half-entered tile blocking the following route.
+- The dispatch HUD identifies the fixed entrance so an off-screen arrival is explicit instead of looking like a missing worker.
 - A target tile and its interaction tile are separate. A trellis crop can be acted on from a reachable cardinal neighbor without treating the crop tile as walkable.
 - A route which becomes blocked is recorded as a failed target/interaction edge. The planner may try another side of the same crop, but it cannot retry the same failed edge indefinitely.
 
@@ -37,7 +37,7 @@ The planner then:
 
 The scan is `O(V + E)` for the reachable farm grid. It replaces the previous approach of running a separate A* search for every crop side, which scaled poorly as crop count increased.
 
-Harvest delivery uses the same route map. Storage semantics still rank an exact compatible stack, the same item, the same category, and then available capacity before using actual walking distance as a tie-breaker. Cargo is delivered after each harvested target so the NPC never silently loses an item between replans.
+Harvest delivery uses the same route map. Storage semantics still rank an exact compatible stack, the same item, the same category, and then available capacity before using actual walking distance as a tie-breaker. Chest selection no longer depends on the return entrance being reachable at that exact moment: cargo is delivered first, while target selection and return retain their own safety checks. Cargo is delivered after each harvested target, every transfer logs its item, quality, count, destination, and remainder, and settlement audits harvested count against chest, overflow, visible drop, and unresolved totals.
 
 ## Reference boundary
 

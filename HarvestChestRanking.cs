@@ -64,6 +64,21 @@ internal static class HarvestTransferMath
     }
 }
 
+internal static class HarvestPlacementAudit
+{
+    public static bool IsBalanced(
+        int harvested,
+        int chest,
+        int overflow,
+        int dropped,
+        int unresolved)
+    {
+        if (harvested < 0 || chest < 0 || overflow < 0 || dropped < 0 || unresolved < 0)
+            return false;
+        return harvested == (long)chest + overflow + dropped + unresolved;
+    }
+}
+
 internal enum HarvestFallbackDestination
 {
     Chest,

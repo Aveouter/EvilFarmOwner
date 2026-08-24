@@ -12,6 +12,7 @@ internal sealed record HarvestChestRoute(
     Point ChestTile,
     Point InteractionTile,
     HarvestChestMatchKind MatchKind,
+    int AcceptableCapacity,
     Stack<Point> Path);
 
 internal sealed class HarvestChestRouter
@@ -35,13 +36,11 @@ internal sealed class HarvestChestRouter
         Farm farm,
         NPC worker,
         Point startTile,
-        Point returnTile,
         Item item,
         IReadOnlySet<Point> attemptedChestTiles)
     {
         if (!FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
-            || routes is null
-            || !routes.IsReachable(new GridPoint(returnTile.X, returnTile.Y)))
+            || routes is null)
             return null;
 
         List<(HarvestChestOption Option, Chest Chest, Stack<Point> Path)> candidates = new();
@@ -94,6 +93,7 @@ internal sealed class HarvestChestRouter
             new Point(best.ChestTile.X, best.ChestTile.Y),
             new Point(best.InteractionTile.X, best.InteractionTile.Y),
             best.MatchKind,
+            best.AcceptableCapacity,
             selected.Path);
     }
 

@@ -148,6 +148,19 @@ internal static class FarmNavigationMap
         return gridPath.Skip(1).ToArray();
     }
 
+    public static Vector2 GetAlignedCharacterPosition(Point tile)
+    {
+        GridPoint pixel = GetAlignedCharacterPixel(new GridPoint(tile.X, tile.Y), Game1.tileSize);
+        return new Vector2(pixel.X, pixel.Y);
+    }
+
+    public static GridPoint GetAlignedCharacterPixel(GridPoint tile, int tileSize)
+    {
+        if (tileSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(tileSize));
+        return new GridPoint(tile.X * tileSize, tile.Y * tileSize);
+    }
+
     private static bool IsPassable(Farm farm, NPC worker, GridPoint tile)
     {
         if (farm.warps.Any(warp => warp.X == tile.X && warp.Y == tile.Y)

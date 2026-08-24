@@ -12,6 +12,11 @@ internal static class FarmEntranceSelection
 {
     private const int DefaultSearchRadius = 8;
 
+    // The standard farm's road/BusStop transition is the fixed worker entrance
+    // selected by the product flow. It is the east map boundary even though the
+    // Chinese UI names it the familiar "left-side entrance".
+    public const FarmBoundarySide FixedWorkerEntranceSide = FarmBoundarySide.East;
+
     /// <summary>
     /// Enumerate visible arrival candidates around genuine map-boundary warps without
     /// treating interior transfers (farmhouse, greenhouse, cave, and similar doors) as entrances.
@@ -20,13 +25,16 @@ internal static class FarmEntranceSelection
         int mapWidth,
         int mapHeight,
         IEnumerable<GridPoint> warpTiles,
-        int searchRadius = DefaultSearchRadius)
+        int searchRadius = DefaultSearchRadius,
+        FarmBoundarySide? requiredSide = null)
     {
         if (mapWidth <= 0 || mapHeight <= 0 || searchRadius < 0)
             return Array.Empty<GridPoint>();
 
         GridPoint[] anchors = warpTiles
             .Where(tile => IsBoundaryWarp(tile, mapWidth, mapHeight))
+            .Where(tile => requiredSide is null
+                || GetNearestBoundarySide(mapWidth, mapHeight, tile) == requiredSide)
             .Select(tile => new GridPoint(
                 Math.Clamp(tile.X, 0, mapWidth - 1),
                 Math.Clamp(tile.Y, 0, mapHeight - 1)))

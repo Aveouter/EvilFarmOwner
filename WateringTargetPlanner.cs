@@ -72,7 +72,8 @@ internal sealed class WateringTargetPlanner
         foreach (GridPoint candidate in FarmEntranceSelection.OrderBoundaryArrivalCandidates(
                      width,
                      height,
-                     farm.warps.Select(warp => new GridPoint(warp.X, warp.Y))))
+                     farm.warps.Select(warp => new GridPoint(warp.X, warp.Y)),
+                     requiredSide: FarmEntranceSelection.FixedWorkerEntranceSide))
         {
             Vector2 candidateTile = new(candidate.X, candidate.Y);
             if (farm.warps.Any(warp => warp.X == candidate.X && warp.Y == candidate.Y)

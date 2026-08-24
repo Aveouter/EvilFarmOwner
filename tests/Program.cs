@@ -14,15 +14,19 @@ List<(string Name, Action Test)> tests = new()
     ("trellis detour route", TestTrellisDetourRoute),
     ("failed interaction edge isolation", TestFailedInteractionEdgeIsolation),
     ("controller path skips current tile", TestControllerPathSkipsCurrentTile),
+    ("destination tile alignment", TestDestinationTileAlignment),
     ("travel progress watchdog", TestTravelProgressWatchdog),
     ("external boundary arrival ordering", TestExternalBoundaryArrivalOrdering),
+    ("fixed main entrance filtering", TestFixedMainEntranceFiltering),
     ("nearest arrival boundary side", TestNearestArrivalBoundarySide),
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
+    ("harvest fallback capacity ordering", TestHarvestFallbackCapacityOrdering),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("harvest overflow fallback", TestHarvestOverflowFallback),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
+    ("harvest placement conservation", TestHarvestPlacementConservation),
     ("multiplayer request authorization", TestMultiplayerRequestAuthorization),
     ("multiplayer request replay", TestMultiplayerRequestReplay),
     ("multiplayer deterministic order", TestMultiplayerDeterministicOrder),
@@ -187,6 +191,12 @@ static void TestControllerPathSkipsCurrentTile()
     Equal(new GridPoint(76, 15), steps[1]);
 }
 
+static void TestDestinationTileAlignment()
+{
+    GridPoint pixel = FarmNavigationMap.GetAlignedCharacterPixel(new GridPoint(45, 32), 64);
+    Equal(new GridPoint(45 * 64, 32 * 64), pixel);
+}
+
 static void TestTravelProgressWatchdog()
 {
     TravelProgressWatchdog watchdog = new();
@@ -214,6 +224,24 @@ static void TestExternalBoundaryArrivalOrdering()
     Equal(new GridPoint(40, 64), candidates[1]);
     Equal(new GridPoint(41, 0), candidates[2]);
     Equal(false, candidates.Contains(new GridPoint(34, 7)));
+}
+
+static void TestFixedMainEntranceFiltering()
+{
+    IReadOnlyList<GridPoint> candidates = FarmEntranceSelection.OrderBoundaryArrivalCandidates(
+        mapWidth: 80,
+        mapHeight: 65,
+        new[]
+        {
+            new GridPoint(80, 15),
+            new GridPoint(40, 65),
+            new GridPoint(41, -1)
+        },
+        requiredSide: FarmBoundarySide.East);
+
+    Equal(new GridPoint(79, 15), candidates[0]);
+    Equal(false, candidates.Contains(new GridPoint(40, 64)));
+    Equal(false, candidates.Contains(new GridPoint(41, 0)));
 }
 
 static void TestNearestArrivalBoundarySide()
@@ -247,13 +275,15 @@ static void TestHarvestChestMatchPriority()
     {
         new(new GridPoint(1, 1), new GridPoint(1, 2), HarvestChestMatchKind.SameItem, 999, 10, 1),
         new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.ExactStack, 1, 10, 20),
-        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.SameGroup, 999, 10, 2)
+        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.SameGroup, 999, 10, 2),
+        new(new GridPoint(3, 3), new GridPoint(3, 4), HarvestChestMatchKind.AvailableCapacity, 9999, 10, 1)
     };
 
     IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
     Equal(HarvestChestMatchKind.ExactStack, ordered[0].MatchKind);
     Equal(HarvestChestMatchKind.SameItem, ordered[1].MatchKind);
     Equal(HarvestChestMatchKind.SameGroup, ordered[2].MatchKind);
+    Equal(HarvestChestMatchKind.AvailableCapacity, ordered[3].MatchKind);
 }
 
 static void TestHarvestChestFullAcceptance()
@@ -269,11 +299,48 @@ static void TestHarvestChestFullAcceptance()
     Equal(true, ordered[0].CanFullyAccept);
 }
 
+static void TestHarvestFallbackCapacityOrdering()
+{
+    HarvestChestOption[] options =
+    {
+        new(new GridPoint(1, 1), new GridPoint(1, 2), HarvestChestMatchKind.AvailableCapacity, 5, 10, 1),
+        new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.AvailableCapacity, 20, 10, 20),
+        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.AvailableCapacity, 12, 10, 2)
+    };
+
+    IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
+    Equal(new GridPoint(8, 8), ordered[0].ChestTile);
+    Equal(new GridPoint(2, 2), ordered[1].ChestTile);
+    Equal(new GridPoint(1, 1), ordered[2].ChestTile);
+}
+
 static void TestHarvestPartialRemainder()
 {
     Equal(6, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 4));
     Equal(0, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 10));
     Equal(10, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 0));
+}
+
+static void TestHarvestPlacementConservation()
+{
+    Equal(true, HarvestPlacementAudit.IsBalanced(
+        harvested: 17,
+        chest: 10,
+        overflow: 4,
+        dropped: 3,
+        unresolved: 0));
+    Equal(false, HarvestPlacementAudit.IsBalanced(
+        harvested: 17,
+        chest: 10,
+        overflow: 4,
+        dropped: 2,
+        unresolved: 0));
+    Equal(true, HarvestPlacementAudit.IsBalanced(
+        harvested: 17,
+        chest: 10,
+        overflow: 4,
+        dropped: 2,
+        unresolved: 1));
 }
 
 static void TestHarvestOverflowFallback()
