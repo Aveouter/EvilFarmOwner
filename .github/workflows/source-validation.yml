@@ -34,14 +34,21 @@ jobs:
           jq -e '
             .Name == "Evil Farm Owner"
             and .Author == "Aveouter"
-            and .Version == "0.1.0"
             and .UniqueID == "Aveouter.EvilFarmOwner"
             and .EntryDll == "EvilFarmOwner.dll"
             and (.UpdateKeys | index("GitHub:Aveouter/EvilFarmOwner") != null)
           ' manifest.json >/dev/null
 
-          grep -Eq '<Version>0\.1\.0</Version>' EvilFarmOwner.csproj
-          grep -Eq 'Stardew Valley SMAPI Mod · v0\.1\.0' README.md
+          manifest_version="$(jq -er '.Version | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"))' manifest.json)"
+          project_version="$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' EvilFarmOwner.csproj)"
+          test "$project_version" = "$manifest_version"
+          grep -Fq "Stardew Valley SMAPI Mod · v$manifest_version" README.md
+          grep -Fq "## $manifest_version -" CHANGELOG.md
+
+          test -f LICENSE
+          grep -Fxq 'MIT License' LICENSE
+          grep -Fxq 'Copyright (c) 2026 Aveouter' LICENSE
+          grep -Fq '[MIT](LICENSE) © 2026 Aveouter.' README.md
 
           jq -r 'keys[]' i18n/default.json | LC_ALL=C sort > "$RUNNER_TEMP/efo-default-keys.txt"
           jq -r 'keys[]' i18n/zh.json | LC_ALL=C sort > "$RUNNER_TEMP/efo-zh-keys.txt"

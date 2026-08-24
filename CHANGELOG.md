@@ -1,6 +1,9 @@
 # Changelog
 
-## 0.1.0 - 2026-08-24
+## 0.1.0-beta.1 - 2026-08-24
+
+- Published the first explicitly non-stable test build under the MIT License.
+- Marked real remote multiplayer and forced storage-recovery scenarios as unverified release-test gates rather than claiming they passed.
 
 - Added confirmation for a visible named-NPC watering contract.
 - Added fresh availability, funds, target, and two-way path checks before dispatch.
