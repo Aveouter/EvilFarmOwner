@@ -59,4 +59,6 @@ For a release candidate, run the complete deterministic build and package allowl
 ./scripts/verify-release.sh
 ```
 
+The release verifier requires a clean Git worktree and prints the exact source commit and tree associated with its artifact hash. For a pre-commit diagnostic only, a developer may run `EFO_RELEASE_ALLOW_DIRTY=1 ./scripts/verify-release.sh`; hashes from that override are not release evidence.
+
 This command does not deploy into the live game. Real single-player and remote host/farmhand acceptance tests are still required for gameplay and multiplayer releases.

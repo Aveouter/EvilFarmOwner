@@ -6,6 +6,24 @@ package_path="$project_root/bin/Release/net6.0/EvilFarmOwner 0.1.0.zip"
 
 cd "$project_root"
 
+source_commit="$(git rev-parse HEAD)"
+source_tree="$(git rev-parse 'HEAD^{tree}')"
+source_status="$(git status --porcelain=v1 --untracked-files=all)"
+if [[ -n "$source_status" && "${EFO_RELEASE_ALLOW_DIRTY:-0}" != "1" ]]; then
+  echo "Release verification requires a clean Git worktree." >&2
+  echo "Commit or remove these source changes before producing audited hashes:" >&2
+  printf '%s\n' "$source_status" >&2
+  echo "For a non-audited pre-commit diagnostic only, set EFO_RELEASE_ALLOW_DIRTY=1." >&2
+  exit 1
+fi
+
+if [[ -n "$source_status" ]]; then
+  echo "WARNING: running a non-audited verification from a dirty worktree." >&2
+fi
+
+echo "Source commit: $source_commit"
+echo "Source tree: $source_tree"
+
 dotnet run \
   -c Release \
   --project tests/EvilFarmOwner.LogicTests.csproj \
@@ -52,4 +70,6 @@ else
   shasum -a 256 "$package_path"
 fi
 
+echo "Verified source commit: $source_commit"
+echo "Verified source tree: $source_tree"
 echo "Release package verification passed."
