@@ -207,8 +207,16 @@ internal sealed class WateringTargetPlanner
     {
         return location.terrainFeatures.TryGetValue(tile, out TerrainFeature? feature)
             && feature is HoeDirt dirt
-            && dirt.crop is not null
-            && dirt.state.Value != HoeDirt.watered;
+            && dirt.crop is { } crop
+            && IsEligibleDryCropState(
+                hasCrop: true,
+                isDead: crop.dead.Value,
+                isWatered: dirt.state.Value == HoeDirt.watered);
+    }
+
+    public static bool IsEligibleDryCropState(bool hasCrop, bool isDead, bool isWatered)
+    {
+        return hasCrop && !isDead && !isWatered;
     }
 
     public static int CountRemainingDryCrops(

@@ -10,6 +10,7 @@ List<(string Name, Action Test)> tests = new()
     ("dispatched one-hour settlement", TestDispatchedSettlement),
     ("elapsed multi-hour settlement", TestElapsedMultiHourSettlement),
     ("target ordering", TestTargetOrdering),
+    ("dry crop eligibility", TestDryCropEligibility),
     ("actual path cost ordering", TestActualPathCostOrdering),
     ("trellis detour route", TestTrellisDetourRoute),
     ("failed interaction edge isolation", TestFailedInteractionEdgeIsolation),
@@ -126,6 +127,26 @@ static void TestTargetOrdering()
     Equal(new GridPoint(5, 7), ordered[1].Target);
     Equal(new GridPoint(2, 5), ordered[2].Target);
     Equal(new GridPoint(9, 5), ordered[3].Target);
+}
+
+static void TestDryCropEligibility()
+{
+    Equal(true, WateringTargetPlanner.IsEligibleDryCropState(
+        hasCrop: true,
+        isDead: false,
+        isWatered: false));
+    Equal(false, WateringTargetPlanner.IsEligibleDryCropState(
+        hasCrop: true,
+        isDead: true,
+        isWatered: false));
+    Equal(false, WateringTargetPlanner.IsEligibleDryCropState(
+        hasCrop: true,
+        isDead: false,
+        isWatered: true));
+    Equal(false, WateringTargetPlanner.IsEligibleDryCropState(
+        hasCrop: false,
+        isDead: false,
+        isWatered: false));
 }
 
 static void TestActualPathCostOrdering()
