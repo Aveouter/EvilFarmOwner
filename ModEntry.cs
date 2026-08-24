@@ -87,7 +87,63 @@ public sealed class ModEntry : Mod
             "ACCEPTANCE TEST BUILD: harvest storage fault injection is enabled. Do not distribute this DLL.",
             LogLevel.Alert);
 #endif
+#if EFO_STORAGE_SORT_ACCEPTANCE
+        helper.ConsoleCommands.Add(
+            "efo_storage_sort_fixture",
+            "Create or inspect the isolated five-chest sorting acceptance fixture. Excluded from production builds.",
+            this.HandleStorageSortFixtureCommand);
+        this.Monitor.Log(
+            "ACCEPTANCE TEST BUILD: chest-sorting fixture setup is enabled. Use only on a disposable save.",
+            LogLevel.Alert);
+#endif
     }
+
+#if EFO_STORAGE_SORT_ACCEPTANCE
+    private void HandleStorageSortFixtureCommand(string command, string[] args)
+    {
+        if (!Context.IsWorldReady || !Context.IsMainPlayer)
+        {
+            this.Monitor.Log("The sorting fixture requires an active host save.", LogLevel.Warn);
+            return;
+        }
+
+        if (this.HasActiveNamedContract())
+        {
+            this.Monitor.Log("Finish the active named contract before inspecting or creating the fixture.", LogLevel.Warn);
+            return;
+        }
+
+        string action = args.FirstOrDefault()?.Trim().ToLowerInvariant() ?? "status";
+        if (action == "status")
+        {
+            this.Monitor.Log(StorageSortAcceptanceFixture.Describe(Game1.getFarm()), LogLevel.Info);
+            return;
+        }
+
+        if (action != "setup")
+        {
+            this.Monitor.Log("Usage: efo_storage_sort_fixture <setup|status>", LogLevel.Info);
+            return;
+        }
+
+        if (!ReferenceEquals(Game1.player.currentLocation, Game1.getFarm()))
+        {
+            this.Monitor.Log("Stand on the main farm before creating the sorting fixture.", LogLevel.Warn);
+            return;
+        }
+
+        if (StorageSortAcceptanceFixture.TrySetup(
+                Game1.getFarm(),
+                Game1.player.TilePoint,
+                out string result))
+        {
+            this.Monitor.Log(result, LogLevel.Alert);
+            return;
+        }
+
+        this.Monitor.Log(result, LogLevel.Warn);
+    }
+#endif
 
 #if EFO_ACCEPTANCE_FAULTS
     private void HandleAcceptanceFaultCommand(string command, string[] args)

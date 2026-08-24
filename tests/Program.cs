@@ -51,6 +51,7 @@ List<(string Name, Action Test)> tests = new()
     ("storage sort stable tie", TestStorageSortStableTie),
     ("storage sort capacity preflight", TestStorageSortCapacityPreflight),
     ("storage sort idempotence", TestStorageSortIdempotence),
+    ("storage sort acceptance fixture", TestStorageSortAcceptanceFixture),
     ("storage sort conservation", TestStorageSortConservation),
     ("storage sort invalid snapshot", TestStorageSortInvalidSnapshot),
     ("storage sort generated invariants", TestStorageSortGeneratedInvariants),
@@ -1018,6 +1019,36 @@ static void TestStorageSortIdempotence()
     StorageSortPlan second = StorageSortPlanner.Create(first.ResultChests);
     Equal(true, second.CanExecute);
     Equal(0, second.Transfers.Count);
+}
+
+static void TestStorageSortAcceptanceFixture()
+{
+    GridPoint[] tiles =
+    {
+        new(0, 0),
+        new(2, 0),
+        new(4, 0),
+        new(6, 0),
+        new(8, 0)
+    };
+    IReadOnlyList<StorageSortChestSnapshot> source = StorageSortAcceptanceFixture.CreateSnapshots(tiles);
+    StorageSortPlan first = StorageSortPlanner.Create(source);
+    Equal(StorageSortPlanFailure.None, first.Failure);
+    Equal(4, first.Transfers.Count);
+    Equal(new GridPoint(2, 0), first.Transfers.Single(transfer =>
+        transfer.StackingKey == "(O)382:q0").DestinationChest);
+    Equal(new GridPoint(4, 0), first.Transfers.Single(transfer =>
+        transfer.StackingKey == "(O)613:q0").DestinationChest);
+    Equal(new GridPoint(6, 0), first.Transfers.Single(transfer =>
+        transfer.StackingKey == "(O)770:q0").DestinationChest);
+    Equal(new GridPoint(0, 0), first.Transfers.Single(transfer =>
+        transfer.StackingKey == "(O)24:q1").DestinationChest);
+
+    StorageSortPlan second = StorageSortPlanner.Create(first.ResultChests);
+    Equal(StorageSortPlanFailure.None, second.Failure);
+    Equal(0, second.Transfers.Count);
+    Equal(SortQuantity(source), SortQuantity(first.ResultChests));
+    Equal(SortTotals(source), SortTotals(first.ResultChests));
 }
 
 static void TestStorageSortConservation()
