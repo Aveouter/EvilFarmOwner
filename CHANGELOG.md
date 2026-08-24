@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Deferred harvest delivery until the next update after releasing a chest mutex, preventing consecutive outputs routed to the same chest from being falsely rejected as unreachable.
+
 ## 0.1.0-beta.1 - 2026-08-24
 
 - Published the first explicitly non-stable test build under the MIT License.

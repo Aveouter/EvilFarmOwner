@@ -299,6 +299,11 @@ internal sealed class HarvestingContractExecutionController
                 }
                 break;
 
+            case HarvestContractPhase.WaitingForChestRelease:
+                if (HarvestChestReleaseDelay.CanContinue(contract.PhaseTicks))
+                    this.BeginDeliveryOrReturn(contract);
+                break;
+
             case HarvestContractPhase.WaitingForOverflowLock:
                 if (contract.PhaseTicks >= MaximumOverflowWaitTicks)
                 {
@@ -984,7 +989,12 @@ internal sealed class HarvestingContractExecutionController
         if (storageBecameUnavailable)
             this.StopForUnavailableStorage(contract, "a locked chest stopped accepting the full stack");
         else
-            this.BeginDeliveryOrReturn(contract);
+        {
+            // NetMutex release completion is not re-entrant. Requesting the same chest again
+            // from this acquisition callback can receive a false lock-failure response.
+            contract.Phase = HarvestContractPhase.WaitingForChestRelease;
+            contract.PhaseTicks = 0;
+        }
     }
 
     private void OnChestLockFailed(Guid contractId, HarvestChestRoute route)
@@ -2194,6 +2204,7 @@ internal sealed class HarvestingContractExecutionController
         Acting,
         TravelingToChest,
         WaitingForChestLock,
+        WaitingForChestRelease,
         WaitingForOverflowLock,
         QuarantiningCargo,
         Returning,
