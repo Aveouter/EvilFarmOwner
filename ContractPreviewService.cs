@@ -29,7 +29,9 @@ internal static class ContractPreviewService
             friendshipHearts,
             dayOfMonth,
             profile.GetMultiplier(task),
-            profile.Background);
+            task == NamedFarmTask.StorageSorting
+                ? WorkerEfficiencyBackground.Baseline
+                : profile.Background);
     }
 
     private static WorkContractPreview Create(

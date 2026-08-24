@@ -6,6 +6,12 @@
 - Isolated a crop after its live interaction routes are exhausted instead of marking every remaining crop unreachable; three independently stalled crops at one origin still trigger a bounded safe return.
 - Isolated a stalled harvest chest interaction route instead of rejecting every approach to that chest, while retaining whole-chest exclusion for storage or mutex failures.
 - Deferred harvest delivery until the next update after releasing a chest mutex, preventing consecutive outputs routed to the same chest from being falsely rejected as unreachable.
+- Added a manually confirmed named-NPC chest-sorting contract for ordinary player-owned main-farm chests.
+- Preflight the immutable whole-stack plan, exact capacity, every source/destination route, and safe return before reserving wages or leasing the worker.
+- Execute deterministic exact-stack, same-item, exact-category, and empty-chest transfers under ordered dual mutexes with exact rollback or persistent quarantine recovery.
+- Force any verified detached sorting stack into the private team quarantine at the save boundary when its serializable recovery record is temporarily unavailable.
+- Added bilingual task selection, contract settlement HUDs, host-authoritative protocol 8 snapshots/results, and persistent per-transfer source/destination reports.
+- Kept recurring automatic chest sorting disabled until the manual contract passes live acceptance.
 
 ## 0.1.0-beta.1 - 2026-08-24
 
