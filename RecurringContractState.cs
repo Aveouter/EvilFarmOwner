@@ -92,6 +92,7 @@ internal static class RecurringContractPolicy
     public static bool IsValid(RecurringContractTemplateData template)
     {
         if (!Enum.IsDefined(template.Task)
+            || template.Task == NamedFarmTask.StorageSorting
             || !Enum.IsDefined(template.WorkerMode)
             || !WorkerEfficiencyProfiles.HasExplicitProfile(template.PreferredWorkerName)
             || template.ApprovedSubstituteNames is null

@@ -11,7 +11,9 @@ namespace EvilFarmOwner;
 internal sealed record StorageSortCompletedTransfer(
     int Sequence,
     string ItemId,
+    string DisplayName,
     int Category,
+    int Quality,
     int Quantity,
     GridPoint SourceChest,
     GridPoint DestinationChest);
@@ -59,6 +61,19 @@ internal static class StorageSortContractAudit
     }
 }
 
+internal static class StorageSortSaveBoundaryPolicy
+{
+    public static bool CanForceQuarantine(
+        bool hasUnresolvedItem,
+        bool unresolvedItemDetached,
+        Guid transferId)
+    {
+        return hasUnresolvedItem
+            && unresolvedItemDetached
+            && transferId != Guid.Empty;
+    }
+}
+
 internal sealed class StorageSortContractExecutionController
 {
     private const int LatestStartTime = 1600;
@@ -69,17 +84,21 @@ internal sealed class StorageSortContractExecutionController
     private const int MaximumStalledTravelTicks = 180;
     private const int MaximumLockWaitTicks = 300;
 
+    private readonly ITranslationHelper Translation;
     private readonly IMonitor Monitor;
     private readonly WorkerRosterService WorkerRoster;
     private readonly StorageSortRoutePlanner RoutePlanner;
     private readonly StorageSortRecoveryManager RecoveryManager;
     private ActiveStorageSortContract? ActiveContract;
+    private NamedContractCompletionState? LastCompletion;
 
     public StorageSortContractExecutionController(
+        ITranslationHelper translation,
         IMonitor monitor,
         WorkerRosterService workerRoster,
         StorageSortRecoveryManager recoveryManager)
     {
+        this.Translation = translation;
         this.Monitor = monitor;
         this.WorkerRoster = workerRoster;
         this.RoutePlanner = new StorageSortRoutePlanner(monitor);
@@ -88,11 +107,68 @@ internal sealed class StorageSortContractExecutionController
 
     public bool HasActiveContract => this.ActiveContract is not null;
 
+    public bool HasUnresolvedRecovery => this.RecoveryManager.HasPendingRecovery
+        || this.ActiveContract?.UnresolvedItem is not null;
+
     public string? ActiveContractId => this.ActiveContract?.Id.ToString("N");
 
     public string? LastStartFailureKey { get; private set; }
 
     public StorageSortContractReport? LastReport { get; private set; }
+
+    public NamedContractRuntimeState? GetRuntimeState()
+    {
+        ActiveStorageSortContract? contract = this.ActiveContract;
+        if (contract is null)
+            return null;
+
+        StorageSortRouteStep step = contract.StepIndex < contract.RoutePlan.Steps.Count
+            ? contract.RoutePlan.Steps[contract.StepIndex]
+            : contract.RoutePlan.Steps[^1];
+        GridPoint target = contract.Phase is StorageSortContractPhase.TravelingToSource
+            or StorageSortContractPhase.InspectingSource
+            ? step.Transfer.SourceChest
+            : step.Transfer.DestinationChest;
+        IReadOnlyList<NamedContractCargoState> cargo = contract.UnresolvedItem is null
+            ? Array.Empty<NamedContractCargoState>()
+            : new[]
+            {
+                new NamedContractCargoState(
+                    contract.UnresolvedTransferId.ToString("N"),
+                    contract.UnresolvedItem.QualifiedItemId,
+                    contract.UnresolvedItem.DisplayName,
+                    contract.UnresolvedItem.Quality,
+                    contract.UnresolvedItem.Stack)
+            };
+        return new NamedContractRuntimeState(
+            contract.Id.ToString("N"),
+            contract.RequestId,
+            contract.Requester.UniqueMultiplayerID,
+            contract.Lease.Worker.Name,
+            NamedFarmTask.StorageSorting,
+            contract.Preview.EfficiencyMultiplier,
+            contract.Phase.ToString(),
+            contract.RoutePlan.ArrivalTile.X,
+            contract.RoutePlan.ArrivalTile.Y,
+            contract.RoutePlan.ArrivalSide,
+            EntranceSwitches: 0,
+            target.X,
+            target.Y,
+            contract.Preview.MaximumAuthorizedWage,
+            contract.Lease.StartTime,
+            contract.CompletedTransfers.Count,
+            cargo,
+            contract.CompletedTransfers
+                .Select(transfer => contract.TransferIds[transfer.Sequence].ToString("N"))
+                .ToArray());
+    }
+
+    public NamedContractCompletionState? ConsumeCompletion()
+    {
+        NamedContractCompletionState? completion = this.LastCompletion;
+        this.LastCompletion = null;
+        return completion;
+    }
 
     public bool TryStart(
         long requestingPlayerId,
@@ -103,13 +179,13 @@ internal sealed class StorageSortContractExecutionController
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
             return this.FailStart("contract.start.host-only");
         if (this.RecoveryManager.HasPendingRecovery)
-            return this.FailStart("harvest.start.quarantine-pending");
+            return this.FailStart("storage-sort.start.recovery-pending");
         if (!Guid.TryParseExact(requestId, "N", out _))
             return this.FailStart("multiplayer.reject.request-id");
         if (this.ActiveContract is not null)
             return this.FailStart("contract.start.already-active");
         if (Game1.timeOfDay > LatestStartTime)
-            return this.FailStart("harvest.start.too-late");
+            return this.FailStart("storage-sort.start.too-late");
 
         Farmer? requester = Game1.GetPlayer(requestingPlayerId, onlyOnline: true);
         if (requester is null)
@@ -126,13 +202,15 @@ internal sealed class StorageSortContractExecutionController
             return this.FailStart("contract.start.worker-missing");
         }
         if (availability.State != WorkerAvailabilityState.EligibleForPreview)
-            return this.FailStart("contract.start.worker-unavailable");
+            return this.FailStart("storage-sort.start.worker-unavailable");
 
         WorkContractPreview preview = ContractPreviewService.Create(
             requester.getFriendshipHeartLevelForNPC(worker.Name),
-            Game1.dayOfMonth);
+            Game1.dayOfMonth,
+            worker.Name,
+            NamedFarmTask.StorageSorting);
         if (requester.Money < preview.MaximumAuthorizedWage)
-            return this.FailStart("contract.start.insufficient-funds");
+            return this.FailStart("storage-sort.start.insufficient-funds");
 
         StorageSortRuntimePlanResult snapshotResult = StorageSortSnapshotService.TryCreate(farm);
         if (!snapshotResult.IsSuccess || snapshotResult.RuntimePlan is null)
@@ -193,6 +271,14 @@ internal sealed class StorageSortContractExecutionController
             worker.Halt();
             contract.Dispatched = true;
             this.BeginSourceTravel(contract);
+            Game1.addHUDMessage(new HUDMessage(
+                this.Translation.Get("storage-sort.hud.dispatched", new
+                {
+                    worker = worker.displayName,
+                    transfers = routeResult.Plan.Steps.Count,
+                    gold = preview.MaximumAuthorizedWage
+                }),
+                HUDMessage.newQuest_type));
             return true;
         }
         catch (Exception ex)
@@ -284,6 +370,31 @@ internal sealed class StorageSortContractExecutionController
         {
             this.ReleaseLocks(contract);
             this.TryResolveBlockedRecovery(contract);
+            if (StorageSortSaveBoundaryPolicy.CanForceQuarantine(
+                    contract.UnresolvedItem is not null,
+                    contract.UnresolvedItemDetached,
+                    contract.UnresolvedTransferId)
+                && contract.UnresolvedItem is { } detachedItem)
+            {
+                int stack = detachedItem.Stack;
+                if (this.RecoveryManager.TryForceQuarantineAtSaveBoundary(
+                        contract.UnresolvedTransferId,
+                        detachedItem))
+                {
+                    contract.PersistedRecoveryItems += stack;
+                    contract.UnresolvedItem = null;
+                    contract.UnresolvedItemDetached = false;
+                }
+            }
+
+            if (contract.UnresolvedItem is not null)
+            {
+                this.Monitor.Log(
+                    $"CRITICAL: storage-sort contract {contract.Id:N} reached the save boundary "
+                    + "without verified durable ownership; retaining the active contract and refusing "
+                    + "to report finalization.",
+                    LogLevel.Error);
+            }
             this.FinishContract(
                 contract,
                 succeeded: false,
@@ -654,7 +765,7 @@ internal sealed class StorageSortContractExecutionController
             contract.UnresolvedItemDetached = result.UnresolvedItemDetached;
             contract.UnresolvedTransferId = transferId;
             contract.FailureKey = result.RequiresPersistentRecovery
-                ? "harvest.failure.quarantine-pending"
+                ? "storage-sort.failure.recovery-pending"
                 : "contract.failure.storage-changed";
             if (result.RequiresPersistentRecovery && result.UnresolvedItem is not null)
             {
@@ -674,7 +785,9 @@ internal sealed class StorageSortContractExecutionController
         contract.CompletedTransfers.Add(new StorageSortCompletedTransfer(
             step.Transfer.Sequence,
             step.Transfer.ItemId,
+            contract.TransferSummaries[step.Transfer.Sequence].DisplayName,
             step.Transfer.Category,
+            contract.TransferSummaries[step.Transfer.Sequence].Quality,
             result.MovedItems,
             step.Transfer.SourceChest,
             step.Transfer.DestinationChest));
@@ -740,7 +853,7 @@ internal sealed class StorageSortContractExecutionController
         contract.PersistedRecoveryItems += stack;
         contract.UnresolvedItem = null;
         contract.UnresolvedItemDetached = false;
-        this.BeginReturn(contract, contract.FailureKey ?? "harvest.failure.quarantine-pending");
+        this.BeginReturn(contract, contract.FailureKey ?? "storage-sort.failure.recovery-pending");
     }
 
     private void BeginReturn(
@@ -823,7 +936,7 @@ internal sealed class StorageSortContractExecutionController
         this.ReleaseLocks(contract);
         if (contract.UnresolvedItem is not null)
         {
-            contract.FailureKey ??= "harvest.failure.quarantine-pending";
+            contract.FailureKey ??= "storage-sort.failure.recovery-pending";
             contract.Phase = StorageSortContractPhase.RecoveryBlocked;
             contract.PhaseTicks = 0;
             return;
@@ -865,7 +978,10 @@ internal sealed class StorageSortContractExecutionController
             && restoreResult == NpcLeaseRestoreResult.Restored;
         StorageSortCompletedTransfer[] skippedTransfers = contract.RoutePlan.Steps
             .Skip(contract.CompletedTransfers.Count)
-            .Select(step => ToReportTransfer(step.Transfer, step.Transfer.Quantity))
+            .Select(step => ToReportTransfer(
+                step.Transfer,
+                contract.TransferSummaries[step.Transfer.Sequence],
+                step.Transfer.Quantity))
             .ToArray();
         bool reportBalanced = StorageSortContractAudit.IsReportBalanced(
             contract.RoutePlan.Steps.Count,
@@ -897,7 +1013,84 @@ internal sealed class StorageSortContractExecutionController
             settlement.BillableHours,
             settlement.ChargedGold,
             settlement.RefundedGold);
+        List<NamedContractCargoState> placedItems = contract.CompletedTransfers
+            .Select(transfer => new NamedContractCargoState(
+                contract.TransferIds[transfer.Sequence].ToString("N"),
+                transfer.ItemId,
+                transfer.DisplayName,
+                transfer.Quality,
+                transfer.Quantity))
+            .ToList();
+        List<string> completedTransferIds = contract.CompletedTransfers
+            .Select(transfer => contract.TransferIds[transfer.Sequence].ToString("N"))
+            .ToList();
+        if (contract.PersistedRecoveryItems > 0
+            && contract.UnresolvedTransferId != Guid.Empty
+            && contract.StepIndex < contract.RoutePlan.Steps.Count)
+        {
+            StorageSortRouteStep recoveryStep = contract.RoutePlan.Steps[contract.StepIndex];
+            StorageSortTransferItemSummary recoverySummary =
+                contract.TransferSummaries[recoveryStep.Transfer.Sequence];
+            placedItems.Add(new NamedContractCargoState(
+                contract.UnresolvedTransferId.ToString("N"),
+                recoverySummary.QualifiedItemId,
+                recoverySummary.DisplayName,
+                recoverySummary.Quality,
+                contract.PersistedRecoveryItems));
+            completedTransferIds.Add(contract.UnresolvedTransferId.ToString("N"));
+        }
+        this.LastCompletion = new NamedContractCompletionState(
+            contract.Id.ToString("N"),
+            contract.RequestId,
+            contract.Requester.UniqueMultiplayerID,
+            contract.Lease.Worker.Name,
+            NamedFarmTask.StorageSorting,
+            finalSucceeded,
+            reasonKey,
+            contract.CompletedTransfers.Count,
+            PlayerItems: 0,
+            ChestItems: contract.MovedItems,
+            OverflowItems: 0,
+            QuarantinedItems: contract.PersistedRecoveryItems,
+            DroppedItems: 0,
+            settlement.BillableHours,
+            settlement.ChargedGold,
+            settlement.RefundedGold,
+            placedItems,
+            completedTransferIds,
+            contract.CompletedTransfers.Select(ToProtocolTransfer).ToArray(),
+            skippedTransfers.Select(ToProtocolTransfer).ToArray());
         this.ActiveContract = null;
+
+        string messageKey = finalSucceeded
+            ? "storage-sort.hud.completed"
+            : "storage-sort.hud.stopped";
+        object messageArguments = finalSucceeded
+            ? new
+            {
+                worker = contract.Lease.Worker.displayName,
+                transfers = contract.CompletedTransfers.Count,
+                items = contract.MovedItems,
+                skipped = skippedTransfers.Length,
+                hours = settlement.BillableHours,
+                paid = settlement.ChargedGold,
+                refunded = settlement.RefundedGold
+            }
+            : new
+            {
+                worker = contract.Lease.Worker.displayName,
+                reason = this.Translation.Get(reasonKey),
+                transfers = contract.CompletedTransfers.Count,
+                items = contract.MovedItems,
+                skipped = skippedTransfers.Length,
+                recovery = contract.PersistedRecoveryItems,
+                hours = settlement.BillableHours,
+                paid = settlement.ChargedGold,
+                refunded = settlement.RefundedGold
+            };
+        Game1.addHUDMessage(new HUDMessage(
+            this.Translation.Get(messageKey, messageArguments),
+            finalSucceeded ? HUDMessage.newQuest_type : HUDMessage.error_type));
     }
 
     private void ReleaseLocks(ActiveStorageSortContract contract)
@@ -918,6 +1111,9 @@ internal sealed class StorageSortContractExecutionController
     private bool FailStart(string failureKey)
     {
         this.LastStartFailureKey = failureKey;
+        Game1.addHUDMessage(new HUDMessage(
+            this.Translation.Get(failureKey),
+            HUDMessage.error_type));
         return false;
     }
 
@@ -940,15 +1136,34 @@ internal sealed class StorageSortContractExecutionController
 
     private static StorageSortCompletedTransfer ToReportTransfer(
         StorageSortTransfer transfer,
+        StorageSortTransferItemSummary summary,
         int quantity)
     {
         return new StorageSortCompletedTransfer(
             transfer.Sequence,
             transfer.ItemId,
+            summary.DisplayName,
             transfer.Category,
+            summary.Quality,
             quantity,
             transfer.SourceChest,
             transfer.DestinationChest);
+    }
+
+    private static NamedContractTransferState ToProtocolTransfer(
+        StorageSortCompletedTransfer transfer)
+    {
+        return new NamedContractTransferState(
+            transfer.Sequence,
+            transfer.ItemId,
+            transfer.DisplayName,
+            transfer.Category,
+            transfer.Quality,
+            transfer.Quantity,
+            transfer.SourceChest.X,
+            transfer.SourceChest.Y,
+            transfer.DestinationChest.X,
+            transfer.DestinationChest.Y);
     }
 
     private static int GetFacingDirection(Point interaction, Point target)
@@ -966,11 +1181,11 @@ internal sealed class StorageSortContractExecutionController
     {
         return failure switch
         {
-            StorageSortSnapshotFailure.NoEligibleChest => "harvest.start.no-storage-chest",
+            StorageSortSnapshotFailure.NoEligibleChest => "storage-sort.start.no-chest",
             StorageSortSnapshotFailure.BusyChest => "contract.failure.storage-lock",
-            StorageSortSnapshotFailure.NoTransfers => "contract.failure.no-work",
-            StorageSortSnapshotFailure.InsufficientCapacity => "harvest.failure.storage-unavailable",
-            _ => "contract.failure.storage-changed"
+            StorageSortSnapshotFailure.NoTransfers => "storage-sort.start.no-work",
+            StorageSortSnapshotFailure.InsufficientCapacity => "storage-sort.start.no-capacity",
+            _ => "storage-sort.start.invalid"
         };
     }
 
@@ -981,7 +1196,7 @@ internal sealed class StorageSortContractExecutionController
             StorageSortRouteFailure.UnsupportedFarmMap => "contract.start.unsupported-map",
             StorageSortRouteFailure.NoBoundaryEntrance or StorageSortRouteFailure.NoSafeArrival =>
                 "contract.start.no-arrival",
-            _ => "contract.failure.return-path"
+            _ => "storage-sort.start.no-route"
         };
     }
 
@@ -1027,6 +1242,15 @@ internal sealed class StorageSortContractExecutionController
             this.RuntimePlan = runtimePlan;
             this.RoutePlan = routePlan;
             this.Session = session;
+            this.TransferSummaries = routePlan.Steps.ToDictionary(
+                step => step.Transfer.Sequence,
+                step => session.TryGetItemSummary(
+                    step.Transfer.StackId,
+                    out StorageSortTransferItemSummary? summary)
+                    && summary is not null
+                        ? summary
+                        : throw new InvalidOperationException(
+                            $"Storage-sort transfer {step.Transfer.Sequence} lost its item summary."));
             this.TransferIds = routePlan.Steps.ToDictionary(
                 step => step.Transfer.Sequence,
                 _ => Guid.NewGuid());
@@ -1041,6 +1265,7 @@ internal sealed class StorageSortContractExecutionController
         public StorageSortRuntimePlan RuntimePlan { get; }
         public StorageSortRoutePlan RoutePlan { get; }
         public StorageSortExecutionSession Session { get; }
+        public Dictionary<int, StorageSortTransferItemSummary> TransferSummaries { get; }
         public Dictionary<int, Guid> TransferIds { get; }
         public List<StorageSortCompletedTransfer> CompletedTransfers { get; } = new();
         public TravelProgressWatchdog TravelWatchdog { get; } = new();
