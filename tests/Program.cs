@@ -35,6 +35,7 @@ List<(string Name, Action Test)> tests = new()
     ("multiplayer request replay", TestMultiplayerRequestReplay),
     ("multiplayer deterministic order", TestMultiplayerDeterministicOrder),
     ("multiplayer reconnect ledger", TestMultiplayerReconnectLedger),
+    ("multiplayer restart recovery state", TestMultiplayerRestartRecoveryState),
     ("multiplayer stale snapshot rejection", TestMultiplayerStaleSnapshotRejection),
     ("multiplayer stale sync-state rejection", TestMultiplayerStaleSyncStateRejection),
     ("multiplayer snapshot serialization", TestMultiplayerSnapshotSerialization),
@@ -545,7 +546,7 @@ static void TestMultiplayerRequestAuthorization()
     valid.TotalDays = 12;
     valid.Task = (NamedFarmTask)999;
     Equal(
-        ContractRequestValidationFailure.InvalidTask,
+    ContractRequestValidationFailure.InvalidTask,
         ContractRequestValidator.Validate(valid, playerId, context));
 }
 
@@ -586,6 +587,93 @@ static void TestMultiplayerReconnectLedger()
     IReadOnlyList<ContractStartResponseMessage> reconnect = ledger.GetForPlayer(4);
     Equal(1, reconnect.Count);
     Equal("recent", reconnect[0].RequestId);
+}
+
+static void TestMultiplayerRestartRecoveryState()
+{
+    string requestId = Guid.NewGuid().ToString("N");
+    string contractId = Guid.NewGuid().ToString("N");
+    ContractStartResponseMessage response = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "old-host-session",
+        HostOrder = 8,
+        RequestId = requestId,
+        RequestingPlayerId = 55,
+        Accepted = true,
+        ContractId = contractId
+    };
+    ContractResultMessage result = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "old-host-session",
+        ContractId = contractId,
+        Sequence = 2,
+        StateVersion = 9,
+        RequestId = requestId,
+        RequestingPlayerId = 55,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.Watering,
+        Succeeded = true,
+        CompletedWork = 3,
+        BillableHours = 1,
+        ChargedGold = 100,
+        RefundedGold = 500
+    };
+    MultiplayerRecoverySaveData state = MultiplayerRecoveryState.Create(
+        "0.1.0",
+        445566,
+        new[] { response },
+        new[] { result });
+
+    Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
+    string json = JsonSerializer.Serialize(state);
+    MultiplayerRecoverySaveData? restored =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json);
+    Equal(true, MultiplayerRecoveryState.IsValid(restored, 445566));
+
+    MultiplayerRecoveryState.RebindResponse(
+        restored!.ProcessedRequests[0],
+        "new-host-session",
+        445566);
+    MultiplayerRecoveryState.RebindResult(
+        restored.RecentResults[0],
+        "new-host-session",
+        445566,
+        sequence: 1,
+        stateVersion: 1);
+    Equal("new-host-session", restored.ProcessedRequests[0].HostSessionId);
+    Equal("new-host-session", restored.RecentResults[0].HostSessionId);
+    Equal(1L, restored.RecentResults[0].Sequence);
+    Equal(1L, restored.RecentResults[0].StateVersion);
+
+    MultiplayerRecoverySaveData filteredResult = MultiplayerRecoveryState.Create(
+        "0.1.0",
+        445566,
+        Array.Empty<ContractStartResponseMessage>(),
+        new[] { result });
+    Equal(0, filteredResult.RecentResults.Length);
+
+    MultiplayerRecoverySaveData orphanedResult = MultiplayerRecoveryState.Create(
+        "0.1.0",
+        445566,
+        Array.Empty<ContractStartResponseMessage>(),
+        Array.Empty<ContractResultMessage>());
+    orphanedResult.RecentResults = new[] { result };
+    Equal(false, MultiplayerRecoveryState.IsValid(orphanedResult, 445566));
+
+    MultiplayerRecoverySaveData unclean = MultiplayerRecoveryState.Create(
+        "0.1.0",
+        445566,
+        new[] { response },
+        new[] { result },
+        isClean: false);
+    Equal(false, MultiplayerRecoveryState.IsValid(unclean, 445566));
+
+    state.ModVersion = "0.1.1";
+    Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
 }
 
 static void TestMultiplayerStaleSnapshotRejection()

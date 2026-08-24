@@ -13,6 +13,8 @@ This is the release-gate procedure for Issue #33. Split-screen alone is not acce
 
 Run `efo_netstatus` on each peer before every scenario. The host must report `role=host`; the farmhand must report `role=farmhand`; both must converge on the same non-empty session and active contract ID after acceptance.
 
+The host diagnostic must also report `recoveryHealthy=True`. The host persists a bounded processed-request ledger and the latest result for each requesting player at save time. A missing ledger is valid for a new save; an incompatible or internally inconsistent ledger disables new contracts instead of risking repeated world mutation.
+
 ## Scenarios
 
 ### 1. Farmhand requests watering
@@ -52,7 +54,15 @@ Run `efo_netstatus` on each peer before every scenario. The host must report `ro
 3. Reconnect the same farmhand. Verify the active snapshot or processed final result is restored and the requesting farmer receives the correct refund despite the disconnect.
 4. Repeat with a disconnect immediately after confirmation/pending feedback. Verify a resend returns the prior request result and does not dispatch or charge twice.
 
-### 5. Rejection safety
+### 5. Host save and restart replay safety
+
+1. Complete a farmhand watering or harvest contract, record its request/contract result, then let the host save normally.
+2. Quit and restart the host process, reconnect the same farmhand, and verify `efo_netstatus` shows a new host session with `recoveryHealthy=True` and a nonzero processed count.
+3. Resend the exact saved request ID from the farmhand test harness. Verify the host returns the prior accepted response/result rebound to the new session, with no new lease, crop mutation, item transfer, charge, or refund.
+4. Repeat with a previously rejected request and verify it remains rejected without reevaluating into a new contract.
+5. In a disposable copy, corrupt or schema-mismatch the persisted recovery record. Verify the host reports `recoveryHealthy=False` and rejects all new contracts without mutating money or world state.
+
+### 6. Rejection safety
 
 For each case below, verify the request is rejected with no money, NPC, crop, cargo, chest, or overflow mutation:
 
@@ -71,4 +81,5 @@ The multiplayer gate passes only when:
 - both SMAPI logs contain no Evil Farm Owner error or unhandled exception;
 - before/after money, crop, chest, overflow, and inventory counts reconcile exactly;
 - disconnect/reconnect produces one contract, one mutation, and one settlement;
+- host save/restart plus exact request replay produces no second contract, mutation, transfer, charge, or refund;
 - the tested DLL SHA-256 and mod version are recorded in the Issue #33 or PR comment.

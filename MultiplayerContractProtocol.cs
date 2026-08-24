@@ -226,6 +226,13 @@ internal sealed class ProcessedContractRequestLedger
             .ToArray();
     }
 
+    public IReadOnlyList<ContractStartResponseMessage> GetAll()
+    {
+        return this.InsertionOrder
+            .Select(key => this.Responses[key])
+            .ToArray();
+    }
+
     public void Clear()
     {
         this.Responses.Clear();

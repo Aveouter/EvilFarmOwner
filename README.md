@@ -67,7 +67,7 @@ The route algorithm and object-safety invariants are documented in [`docs/ROUTE_
 
 Named contracts must start by 4:00 PM and stop at the 10:00 PM safety boundary. Only one named contract can run at a time. There is no instant global work command in the release build: all production farm mutation must pass through a named contract.
 
-In multiplayer, both the host and a connected farmhand can request watering or harvest contracts. A farmhand confirmation sends a versioned request to the host and never mutates money, NPCs, crops, cargo, or chests locally. The host revalidates the player, worker, funds, target, paths, and save/day/version identity; accepted contracts, phase changes, cargo/transfer state, actions, and final results are synchronized back to peers. Retries reuse the same processed result instead of charging or dispatching twice.
+In multiplayer, both the host and a connected farmhand can request watering or harvest contracts. A farmhand confirmation sends a versioned request to the host and never mutates money, NPCs, crops, cargo, or chests locally. The host revalidates the player, worker, funds, target, paths, and save/day/version identity; accepted contracts, phase changes, cargo/transfer state, actions, and final results are synchronized back to peers. The bounded processed-request ledger and latest per-player results are saved with the host, then rebound to a fresh network session after restart. Retries reuse the same processed result instead of charging or dispatching twice. An incompatible, inconsistent, or unclean recovery record disables new contracts rather than guessing.
 
 New configurations default to `K`. If an older config still uses `H` while UI Info Suite 2 is installed, the mod shows a conflict warning; change `OpenMenuKey` to `K` or use `efo_roster`.
 
@@ -141,7 +141,7 @@ K
 
 具名合同最迟必须在下午 4:00 开始，并受晚上 10:00 安全停止时间约束；同一时间只能执行一份。发布构建不提供瞬时全局工作命令：所有生产环境农场变更都必须经过具名合同。
 
-多人游戏中，主机和已连接的农场工都可以请求浇水或收获合同。农场工确认后只会向主机发送带版本的请求，本地绝不会直接改动金币、NPC、作物、货物或箱子。主机会重新检查玩家、工人、资金、目标、路线以及存档、日期和版本身份，再把已接受合同、阶段、货物与转移状态、动作和最终结果同步给其他玩家；重试会返回同一处理结果，不会重复扣钱或重复出工。
+多人游戏中，主机和已连接的农场工都可以请求浇水或收获合同。农场工确认后只会向主机发送带版本的请求，本地绝不会直接改动金币、NPC、作物、货物或箱子。主机会重新检查玩家、工人、资金、目标、路线以及存档、日期和版本身份，再把已接受合同、阶段、货物与转移状态、动作和最终结果同步给其他玩家。主机会随存档保存有界请求账本和每位请求者的最近结果，重启后把它们绑定到新的网络会话；重试只返回原结果，不会重复扣钱或出工。若恢复记录不兼容、内部不一致或保存时仍有未收尾合同，模组会禁用新合同，而不是猜测恢复。
 
 新配置默认使用 `K`。如果旧配置仍使用 `H` 且安装了 UI Info Suite 2，模组会显示冲突警告；请把 `OpenMenuKey` 改成 `K`，或使用 `efo_roster`。
 

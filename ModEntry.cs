@@ -189,6 +189,7 @@ public sealed class ModEntry : Mod
         this.WateringContracts?.OnDayEnding();
         this.HarvestingContracts?.OnDayEnding();
         this.MultiplayerContracts?.Update();
+        this.MultiplayerContracts?.OnSaving();
     }
 
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
