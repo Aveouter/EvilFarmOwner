@@ -29,12 +29,12 @@
 
 `Evil Farm Owner` is a Stardew Valley mod for players who want to turn repetitive farm chores into paid labor.
 
-Press one key to review named worker candidates and see why someone is currently unavailable. An available adult NPC can be assigned a visible watering or harvest contract with an itemized wage, lossless harvest delivery, and a protected return to their original schedule position.
+Press one key to review only the named adult NPCs who are currently available for hire. NPCs in protected vanilla activities such as chores, exercise, scripted animation, or movement pauses are omitted instead of being interrupted. An available adult NPC can be assigned a visible watering or harvest contract with an itemized wage, lossless harvest delivery, and a protected return to their original schedule position.
 
 ### Current Features
 
-- Open a named worker roster with the `K` key.
-- Show each NPC's current availability and an explicit reason when they cannot be hired.
+- Open the currently available named-worker roster with the `K` key; each compact row shows friendship, today's hourly wage, and the six-hour maximum.
+- Omit NPCs who cannot be hired safely at that moment; their availability is reevaluated each time the roster opens.
 - Choose watering or harvesting, then confirm a named contract after reviewing the itemized wage.
 - Watch the selected NPC prefer the right/east farm entrance, safely fall back to another genuine boundary entrance when needed, walk between reachable crops, return to the selected entrance, and resume their prior state.
 - Watch a selected NPC harvest every reachable mature crop through the vanilla crop logic, carry every exact output, deliver it to ranked ordinary farm chests or the on-farm requester, and return safely.
@@ -61,7 +61,7 @@ K
 
 Select a green available row, choose watering or harvesting, then review the six-hour maximum authorization, one-hour minimum callout, friendship multiplier, workday or rest-day multiplier, baseline efficiency, and overtime policy. Confirm while standing on the main farm. The mod rechecks the NPC, funds, target, and required paths before changing money or NPC state. Watering handles every reachable dry crop before 9 PM. Harvesting handles every reachable mature crop before 9 PM and visibly walks to the best eligible chest for each exact output. If no chest route can accept an item, the mod gives it directly to the requesting farmer when that farmer is still on the main farm and their inventory can accept it; otherwise it uses persistent overflow, then an explicit visible ground drop. If both emergency operations fail, the exact item is moved into a separate persistent quarantine or a validated host recovery record before the transient contract can be released. It never auto-ships. Both tasks prefer the right/east entrance, then try other genuine boundary entrances in a deterministic order when a safe round trip is unavailable, and return through the entrance they selected. A single-source shortest-path scan uses live collision, reachable adjacent interaction tiles, and actual walking cost. Ordinary crop tiles remain walkable according to vanilla collision, while trellises and placed objects are routed around rather than altered. If another activity takes control of the worker, the contract waits briefly for full restoration and then releases only this mod's lease without overriding the other controller. Settlement charges each started work hour up to six and refunds the unused authorization. Rest-day confirmation explicitly authorizes triple pay.
 
-Farm travel is always non-destructive. Workers can open gates and dynamically replan after a short movement stall. If the first live step cannot leave an entrance despite static preflight, that entire side is excluded and the same contract visibly switches to the next boundary entrance instead of retrying every crop from the blocked tile. The worker safely stops and restores if no object-safe entrance or route remains.
+Farm travel is always non-destructive. Workers can open gates and dynamically replan after a short movement stall. Before reserving wages, each arrival route is checked with the selected NPC's translated collision bounds and first pixel step; a blocked candidate is skipped immediately. If the live controller still cannot leave an entrance, that entire side is excluded and the same contract visibly switches to the next boundary entrance instead of retrying every crop from the blocked tile. The worker safely stops and restores if no object-safe entrance or route remains.
 
 The route algorithm and object-safety invariants are documented in [`docs/ROUTE_PLANNING.md`](docs/ROUTE_PLANNING.md).
 
@@ -108,12 +108,12 @@ Mods/EvilFarmOwner/config.json
 
 `邪恶农场主` 是一个《星露谷物语》SMAPI Mod。它的核心玩法是：你花钱雇佣农工，把重复农活交给他们处理。
 
-当前版本可以查看具名 NPC 候选人及其当前不可雇佣原因，并给有空的成年 NPC 指定一份可见执行的浇水或收获合同。工资会逐项显示；收获成果会无损交付；NPC 完成后安全返回原位置并恢复日程。
+当前名单只显示此刻可以雇佣的具名成年 NPC。正在做家务、锻炼、脚本动画或处于移动暂停等原版活动的 NPC 会直接从名单中隐藏，不会被强行中断。有空的成年 NPC 可以接受可见执行的浇水或收获合同；工资会逐项显示，收获成果会无损交付，NPC 完成后安全返回原位置并恢复日程。
 
 ### 当前功能
 
-- 按 `K` 打开具名工人候选名单。
-- 显示 NPC 当前是否可雇佣，以及不能雇佣的明确原因。
+- 按 `K` 打开当前可雇佣工人名单；紧凑列表直接显示好感度、今日时薪和六小时最高工钱。
+- 不显示此刻不能安全雇佣的 NPC；每次打开名单都会重新判断可用性。
 - 选择浇水或收获，查看逐项工资后确认具名合同。
 - 观看所选 NPC 优先从农场右侧入口进入；右侧没有安全往返路线时使用其他真实边界入口，逐格完成可到达的农活，再从所选入口返回并恢复原状态。
 - 观看所选 NPC 通过游戏原生作物逻辑收获全部可到达的成熟作物，携带每一件实际产物、送入按规则选择的普通农场箱子或交给仍在农场的合同请求者，再安全返回。
@@ -140,7 +140,7 @@ K
 
 选择绿色“当前可雇佣”行，再选择浇水或收获，可以查看六小时最高授权金额、一小时最低出工费、好感度系数、工作日或休息日系数、基础效率和加班政策。站在主农场确认后，模组会重新检查 NPC、资金、目标以及所需路线；所有检查通过后才预留工资并让 NPC 出工。浇水会处理晚上 9 点前全部可到达的缺水作物；收获会处理晚上 9 点前全部可到达的成熟作物，并逐件走到最合适的箱子交付。没有可接收的箱子路线时，如果合同请求者仍在主农场且背包能够接收，就直接交给请求者；否则进入持久化溢出仓，最后才明确掉落在地面。如果持久溢出和明确掉落都失败，精确物品会先进入独立持久隔离仓，或写入经过验证的主机恢复记录，临时合同才能释放；绝不会自动出售。两种任务都优先从农场右侧入口进入；右侧无法安全往返时，才按确定顺序尝试其他真实边界入口，完成后从实际选中的入口返回。每次动作后只做一次基于实时碰撞的单源最短路扫描，以可到达的相邻交互格和实际步行成本选择下一个目标；普通作物格按原版规则可以通行，棚架作物和玩家摆件则会绕行。若其他活动接管工人，合同会短暂等待完整恢复，之后只归还本 Mod 的租约，不会覆盖对方控制器。工资按已开始的小时结算，未使用的授权金额会退还；休息日按钮会明确要求授权三倍工资。
 
-农场内的移动始终禁止破坏物品；工人可以打开栅栏门，在短暂卡住后动态重新规划。如果静态预检通过但第一步仍无法离开入口，合同会排除整个入口侧并可见地切换到下一个边界入口，不会站在原地逐株重试；不存在安全入口或路线时会停止工作并恢复原状态。
+农场内的移动始终禁止破坏物品；工人可以打开栅栏门，在短暂卡住后动态重新规划。预留工资前，系统会用所选 NPC 平移到入口后的真实碰撞框检查第一像素步，受阻候选格会立即跳过。如果实机控制器仍无法离开入口，合同会排除整个入口侧并可见地切换到下一个边界入口，不会站在原地逐株重试；不存在安全入口或路线时会停止工作并恢复原状态。
 
 具名合同最迟必须在下午 4:00 开始，并受晚上 10:00 安全停止时间约束；同一时间只能执行一份。发布构建不提供瞬时全局工作命令：所有生产环境农场变更都必须经过具名合同。
 
@@ -165,7 +165,7 @@ efo_netstatus
 
 ### 配置文件
 
-如果安装了 Generic Mod Config Menu，“邪恶农场主”会出现在它的“MOD 选项”列表中，并提供本地化的候选名单快捷键设置。该集成是可选的，仍可直接编辑 `config.json`。工作范围、任务规则和工资属于每份具名 NPC 合同，不存在以玩家为中心的全局扫描设置。
+如果安装了 Generic Mod Config Menu，“邪恶农场主”会出现在它的“MOD 选项”列表中，并提供本地化的可雇佣工人名单快捷键设置。该集成是可选的，仍可直接编辑 `config.json`。工作范围、任务规则和工资属于每份具名 NPC 合同，不存在以玩家为中心的全局扫描设置。
 
 配置文件位置：
 

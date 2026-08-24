@@ -124,7 +124,6 @@ internal sealed class WateringContractExecutionController
             }
 
             worker.Halt();
-            worker.Sprite?.ClearAnimation();
             this.Monitor.Log(
                 $"Dispatching watering worker '{worker.Name}' from {planResult.Plan.ArrivalSide} "
                 + $"farm-boundary tile {planResult.Plan.ArrivalTile}.",
@@ -643,7 +642,6 @@ internal sealed class WateringContractExecutionController
 
             worker.Position = FarmNavigationMap.GetAlignedCharacterPosition(nextPlan.ArrivalTile);
             worker.Halt();
-            worker.Sprite?.ClearAnimation();
             if (worker.TilePoint == nextPlan.FirstTarget.InteractionTile)
             {
                 this.OnArrivedAtTarget(worker, contract.Farm);
