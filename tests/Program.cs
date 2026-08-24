@@ -50,7 +50,8 @@ List<(string Name, Action Test)> tests = new()
     ("multiplayer stale snapshot rejection", TestMultiplayerStaleSnapshotRejection),
     ("multiplayer stale sync-state rejection", TestMultiplayerStaleSyncStateRejection),
     ("multiplayer snapshot serialization", TestMultiplayerSnapshotSerialization),
-    ("multiplayer result serialization", TestMultiplayerResultSerialization)
+    ("multiplayer result serialization", TestMultiplayerResultSerialization),
+    ("named contract report grouping", TestNamedContractReportGrouping)
 };
 
 int failures = 0;
@@ -1244,6 +1245,30 @@ static void TestMultiplayerResultSerialization()
     Equal(1, restored.ChestItems);
     Equal(4, restored.QuarantinedItems);
     Equal(13L, restored.StateVersion);
+}
+
+static void TestNamedContractReportGrouping()
+{
+    ContractCargoSnapshotMessage[] items =
+    {
+        new() { DisplayName = "Parsnip", Quality = 2, Stack = 1 },
+        new() { DisplayName = "Bean", Quality = 0, Stack = 3 },
+        new() { DisplayName = "Parsnip", Quality = 0, Stack = 4 },
+        new() { DisplayName = "Parsnip", Quality = 2, Stack = 2 }
+    };
+
+    IReadOnlyList<NamedContractReportItem> summarized =
+        NamedContractReportFormatter.SummarizeItems(items);
+    Equal(3, summarized.Count);
+    Equal(new NamedContractReportItem("Bean", 0, 3), summarized[0]);
+    Equal(new NamedContractReportItem("Parsnip", 0, 4), summarized[1]);
+    Equal(new NamedContractReportItem("Parsnip", 2, 3), summarized[2]);
+    Equal(
+        "Bean q0 x3, Parsnip q0 x4, Parsnip q2 x3",
+        NamedContractReportFormatter.FormatItems(items, "none"));
+    Equal("none", NamedContractReportFormatter.FormatItems(
+        Array.Empty<ContractCargoSnapshotMessage>(),
+        "none"));
 }
 
 static ContractStartRequestMessage NewMultiplayerRequest(long playerId)
