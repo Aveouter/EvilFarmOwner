@@ -101,6 +101,7 @@ internal sealed class GridRouteMap
 internal static class FarmNavigationMap
 {
     private const int MaximumVisitedTiles = 65535;
+    private const int VanillaNpcWalkingPixelsPerTick = 2;
 
     public static bool TryBuild(
         Farm farm,
@@ -159,6 +160,109 @@ internal static class FarmNavigationMap
         if (tileSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(tileSize));
         return new GridPoint(tile.X * tileSize, tile.Y * tileSize);
+    }
+
+    public static bool CanBeginPath(
+        Farm farm,
+        NPC worker,
+        Point startTile,
+        Stack<Point> path,
+        out string failure)
+    {
+        failure = string.Empty;
+        if (path.Count == 0)
+            return true;
+
+        Point firstWaypoint = path.Peek();
+        if (!TryGetFirstStepOffset(
+                new GridPoint(startTile.X, startTile.Y),
+                new GridPoint(firstWaypoint.X, firstWaypoint.Y),
+                VanillaNpcWalkingPixelsPerTick,
+                out GridPoint offset))
+        {
+            failure = $"first waypoint {firstWaypoint} is not cardinally adjacent";
+            return false;
+        }
+
+        try
+        {
+            Rectangle currentBounds = worker.GetBoundingBox();
+            if (currentBounds.IsEmpty)
+            {
+                failure = "worker has no collision bounds";
+                return false;
+            }
+
+            Vector2 alignedPosition = GetAlignedCharacterPosition(startTile);
+            Rectangle startBounds = new(
+                (int)alignedPosition.X + currentBounds.X - (int)worker.Position.X,
+                (int)alignedPosition.Y + currentBounds.Y - (int)worker.Position.Y,
+                currentBounds.Width,
+                currentBounds.Height);
+            if (farm.isCollidingPosition(
+                    startBounds,
+                    Game1.viewport,
+                    isFarmer: false,
+                    damagesFarmer: 0,
+                    glider: false,
+                    worker,
+                    pathfinding: true))
+            {
+                failure = $"worker collision bounds cannot occupy {startTile}";
+                return false;
+            }
+
+            Rectangle nextBounds = startBounds;
+            nextBounds.Offset(offset.X, offset.Y);
+            if (!farm.isCollidingPosition(
+                    nextBounds,
+                    Game1.viewport,
+                    isFarmer: false,
+                    damagesFarmer: 0,
+                    glider: false,
+                    worker,
+                    pathfinding: true))
+            {
+                return true;
+            }
+
+            Vector2 firstWaypointVector = new(firstWaypoint.X, firstWaypoint.Y);
+            if (farm.objects.TryGetValue(firstWaypointVector, out StardewValley.Object? placedObject)
+                && placedObject is Fence { isGate.Value: true }
+                && farm.isTilePassable(firstWaypointVector))
+            {
+                return true;
+            }
+
+            failure = $"worker collision bounds cannot take the first step toward {firstWaypoint}";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            failure = $"first-step collision probe failed: {ex.Message}";
+            return false;
+        }
+    }
+
+    public static bool TryGetFirstStepOffset(
+        GridPoint start,
+        GridPoint firstWaypoint,
+        int movementPixels,
+        out GridPoint offset)
+    {
+        offset = default;
+        if (movementPixels <= 0)
+            return false;
+
+        int deltaX = firstWaypoint.X - start.X;
+        int deltaY = firstWaypoint.Y - start.Y;
+        if (Math.Abs(deltaX) + Math.Abs(deltaY) != 1)
+            return false;
+
+        offset = new GridPoint(
+            Math.Sign(deltaX) * movementPixels,
+            Math.Sign(deltaY) * movementPixels);
+        return true;
     }
 
     private static bool IsPassable(Farm farm, NPC worker, GridPoint tile)

@@ -66,8 +66,12 @@ internal sealed class MultiplayerContractCoordinator
             ?? this.RemoteActiveSnapshot?.ContractId
             ?? "none";
         string pending = this.PendingRequest?.RequestId ?? "none";
+        string quarantineHealth = Context.IsMainPlayer
+            ? (!this.HarvestingContracts.HasUnresolvedQuarantineRecovery).ToString()
+            : "host-authoritative";
         return $"EFO network: role={role}, session={session}, active={active}, pending={pending}, "
             + $"processed={this.ProcessedRequests.Count}, recoveryHealthy={this.RecoveryStateHealthy}, "
+            + $"quarantineHealthy={quarantineHealth}, "
             + $"stateVersion={(Context.IsMainPlayer ? this.HostStateVersion : this.RemoteStateVersions.Latest)}";
     }
 
@@ -507,6 +511,7 @@ internal sealed class MultiplayerContractCoordinator
                 PlayerItems = completion.PlayerItems,
                 ChestItems = completion.ChestItems,
                 OverflowItems = completion.OverflowItems,
+                QuarantinedItems = completion.QuarantinedItems,
                 DroppedItems = completion.DroppedItems,
                 BillableHours = completion.BillableHours,
                 ChargedGold = completion.ChargedGold,
@@ -661,6 +666,7 @@ internal sealed class MultiplayerContractCoordinator
                     player = result.PlayerItems,
                     chest = result.ChestItems,
                     overflow = result.OverflowItems,
+                    quarantine = result.QuarantinedItems,
                     dropped = result.DroppedItems,
                     hours = result.BillableHours,
                     paid = result.ChargedGold,
@@ -676,6 +682,11 @@ internal sealed class MultiplayerContractCoordinator
                 {
                     worker = result.WorkerName,
                     reason,
+                    player = result.PlayerItems,
+                    chest = result.ChestItems,
+                    overflow = result.OverflowItems,
+                    quarantine = result.QuarantinedItems,
+                    dropped = result.DroppedItems,
                     paid = result.ChargedGold,
                     refunded = result.RefundedGold
                 }),

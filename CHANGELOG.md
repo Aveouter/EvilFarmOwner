@@ -16,6 +16,9 @@
 - Fixed dense-field routing by using vanilla live crop collision instead of spawn suitability; ordinary crop tiles are traversable while trellises remain blocking.
 - Changed worker arrival to prefer the right/east farm entrance and use other genuine boundary entrances only as safe fallbacks.
 - Added runtime entrance failover so a worker stalled on the first live step excludes that side instead of retrying every crop edge.
+- Protected active vanilla route animations, square-walk activities, sprite animations, and movement pauses from hiring without treating persisted route-end metadata as an active activity; unavailable NPCs are omitted from the roster.
+- Reworked the worker roster into compact rows that show friendship, today's hourly wage, and the six-hour maximum without redundant availability explanations or disabled footer controls.
+- Added an NPC-bounds first-pixel entrance probe so false-positive arrival tiles are rejected before wages or NPC state change.
 - Added bounded lease recovery: controller conflicts wait briefly, then release only this mod's lease and safety flags without overriding the other activity.
 - Moved emergency harvest drops to the on-farm requester or a deterministic collision-free delivery tile before falling back to the worker position.
 - Excluded dead crops from watering target acquisition.
@@ -24,10 +27,13 @@
 - Added host-authoritative multiplayer contract requests, bounded request replay protection, phase/cargo/transfer snapshots, reconnect synchronization, and host-only visual action messages.
 - Persisted the bounded processed-request ledger and latest per-player results so host restarts rebind prior transactions to the new network session without repeating work or charges.
 - Rejected internally inconsistent multiplayer recovery results with duplicate transfer IDs, unbalanced item destinations, impossible hours, or contradictory success reasons.
-- Required a nonce-correlated authoritative sync-state handshake before a farmhand binds a new host session or resends a pending request, so delayed responses or sync states from the prior host session cannot capture reconnect state; clean protocol-3 recovery ledgers are fully validated before being rebound to protocol 4.
+- Required a nonce-correlated authoritative sync-state handshake before a farmhand binds a new host session or resends a pending request, so delayed responses or sync states from the prior host session cannot capture reconnect state; clean protocol-3 and protocol-4 recovery ledgers are fully validated before being rebound to protocol 5.
 - Bound wage reservation and refund to the requesting farmer instead of the host's local player.
 - Added mutex-aware persistent overflow delivery and save-time lease/cargo cleanup.
-- Expanded the deterministic logic harness to 41 wage, routing, storage, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
+- Added a separate persistent emergency cargo quarantine, idempotent transfer markers, a size-bounded host recovery record, and `efo_quarantine` retrieval so failed overflow and ground-drop operations cannot release the only owned item instances.
+- Required day end, ordinary saving, and initial save creation to verify cargo ownership and force any transient remainder into the private team quarantine before contract settlement.
+- Added a compile-gated, non-distributable storage fault-injection harness for live overflow, drop, quarantine, recovery-record, and terminal-write acceptance tests; the normal Release verifier rejects any DLL which exposes its command.
+- Expanded the deterministic logic harness to 45 wage, availability, routing, storage, quarantine recovery, acceptance-control, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
 - Removed the legacy instant `efo_work`, task toggles, player-centered scan settings, and bundled user config from the production release surface.
 - Corrected manifest ownership, release description, and GitHub update metadata.
 - Added English and Chinese UI, configuration, multiplayer, failure, storage, and settlement text.

@@ -71,6 +71,7 @@ internal static class HarvestPlacementAudit
         int playerInventory,
         int chest,
         int overflow,
+        int quarantine,
         int dropped,
         int unresolved)
     {
@@ -78,10 +79,11 @@ internal static class HarvestPlacementAudit
             || playerInventory < 0
             || chest < 0
             || overflow < 0
+            || quarantine < 0
             || dropped < 0
             || unresolved < 0)
             return false;
-        return harvested == (long)playerInventory + chest + overflow + dropped + unresolved;
+        return harvested == (long)playerInventory + chest + overflow + quarantine + dropped + unresolved;
     }
 }
 

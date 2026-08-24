@@ -18,6 +18,7 @@ internal static class MultiplayerRecoveryState
     public const int SchemaVersion = 1;
     public const string SaveDataKey = "multiplayer-recovery";
     private const int LegacyHandshakeProtocolSchemaVersion = 3;
+    private const int LegacyQuarantineProtocolSchemaVersion = 4;
 
     public static MultiplayerRecoverySaveData Create(
         string modVersion,
@@ -120,10 +121,11 @@ internal static class MultiplayerRecoveryState
 
     private static bool IsSupportedProtocolSchemaVersion(int protocolSchemaVersion)
     {
-        // Protocol 4 only adds the reconnect sync nonce. The persisted response/result
-        // payloads are unchanged from protocol 3, so a clean protocol-3 ledger can be
-        // fully validated and rebound to the new host session without losing replay safety.
+        // Protocol 4 only adds the reconnect sync nonce. Protocol 5 adds a nonnegative
+        // quarantine destination count which defaults to zero in older result payloads.
+        // Their persisted transaction identities remain compatible after full validation.
         return protocolSchemaVersion is LegacyHandshakeProtocolSchemaVersion
+            or LegacyQuarantineProtocolSchemaVersion
             or MultiplayerContractProtocol.SchemaVersion;
     }
 
@@ -168,6 +170,7 @@ internal static class MultiplayerRecoveryState
             || result.PlayerItems < 0
             || result.ChestItems < 0
             || result.OverflowItems < 0
+            || result.QuarantinedItems < 0
             || result.DroppedItems < 0
             || result.BillableHours < 0
             || result.BillableHours > ContractPreviewService.RegularShiftHours
@@ -208,6 +211,7 @@ internal static class MultiplayerRecoveryState
         long placedItems = (long)result.PlayerItems
             + result.ChestItems
             + result.OverflowItems
+            + result.QuarantinedItems
             + result.DroppedItems;
         return producedItems == placedItems;
     }
