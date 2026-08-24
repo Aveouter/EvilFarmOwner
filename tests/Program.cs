@@ -43,6 +43,14 @@ List<(string Name, Action Test)> tests = new()
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
     ("harvest stable category destination", TestHarvestStableCategoryDestination),
     ("harvest empty chest capacity fallback", TestHarvestEmptyChestCapacityFallback),
+    ("storage sort classification priority", TestStorageSortClassificationPriority),
+    ("storage sort category purity", TestStorageSortCategoryPurity),
+    ("storage sort stable tie", TestStorageSortStableTie),
+    ("storage sort capacity preflight", TestStorageSortCapacityPreflight),
+    ("storage sort idempotence", TestStorageSortIdempotence),
+    ("storage sort conservation", TestStorageSortConservation),
+    ("storage sort invalid snapshot", TestStorageSortInvalidSnapshot),
+    ("storage sort generated invariants", TestStorageSortGeneratedInvariants),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
@@ -759,6 +767,314 @@ static void TestHarvestEmptyChestCapacityFallback()
 
     IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
     Equal(new GridPoint(8, 8), ordered[0].ChestTile);
+}
+
+static void TestStorageSortClassificationPriority()
+{
+    StorageSortPlan exact = StorageSortPlanner.Create(new[]
+    {
+        SortChest(0, 0, 12, SortStack("source", "carrot-q0", "carrot", -75, 10)),
+        SortChest(2, 0, 12, SortStack("exact", "carrot-q0", "carrot", -75, 5)),
+        SortChest(1, 0, 12, SortStack("same", "carrot-q1", "carrot", -75, 5)),
+        SortChest(3, 0, 12, SortStack("category", "potato-q0", "potato", -75, 5)),
+        SortChest(4, 0, 12)
+    });
+    Equal(true, exact.CanExecute);
+    Equal(new GridPoint(2, 0), exact.Transfers[0].DestinationChest);
+
+    StorageSortPlan sameItem = StorageSortPlanner.Create(new[]
+    {
+        SortChest(0, 0, 12, SortStack("source", "carrot-q0", "carrot", -75, 10)),
+        SortChest(1, 0, 12, SortStack("same", "carrot-q1", "carrot", -75, 5)),
+        SortChest(2, 0, 12, SortStack("category", "potato-q0", "potato", -75, 5)),
+        SortChest(3, 0, 12)
+    });
+    Equal(true, sameItem.CanExecute);
+    Equal(new GridPoint(1, 0), sameItem.Transfers[0].DestinationChest);
+
+    StorageSortPlan category = StorageSortPlanner.Create(new[]
+    {
+        SortChest(0, 0, 12, SortStack("source", "carrot-q0", "carrot", -75, 10)),
+        SortChest(1, 0, 12, SortStack("category", "potato-q0", "potato", -75, 5)),
+        SortChest(2, 0, 12)
+    });
+    Equal(true, category.CanExecute);
+    Equal(new GridPoint(1, 0), category.Transfers[0].DestinationChest);
+
+    StorageSortPlan emptyFallback = StorageSortPlanner.Create(new[]
+    {
+        SortChest(
+            0,
+            0,
+            12,
+            SortStack("anchor", "stone-q0", "stone", -12, 20),
+            SortStack("source", "carrot-q0", "carrot", -75, 10)),
+        SortChest(1, 0, 12)
+    });
+    Equal(true, emptyFallback.CanExecute);
+    Equal(new GridPoint(1, 0), emptyFallback.Transfers[0].DestinationChest);
+}
+
+static void TestStorageSortCategoryPurity()
+{
+    StorageSortPlan plan = StorageSortPlanner.Create(new[]
+    {
+        SortChest(
+            0,
+            0,
+            12,
+            SortStack("source", "carrot-q0", "carrot", -75, 10),
+            SortStack("source-stone", "stone-q0", "stone", -12, 1)),
+        SortChest(
+            2,
+            0,
+            12,
+            SortStack("mixed-potato", "potato-q0", "potato", -75, 20),
+            SortStack("mixed-coal", "coal-q0", "coal", -15, 19)),
+        SortChest(3, 0, 12, SortStack("pure-potato", "potato-q1", "potato", -75, 5)),
+        SortChest(4, 0, 12),
+        SortChest(5, 0, 12)
+    });
+
+    Equal(true, plan.CanExecute);
+    StorageSortTransfer carrot = plan.Transfers.First(transfer => transfer.StackId == "source");
+    Equal(new GridPoint(3, 0), carrot.DestinationChest);
+}
+
+static void TestStorageSortStableTie()
+{
+    StorageSortPlan plan = StorageSortPlanner.Create(new[]
+    {
+        SortChest(
+            0,
+            0,
+            12,
+            SortStack("anchor", "stone-q0", "stone", -12, 20),
+            SortStack("source", "carrot-q0", "carrot", -75, 10)),
+        SortChest(8, 8, 12, SortStack("late", "potato-q0", "potato", -75, 5)),
+        SortChest(2, 2, 12, SortStack("early", "parsnip-q0", "parsnip", -75, 5))
+    });
+
+    Equal(true, plan.CanExecute);
+    Equal(new GridPoint(2, 2), plan.Transfers.First().DestinationChest);
+}
+
+static void TestStorageSortCapacityPreflight()
+{
+    StorageSortPlan plan = StorageSortPlanner.Create(new[]
+    {
+        SortChest(
+            0,
+            0,
+            2,
+            SortStack("anchor", "stone-q0", "stone", -12, 20),
+            SortStack("source", "carrot-q0", "carrot", -75, 10)),
+        SortChest(1, 0, 1, SortStack("full", "fiber-q0", "fiber", -16, 999))
+    });
+
+    Equal(false, plan.CanExecute);
+    Equal(StorageSortPlanFailure.InsufficientCapacity, plan.Failure);
+    Equal(0, plan.Transfers.Count);
+    Equal(1029, SortQuantity(plan.ResultChests));
+}
+
+static void TestStorageSortIdempotence()
+{
+    StorageSortPlan first = StorageSortPlanner.Create(new[]
+    {
+        SortChest(0, 0, 12, SortStack("carrot-a", "carrot-q0", "carrot", -75, 10)),
+        SortChest(1, 0, 12, SortStack("carrot-b", "carrot-q0", "carrot", -75, 20)),
+        SortChest(
+            2,
+            0,
+            12,
+            SortStack("stone", "stone-q0", "stone", -12, 20),
+            SortStack("potato", "potato-q0", "potato", -75, 5)),
+        SortChest(3, 0, 12)
+    });
+
+    Equal(true, first.CanExecute);
+    Equal(true, first.Transfers.Count > 0);
+    StorageSortPlan second = StorageSortPlanner.Create(first.ResultChests);
+    Equal(true, second.CanExecute);
+    Equal(0, second.Transfers.Count);
+}
+
+static void TestStorageSortConservation()
+{
+    StorageSortChestSnapshot[] input =
+    {
+        SortChest(
+            0,
+            0,
+            12,
+            SortStack("stone", "stone-q0", "stone", -12, 20),
+            SortStack("carrot", "carrot-q0", "carrot", -75, 10)),
+        SortChest(1, 0, 12, SortStack("potato", "potato-q0", "potato", -75, 5)),
+        SortChest(2, 0, 12)
+    };
+
+    StorageSortPlan plan = StorageSortPlanner.Create(input);
+    Equal(true, plan.CanExecute);
+    Equal(SortQuantity(input), SortQuantity(plan.ResultChests));
+    Equal(
+        true,
+        input.SelectMany(chest => chest.Stacks)
+            .Select(stack => stack.ItemId)
+            .OrderBy(id => id)
+            .SequenceEqual(plan.ResultChests
+                .SelectMany(chest => chest.Stacks)
+                .Select(stack => stack.ItemId)
+                .OrderBy(id => id)));
+}
+
+static void TestStorageSortInvalidSnapshot()
+{
+    StorageSortPlan duplicateStackId = StorageSortPlanner.Create(new[]
+    {
+        SortChest(0, 0, 12, SortStack("duplicate", "stone-q0", "stone", -12, 20)),
+        SortChest(1, 0, 12, SortStack("duplicate", "carrot-q0", "carrot", -75, 10))
+    });
+    Equal(StorageSortPlanFailure.InvalidSnapshot, duplicateStackId.Failure);
+
+    StorageSortPlan overCapacity = StorageSortPlanner.Create(new[]
+    {
+        SortChest(
+            0,
+            0,
+            1,
+            SortStack("one", "stone-q0", "stone", -12, 20),
+            SortStack("two", "carrot-q0", "carrot", -75, 10))
+    });
+    Equal(StorageSortPlanFailure.InvalidSnapshot, overCapacity.Failure);
+
+    StorageSortPlan nullChest = StorageSortPlanner.Create(new StorageSortChestSnapshot[] { null! });
+    Equal(StorageSortPlanFailure.InvalidSnapshot, nullChest.Failure);
+
+    StorageSortPlan nullStack = StorageSortPlanner.Create(new[]
+    {
+        new StorageSortChestSnapshot(
+            new GridPoint(0, 0),
+            12,
+            new StorageSortStackSnapshot[] { null! })
+    });
+    Equal(StorageSortPlanFailure.InvalidSnapshot, nullStack.Failure);
+}
+
+static void TestStorageSortGeneratedInvariants()
+{
+    Random random = new(4207);
+    int[] categories = { -75, -79, -12 };
+    for (int sample = 0; sample < 500; sample++)
+    {
+        List<StorageSortChestSnapshot> input = new();
+        int chestCount = random.Next(2, 6);
+        int stackNumber = 0;
+        for (int chestNumber = 0; chestNumber < chestCount; chestNumber++)
+        {
+            int capacity = random.Next(1, 5);
+            List<StorageSortStackSnapshot> stacks = new();
+            int occupied = random.Next(0, capacity + 1);
+            for (int slot = 0; slot < occupied; slot++)
+            {
+                int category = categories[random.Next(categories.Length)];
+                string itemId = $"item-{category}-{random.Next(2)}";
+                int quality = random.Next(2);
+                stacks.Add(SortStack(
+                    $"stack-{sample}-{stackNumber++}",
+                    $"{itemId}-q{quality}",
+                    itemId,
+                    category,
+                    random.Next(1, 20),
+                    maximumStackSize: 20));
+            }
+
+            input.Add(SortChest(chestNumber, sample, capacity, stacks.ToArray()));
+        }
+
+        StorageSortPlan plan = StorageSortPlanner.Create(input);
+        if (plan.Failure == StorageSortPlanFailure.NonConvergent)
+        {
+            throw new InvalidOperationException(
+                $"sample={sample}; input={DescribeSortChests(input)}");
+        }
+        if (!plan.CanExecute)
+            Equal(0, plan.Transfers.Count);
+        Equal(
+            SortTotals(input),
+            SortTotals(plan.ResultChests));
+
+        if (!plan.CanExecute)
+            continue;
+
+        foreach (StorageSortChestSnapshot chest in plan.ResultChests)
+        {
+            Equal(true, chest.Stacks.Count <= chest.Capacity);
+            Equal(true, chest.Stacks.All(stack =>
+                stack.Quantity > 0 && stack.Quantity <= stack.MaximumStackSize));
+            Equal(true, chest.Stacks.Select(stack => stack.Category).Distinct().Count() <= 1);
+        }
+
+        StorageSortPlan repeated = StorageSortPlanner.Create(plan.ResultChests);
+        Equal(true, repeated.CanExecute);
+        Equal(0, repeated.Transfers.Count);
+    }
+}
+
+static StorageSortChestSnapshot SortChest(
+    int x,
+    int y,
+    int capacity,
+    params StorageSortStackSnapshot[] stacks)
+{
+    return new StorageSortChestSnapshot(new GridPoint(x, y), capacity, stacks);
+}
+
+static StorageSortStackSnapshot SortStack(
+    string stackId,
+    string stackingKey,
+    string itemId,
+    int category,
+    int quantity,
+    int maximumStackSize = 999)
+{
+    return new StorageSortStackSnapshot(
+        stackId,
+        stackingKey,
+        itemId,
+        category,
+        quantity,
+        maximumStackSize);
+}
+
+static int SortQuantity(IEnumerable<StorageSortChestSnapshot> chests)
+{
+    return chests.SelectMany(chest => chest.Stacks).Sum(stack => stack.Quantity);
+}
+
+static string SortTotals(IEnumerable<StorageSortChestSnapshot> chests)
+{
+    return string.Join(
+        '|',
+        chests
+            .SelectMany(chest => chest.Stacks)
+            .GroupBy(stack => (stack.StackingKey, stack.ItemId, stack.Category, stack.MaximumStackSize))
+            .OrderBy(group => group.Key.StackingKey, StringComparer.Ordinal)
+            .ThenBy(group => group.Key.ItemId, StringComparer.Ordinal)
+            .ThenBy(group => group.Key.Category)
+            .ThenBy(group => group.Key.MaximumStackSize)
+            .Select(group => $"{group.Key}:{group.Sum(stack => stack.Quantity)}"));
+}
+
+static string DescribeSortChests(IEnumerable<StorageSortChestSnapshot> chests)
+{
+    return string.Join(
+        '|',
+        chests.Select(chest =>
+            $"{chest.ChestTile.X},{chest.ChestTile.Y}/{chest.Capacity}:" + string.Join(
+                ';',
+                chest.Stacks.Select(stack =>
+                    $"{stack.StackId},{stack.StackingKey},{stack.Category},{stack.Quantity}"))));
 }
 
 static void TestHarvestPartialRemainder()
