@@ -24,6 +24,7 @@ internal sealed record StorageSortLockedTransferResult(
     int MovedItems,
     int PersistedRecoveryItems,
     bool RequiresPersistentRecovery,
+    bool UnresolvedItemDetached,
     Item? UnresolvedItem)
 {
     public bool IsSuccess => this.Failure == StorageSortLockedTransferFailure.None;
@@ -297,6 +298,7 @@ internal sealed class StorageSortExecutionSession
                 originalQuantity,
                 PersistedRecoveryItems: 0,
                 RequiresPersistentRecovery: false,
+                UnresolvedItemDetached: false,
                 UnresolvedItem: null);
         }
         catch
@@ -464,6 +466,7 @@ internal sealed class StorageSortExecutionSession
                     MovedItems: 0,
                     PersistedRecoveryItems: originalQuantity,
                     RequiresPersistentRecovery: false,
+                    UnresolvedItemDetached: false,
                     UnresolvedItem: null);
             }
             if (recoveryStatus == StorageSortRecoveryWriteStatus.UncertainAfterWrite)
@@ -473,6 +476,7 @@ internal sealed class StorageSortExecutionSession
                     MovedItems: 0,
                     PersistedRecoveryItems: 0,
                     RequiresPersistentRecovery: true,
+                    UnresolvedItemDetached: true,
                     UnresolvedItem: sourceItem);
             }
         }
@@ -498,6 +502,7 @@ internal sealed class StorageSortExecutionSession
                 MovedItems: 0,
                 PersistedRecoveryItems: 0,
                 RequiresPersistentRecovery: true,
+                UnresolvedItemDetached: false,
                 UnresolvedItem: sourceItem);
         }
 
@@ -510,6 +515,7 @@ internal sealed class StorageSortExecutionSession
                 MovedItems: 0,
                 PersistedRecoveryItems: 0,
                 RequiresPersistentRecovery: true,
+                UnresolvedItemDetached: false,
                 UnresolvedItem: sourceItem);
     }
 
@@ -600,6 +606,7 @@ internal sealed class StorageSortExecutionSession
             MovedItems: 0,
             PersistedRecoveryItems: 0,
             RequiresPersistentRecovery: false,
+            UnresolvedItemDetached: false,
             UnresolvedItem: null);
     }
 }
