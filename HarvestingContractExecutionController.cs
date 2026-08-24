@@ -849,6 +849,9 @@ internal sealed class HarvestingContractExecutionController
         }
 
         HarvestCargoEntry entry = contract.Cargo[0];
+        if (this.TryDeliverToOnFarmRequester(contract, entry))
+            return;
+
         HashSet<Point> attempted = contract.GetAttemptedChests(entry.TransferId);
         HarvestChestRoute? route = this.ChestRouter.FindBestRoute(
             contract.Farm,
@@ -911,6 +914,131 @@ internal sealed class HarvestingContractExecutionController
                 contract,
                 $"controller setup failed: {ex.Message}");
         }
+    }
+
+    private bool TryDeliverToOnFarmRequester(
+        ActiveHarvestContract contract,
+        HarvestCargoEntry entry)
+    {
+        Farmer? requester = Game1.GetPlayer(
+            contract.Requester.UniqueMultiplayerID,
+            onlyOnline: true);
+        bool requesterIsOnline = requester is not null;
+        bool requesterIsOnFarm = requesterIsOnline
+            && ReferenceEquals(requester!.currentLocation, contract.Farm);
+        bool canAcceptCompleteStack = requesterIsOnFarm
+            && CanInventoryAcceptCompleteStack(requester!, entry.Item);
+        RequesterInventoryDeliveryDecision decision = RequesterInventoryDeliveryPolicy.Select(
+            requesterIsOnline,
+            requesterIsOnFarm,
+            canAcceptCompleteStack);
+        if (decision != RequesterInventoryDeliveryDecision.DeliverCompleteStack)
+            return false;
+
+        int requested = entry.Item.Stack;
+        int inventoryBefore = CountStackCompatibleItems(requester!, entry.Item);
+        Item? remainder = entry.Item;
+        try
+        {
+            bool applied = contract.TransferLedger.TryApply(
+                entry.TransferId,
+                () => remainder = requester!.addItemToInventory(entry.Item));
+            if (!applied)
+            {
+                contract.Cargo.RemoveAt(0);
+                this.BeginNextOrReturn(contract);
+                return true;
+            }
+
+            int remaining = remainder?.Stack ?? 0;
+            int delivered = HarvestTransferMath.GetDeliveredCount(requested, remaining);
+            contract.PlayerInventoryItems += delivered;
+            this.Monitor.Log(
+                $"Delivered harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{delivered} "
+                + $"directly to on-farm requester {requester!.UniqueMultiplayerID}; remainder={remaining}.",
+                LogLevel.Debug);
+            if (remainder is null)
+            {
+                contract.Cargo.RemoveAt(0);
+                this.BeginNextOrReturn(contract);
+                return true;
+            }
+
+            entry.Item = remainder;
+            entry.TransferId = Guid.NewGuid().ToString("N");
+            this.StopForUnavailableStorage(
+                contract,
+                "the requesting player's inventory stopped accepting the complete harvest stack");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            int inventoryAfter = CountStackCompatibleItems(requester!, entry.Item);
+            int delivered = RequesterInventoryDeliveryPolicy.GetRetainedCount(
+                inventoryBefore,
+                inventoryAfter,
+                requested);
+            if (delivered > 0)
+            {
+                contract.TransferLedger.TryApply(entry.TransferId, () => { });
+                contract.PlayerInventoryItems += delivered;
+                if (delivered >= requested)
+                {
+                    contract.Cargo.RemoveAt(0);
+                    this.Monitor.Log(
+                        $"Direct harvest delivery to requester {requester!.UniqueMultiplayerID} threw after "
+                        + $"the complete x{delivered} stack was retained; continuing without replay: {ex}",
+                        LogLevel.Error);
+                    this.BeginNextOrReturn(contract);
+                    return true;
+                }
+
+                entry.Item.Stack = requested - delivered;
+                entry.TransferId = Guid.NewGuid().ToString("N");
+                this.Monitor.Log(
+                    $"Direct harvest delivery to requester {requester!.UniqueMultiplayerID} threw after "
+                    + $"retaining x{delivered}; x{entry.Item.Stack} remains in contract cargo: {ex}",
+                    LogLevel.Error);
+                this.StopForUnavailableStorage(
+                    contract,
+                    "the requesting player's inventory partially changed during delivery");
+                return true;
+            }
+
+            this.Monitor.Log(
+                $"Direct harvest delivery to requester {requester!.UniqueMultiplayerID} failed; "
+                + $"the exact cargo remains available for classified chest routing: {ex}",
+                LogLevel.Error);
+            return false;
+        }
+    }
+
+    private static int CountStackCompatibleItems(Farmer requester, Item sample)
+    {
+        return requester.Items
+            .Where(item => item is not null && sample.canStackWith(item))
+            .Sum(item => item?.Stack ?? 0);
+    }
+
+    private static bool CanInventoryAcceptCompleteStack(Farmer requester, Item item)
+    {
+        if (item.IsRecipe
+            || item.QualifiedItemId is "(O)73" or "(O)930" or "(O)102" or "(O)858" or "(O)GoldCoin")
+            return true;
+
+        for (int index = 0; index < requester.MaxItems && index < requester.Items.Count; index++)
+        {
+            Item? existing = requester.Items[index];
+            if (existing is null)
+                return true;
+            if (item is StardewValley.Object
+                && existing is StardewValley.Object
+                && existing.Stack + item.Stack <= existing.maximumStackSize()
+                && existing.canStackWith(item))
+                return true;
+        }
+
+        return false;
     }
 
     private void OnChestLockAcquired(Guid contractId, HarvestChestRoute route)

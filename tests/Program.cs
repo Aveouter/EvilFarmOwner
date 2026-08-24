@@ -44,6 +44,8 @@ List<(string Name, Action Test)> tests = new()
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
     ("harvest stable category destination", TestHarvestStableCategoryDestination),
     ("harvest empty chest capacity fallback", TestHarvestEmptyChestCapacityFallback),
+    ("requester inventory delivery policy", TestRequesterInventoryDeliveryPolicy),
+    ("requester inventory transfer replay", TestRequesterInventoryTransferReplay),
     ("storage sort classification priority", TestStorageSortClassificationPriority),
     ("storage sort category purity", TestStorageSortCategoryPurity),
     ("storage sort stable tie", TestStorageSortStableTie),
@@ -829,6 +831,62 @@ static void TestHarvestEmptyChestCapacityFallback()
 
     IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
     Equal(new GridPoint(8, 8), ordered[0].ChestTile);
+}
+
+static void TestRequesterInventoryDeliveryPolicy()
+{
+    Equal(
+        RequesterInventoryDeliveryDecision.DeliverCompleteStack,
+        RequesterInventoryDeliveryPolicy.Select(
+            requesterIsOnline: true,
+            requesterIsOnFarm: true,
+            inventoryCanAcceptCompleteStack: true));
+    Equal(
+        RequesterInventoryDeliveryDecision.FallBackToChest,
+        RequesterInventoryDeliveryPolicy.Select(
+            requesterIsOnline: false,
+            requesterIsOnFarm: true,
+            inventoryCanAcceptCompleteStack: true));
+    Equal(
+        RequesterInventoryDeliveryDecision.FallBackToChest,
+        RequesterInventoryDeliveryPolicy.Select(
+            requesterIsOnline: true,
+            requesterIsOnFarm: false,
+            inventoryCanAcceptCompleteStack: true));
+    Equal(
+        RequesterInventoryDeliveryDecision.FallBackToChest,
+        RequesterInventoryDeliveryPolicy.Select(
+            requesterIsOnline: true,
+            requesterIsOnFarm: true,
+            inventoryCanAcceptCompleteStack: false));
+    Equal(0, RequesterInventoryDeliveryPolicy.GetRetainedCount(20, 20, 7));
+    Equal(3, RequesterInventoryDeliveryPolicy.GetRetainedCount(20, 23, 7));
+    Equal(7, RequesterInventoryDeliveryPolicy.GetRetainedCount(20, 29, 7));
+}
+
+static void TestRequesterInventoryTransferReplay()
+{
+    HarvestTransferLedger ledger = new();
+    int cargo = 7;
+    int playerInventory = 0;
+    Action deliver = () =>
+    {
+        playerInventory += cargo;
+        cargo = 0;
+    };
+
+    Equal(true, ledger.TryApply("requester-transfer", deliver));
+    Equal(false, ledger.TryApply("requester-transfer", deliver));
+    Equal(7, playerInventory);
+    Equal(0, cargo);
+    Equal(true, HarvestPlacementAudit.IsBalanced(
+        harvested: 7,
+        playerInventory,
+        chest: 0,
+        overflow: 0,
+        quarantine: 0,
+        dropped: 0,
+        unresolved: cargo));
 }
 
 static void TestStorageSortClassificationPriority()
