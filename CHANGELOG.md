@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Made harvest delivery a contract-level choice: classified chests are the manual and automatic default, requester inventory is explicit, and a running contract never silently switches between them.
+- Isolated a crop after its live interaction routes are exhausted instead of marking every remaining crop unreachable; three independently stalled crops at one origin still trigger a bounded safe return.
 - Isolated a stalled harvest chest interaction route instead of rejecting every approach to that chest, while retaining whole-chest exclusion for storage or mutex failures.
 - Deferred harvest delivery until the next update after releasing a chest mutex, preventing consecutive outputs routed to the same chest from being falsely rejected as unreachable.
 

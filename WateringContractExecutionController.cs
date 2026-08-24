@@ -389,7 +389,7 @@ internal sealed class WateringContractExecutionController
 
         contract.Phase = WateringContractPhase.Acting;
         contract.PhaseTicks = 0;
-        contract.ReplanBudget.Reset(TravelRoutePurpose.Target);
+        TargetRouteFailurePolicy.ResetAfterArrival(contract.ReplanBudget);
         contract.Lease.Worker.Halt();
         contract.Lease.Worker.faceDirection(contract.CurrentTarget.FacingDirection);
     }
@@ -592,16 +592,30 @@ internal sealed class WateringContractExecutionController
         GridPoint origin = new(
             contract.Lease.Worker.TilePoint.X,
             contract.Lease.Worker.TilePoint.Y);
-        TravelReplanDecision decision = contract.ReplanBudget.RecordFailure(
-            TravelRoutePurpose.Target,
+        TargetRouteFailureDecision decision = TargetRouteFailurePolicy.RecordFailure(
+            contract.ReplanBudget,
             origin);
-        if (decision.CanReplan)
+        if (decision.Action == TargetRouteFailureAction.RetryRoute)
         {
             this.Monitor.Log(
                 $"Watering target route {failedEdge} failed from {origin} ({reason}); "
                 + $"trying another safe interaction edge "
-                + $"[{decision.FailureCount}/{decision.MaximumFailures}].",
+                + $"[{decision.RouteFailureCount}/{decision.MaximumRouteFailures}].",
                 LogLevel.Debug);
+            this.BeginNextOrReturn(contract);
+            return;
+        }
+
+        Point skippedTarget = contract.CurrentTarget.TargetTile;
+        if (contract.CompletedTargets.Add(skippedTarget))
+            contract.UnreachableTargets++;
+        if (decision.Action == TargetRouteFailureAction.SkipTarget)
+        {
+            this.Monitor.Log(
+                $"Watering target {skippedTarget} exhausted {decision.MaximumRouteFailures} live routes "
+                + $"from {origin}; skipping only that crop and continuing "
+                + $"[{decision.StalledTargetCount}/{decision.MaximumStalledTargets} stalled crops at this origin].",
+                LogLevel.Warn);
             this.BeginNextOrReturn(contract);
             return;
         }
@@ -612,7 +626,7 @@ internal sealed class WateringContractExecutionController
         contract.UnreachableTargets += remaining;
         this.Monitor.Log(
             $"Watering worker '{contract.Lease.Worker.Name}' exhausted "
-            + $"{decision.MaximumFailures} consecutive target routes from {origin}; "
+            + $"{decision.MaximumStalledTargets} stalled crops from {origin}; "
             + $"returning with {remaining} dry crop(s) marked unreachable.",
             LogLevel.Warn);
         this.BeginReturn(contract);
@@ -664,6 +678,7 @@ internal sealed class WateringContractExecutionController
             contract.ReturnReplanAttempts = 0;
             contract.FailedEdges.Clear();
             contract.ReplanBudget.Reset(TravelRoutePurpose.Target);
+            contract.ReplanBudget.Reset(TravelRoutePurpose.TargetSkip);
             contract.EntranceSwitches++;
 
             Game1.warpCharacter(worker, contract.Farm, new Vector2(

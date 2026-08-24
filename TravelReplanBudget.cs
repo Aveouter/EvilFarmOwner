@@ -3,7 +3,8 @@ namespace EvilFarmOwner;
 internal enum TravelRoutePurpose
 {
     Target,
-    Delivery
+    Delivery,
+    TargetSkip
 }
 
 internal readonly record struct TravelReplanDecision(
