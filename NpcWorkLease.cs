@@ -8,6 +8,7 @@ namespace EvilFarmOwner;
 internal enum NpcLeaseRestoreResult
 {
     Restored,
+    Relinquished,
     LeaseOwnershipLost,
     ConflictingController
 }
@@ -25,8 +26,10 @@ internal sealed class NpcWorkLease
     private readonly float OriginalAddedSpeed;
     private readonly int OriginalBlockedInterval;
     private readonly bool OriginalIsCharging;
+    private readonly bool OriginalWillDestroyObjectsUnderfoot;
     private readonly string Token;
-    private bool Released;
+    private NpcLeaseRestoreResult? FinalRestoreResult;
+    private bool ConflictReported;
 
     private NpcWorkLease(NPC worker, int reservedWage, IMonitor monitor)
     {
@@ -40,11 +43,15 @@ internal sealed class NpcWorkLease
         this.OriginalAddedSpeed = worker.addedSpeed;
         this.OriginalBlockedInterval = worker.blockedInterval;
         this.OriginalIsCharging = worker.isCharging;
+        this.OriginalWillDestroyObjectsUnderfoot = worker.willDestroyObjectsUnderfoot;
         this.StartTime = Game1.timeOfDay;
         this.StartTotalDays = Game1.Date.TotalDays;
         this.Token = Guid.NewGuid().ToString("N");
 
         worker.modData[LeaseDataKey] = this.Token;
+        worker.willDestroyObjectsUnderfoot = false;
+        worker.isCharging = false;
+        worker.blockedInterval = 0;
     }
 
     public NPC Worker { get; }
@@ -77,6 +84,9 @@ internal sealed class NpcWorkLease
 
     public void AttachController(PathFindController controller)
     {
+        if (!controller.nonDestructivePathing)
+            throw new InvalidOperationException("Work-lease controllers must use non-destructive pathing.");
+
         this.OwnedControllers.Add(controller);
         this.Worker.controller = controller;
     }
@@ -88,8 +98,8 @@ internal sealed class NpcWorkLease
 
     public NpcLeaseRestoreResult Restore()
     {
-        if (this.Released)
-            return NpcLeaseRestoreResult.Restored;
+        if (this.FinalRestoreResult is { } finalResult)
+            return finalResult;
 
         if (!this.Worker.modData.TryGetValue(LeaseDataKey, out string? token)
             || !string.Equals(token, this.Token, StringComparison.Ordinal))
@@ -97,15 +107,20 @@ internal sealed class NpcWorkLease
             this.Monitor.Log(
                 $"Could not restore worker '{this.Worker.Name}' because the work-lease marker is no longer owned by this contract.",
                 LogLevel.Error);
+            this.FinalRestoreResult = NpcLeaseRestoreResult.LeaseOwnershipLost;
             return NpcLeaseRestoreResult.LeaseOwnershipLost;
         }
 
         if ((this.Worker.controller is not null && !this.OwnedControllers.Contains(this.Worker.controller))
             || this.Worker.temporaryController is not null)
         {
-            this.Monitor.Log(
-                $"Could not safely restore worker '{this.Worker.Name}' because another controller took control during the work lease.",
-                LogLevel.Error);
+            if (!this.ConflictReported)
+            {
+                this.ConflictReported = true;
+                this.Monitor.Log(
+                    $"Deferring restoration of worker '{this.Worker.Name}' because another controller took control during the work lease.",
+                    LogLevel.Warn);
+            }
             return NpcLeaseRestoreResult.ConflictingController;
         }
 
@@ -127,8 +142,9 @@ internal sealed class NpcWorkLease
         this.Worker.addedSpeed = this.OriginalAddedSpeed;
         this.Worker.blockedInterval = this.OriginalBlockedInterval;
         this.Worker.isCharging = this.OriginalIsCharging;
+        this.Worker.willDestroyObjectsUnderfoot = this.OriginalWillDestroyObjectsUnderfoot;
         this.Worker.modData.Remove(LeaseDataKey);
-        this.Released = true;
+        this.FinalRestoreResult = NpcLeaseRestoreResult.Restored;
 
         if (Context.IsWorldReady && Game1.Date.TotalDays == this.StartTotalDays)
         {
@@ -145,5 +161,37 @@ internal sealed class NpcWorkLease
         }
 
         return NpcLeaseRestoreResult.Restored;
+    }
+
+    public NpcLeaseRestoreResult RelinquishToConflictingController()
+    {
+        if (this.FinalRestoreResult is { } finalResult)
+            return finalResult;
+
+        if (!this.Worker.modData.TryGetValue(LeaseDataKey, out string? token)
+            || !string.Equals(token, this.Token, StringComparison.Ordinal))
+        {
+            this.Monitor.Log(
+                $"Could not relinquish worker '{this.Worker.Name}' because the work-lease marker is no longer owned by this contract.",
+                LogLevel.Error);
+            this.FinalRestoreResult = NpcLeaseRestoreResult.LeaseOwnershipLost;
+            return NpcLeaseRestoreResult.LeaseOwnershipLost;
+        }
+
+        if (this.Worker.controller is not null && this.OwnedControllers.Contains(this.Worker.controller))
+            this.Worker.controller = null;
+
+        // Restore only fields changed when this lease was acquired. Do not halt, warp,
+        // clear animation, or replace a controller now owned by another activity.
+        this.Worker.blockedInterval = this.OriginalBlockedInterval;
+        this.Worker.isCharging = this.OriginalIsCharging;
+        this.Worker.willDestroyObjectsUnderfoot = this.OriginalWillDestroyObjectsUnderfoot;
+        this.Worker.modData.Remove(LeaseDataKey);
+        this.FinalRestoreResult = NpcLeaseRestoreResult.Relinquished;
+        this.Monitor.Log(
+            $"Relinquished work lease for '{this.Worker.Name}' without overriding the conflicting controller; "
+            + "the other activity now owns NPC position and movement.",
+            LogLevel.Warn);
+        return NpcLeaseRestoreResult.Relinquished;
     }
 }

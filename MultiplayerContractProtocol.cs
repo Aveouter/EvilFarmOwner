@@ -2,7 +2,7 @@ namespace EvilFarmOwner;
 
 internal static class MultiplayerContractProtocol
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 5;
     public const int ProcessedRequestCapacity = 256;
     public const string StartRequestType = "Contract/StartRequest";
     public const string StartResponseType = "Contract/StartResponse";
@@ -50,6 +50,10 @@ internal sealed class ContractSnapshotMessage
     public string WorkerName { get; set; } = "";
     public NamedFarmTask Task { get; set; }
     public string Phase { get; set; } = "";
+    public int ArrivalX { get; set; }
+    public int ArrivalY { get; set; }
+    public FarmBoundarySide ArrivalSide { get; set; }
+    public int EntranceSwitches { get; set; }
     public int TargetX { get; set; }
     public int TargetY { get; set; }
     public int ReservedGold { get; set; }
@@ -84,8 +88,10 @@ internal sealed class ContractResultMessage
     public bool Succeeded { get; set; }
     public string ReasonKey { get; set; } = "";
     public int CompletedWork { get; set; }
+    public int PlayerItems { get; set; }
     public int ChestItems { get; set; }
     public int OverflowItems { get; set; }
+    public int QuarantinedItems { get; set; }
     public int DroppedItems { get; set; }
     public int BillableHours { get; set; }
     public int ChargedGold { get; set; }
@@ -100,6 +106,7 @@ internal sealed class ContractSyncRequestMessage
     public string ModVersion { get; set; } = "";
     public ulong SaveId { get; set; }
     public long RequestingPlayerId { get; set; }
+    public string SyncRequestId { get; set; } = "";
 }
 
 internal sealed class ContractSyncStateMessage
@@ -107,6 +114,7 @@ internal sealed class ContractSyncStateMessage
     public int SchemaVersion { get; set; }
     public ulong SaveId { get; set; }
     public string HostSessionId { get; set; } = "";
+    public string SyncRequestId { get; set; } = "";
     public long StateVersion { get; set; }
     public bool HasActiveContract { get; set; }
     public ContractSnapshotMessage? ActiveContract { get; set; }
@@ -221,6 +229,13 @@ internal sealed class ProcessedContractRequestLedger
             .ToArray();
     }
 
+    public IReadOnlyList<ContractStartResponseMessage> GetAll()
+    {
+        return this.InsertionOrder
+            .Select(key => this.Responses[key])
+            .ToArray();
+    }
+
     public void Clear()
     {
         this.Responses.Clear();
@@ -331,6 +346,53 @@ internal sealed class HostStateVersionTracker
     }
 }
 
+internal sealed class HostSessionTracker
+{
+    private string PendingSyncRequestId = "";
+
+    public string Current { get; private set; } = "";
+
+    public bool HasSession => !string.IsNullOrWhiteSpace(this.Current);
+
+    public bool BeginHandshake(string syncRequestId)
+    {
+        if (!Guid.TryParseExact(syncRequestId, "N", out _))
+            return false;
+
+        this.PendingSyncRequestId = syncRequestId;
+        return true;
+    }
+
+    public bool TryEstablish(string hostSessionId, string syncRequestId)
+    {
+        if (!Guid.TryParseExact(hostSessionId, "N", out _)
+            || string.IsNullOrWhiteSpace(this.PendingSyncRequestId)
+            || !string.Equals(this.PendingSyncRequestId, syncRequestId, StringComparison.Ordinal))
+            return false;
+
+        if (!this.HasSession)
+            this.Current = hostSessionId;
+
+        if (!this.Matches(hostSessionId))
+            return false;
+
+        this.PendingSyncRequestId = "";
+        return true;
+    }
+
+    public bool Matches(string hostSessionId)
+    {
+        return this.HasSession
+            && string.Equals(this.Current, hostSessionId, StringComparison.Ordinal);
+    }
+
+    public void Clear()
+    {
+        this.Current = "";
+        this.PendingSyncRequestId = "";
+    }
+}
+
 internal sealed record NamedContractRuntimeState(
     string ContractId,
     string RequestId,
@@ -338,6 +400,10 @@ internal sealed record NamedContractRuntimeState(
     string WorkerName,
     NamedFarmTask Task,
     string Phase,
+    int ArrivalX,
+    int ArrivalY,
+    FarmBoundarySide ArrivalSide,
+    int EntranceSwitches,
     int TargetX,
     int TargetY,
     int ReservedGold,
@@ -365,8 +431,10 @@ internal sealed record NamedContractCompletionState(
     bool Succeeded,
     string ReasonKey,
     int CompletedWork,
+    int PlayerItems,
     int ChestItems,
     int OverflowItems,
+    int QuarantinedItems,
     int DroppedItems,
     int BillableHours,
     int ChargedGold,
