@@ -18,6 +18,7 @@ List<(string Name, Action Test)> tests = new()
     ("travel progress watchdog", TestTravelProgressWatchdog),
     ("external boundary arrival ordering", TestExternalBoundaryArrivalOrdering),
     ("right entrance priority", TestRightEntrancePriority),
+    ("stalled entrance fallback ordering", TestStalledEntranceFallbackOrdering),
     ("nearest arrival boundary side", TestNearestArrivalBoundarySide),
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
@@ -247,6 +248,24 @@ static void TestRightEntrancePriority()
     Equal(1, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.South));
     Equal(2, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.North));
     Equal(3, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.West));
+}
+
+static void TestStalledEntranceFallbackOrdering()
+{
+    IReadOnlyList<GridPoint> candidates = FarmEntranceSelection.OrderBoundaryArrivalCandidates(
+        mapWidth: 80,
+        mapHeight: 65,
+        new[]
+        {
+            new GridPoint(41, -1),
+            new GridPoint(40, 65),
+            new GridPoint(80, 15)
+        },
+        excludedSides: new HashSet<FarmBoundarySide> { FarmBoundarySide.East });
+
+    Equal(new GridPoint(40, 64), candidates[0]);
+    Equal(false, candidates.Any(candidate =>
+        FarmEntranceSelection.GetNearestBoundarySide(80, 65, candidate) == FarmBoundarySide.East));
 }
 
 static void TestNearestArrivalBoundarySide()
@@ -543,6 +562,10 @@ static void TestMultiplayerSnapshotSerialization()
         WorkerName = "Leah",
         Task = NamedFarmTask.Harvesting,
         Phase = "TravelingToChest",
+        ArrivalX = 78,
+        ArrivalY = 15,
+        ArrivalSide = FarmBoundarySide.East,
+        EntranceSwitches = 1,
         TargetX = 10,
         TargetY = 20,
         ReservedGold = 600,
@@ -566,6 +589,10 @@ static void TestMultiplayerSnapshotSerialization()
     Equal("contract-1", restored!.ContractId);
     Equal(12L, restored.StateVersion);
     Equal(NamedFarmTask.Harvesting, restored.Task);
+    Equal(78, restored.ArrivalX);
+    Equal(15, restored.ArrivalY);
+    Equal(FarmBoundarySide.East, restored.ArrivalSide);
+    Equal(1, restored.EntranceSwitches);
     Equal("(O)24", restored.Cargo[0].QualifiedItemId);
     Equal(3, restored.Cargo[0].Stack);
     Equal("transfer-0", restored.CompletedTransferIds[0]);
@@ -573,7 +600,7 @@ static void TestMultiplayerSnapshotSerialization()
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(2, MultiplayerContractProtocol.SchemaVersion);
+    Equal(3, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,

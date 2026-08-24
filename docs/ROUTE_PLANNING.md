@@ -4,6 +4,8 @@ Named watering and harvesting contracts prefer the right/east main-road (Bus Sto
 
 The arrival planner reads genuine map-boundary warps, clamps each off-map source tile to a visible edge anchor, and orders them right/east, bottom/south, top/north, then left/west. It performs at most eight safe path checks per side, so a blocked preferred entrance cannot consume the entire search budget. Farmhouse, greenhouse, cave, and other interior transfers are never worker entrances. Dispatch is committed only after the worker is present at the selected farm-edge tile and an object-safe route to a real target and back to that same entrance has been found.
 
+Static collision and vanilla controller execution are separate safety boundaries. If a worker makes no pixel progress while still on the selected arrival tile before completing any work, the contract marks the whole entrance side failed instead of consuming crop interaction edges. It then replans with that side excluded, visibly relocates the same leased worker to the next genuine boundary entrance, and keeps the original reservation and contract ID. The authoritative multiplayer snapshot carries the selected arrival tile, side, and switch count. If every boundary entrance fails, the contract stops, restores the worker, and reports the entrance failure.
+
 ## Safety invariants
 
 - Kegs, chests, machines, fence segments, raised-seed trellises, blocking terrain features, and other occupied tiles are obstacles. Ordinary non-trellis crop tiles follow vanilla passability. A gate is the only placed-object exception: it may be opened for passage, but it is never removed.

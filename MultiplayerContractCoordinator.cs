@@ -379,6 +379,10 @@ internal sealed class MultiplayerContractCoordinator
             '|',
             state.ContractId,
             state.Phase,
+            state.ArrivalX,
+            state.ArrivalY,
+            state.ArrivalSide,
+            state.EntranceSwitches,
             state.TargetX,
             state.TargetY,
             state.CompletedWork,
@@ -402,6 +406,10 @@ internal sealed class MultiplayerContractCoordinator
             WorkerName = state.WorkerName,
             Task = state.Task,
             Phase = state.Phase,
+            ArrivalX = state.ArrivalX,
+            ArrivalY = state.ArrivalY,
+            ArrivalSide = state.ArrivalSide,
+            EntranceSwitches = state.EntranceSwitches,
             TargetX = state.TargetX,
             TargetY = state.TargetY,
             ReservedGold = state.ReservedGold,
@@ -517,7 +525,8 @@ internal sealed class MultiplayerContractCoordinator
                 snapshot,
                 MultiplayerContractProtocol.SchemaVersion,
                 Game1.uniqueIDForThisGame)
-            || !Enum.IsDefined(snapshot.Task))
+            || !Enum.IsDefined(snapshot.Task)
+            || !Enum.IsDefined(snapshot.ArrivalSide))
             return;
 
         this.RemoteStateVersions.Commit(snapshot.StateVersion);
@@ -530,6 +539,11 @@ internal sealed class MultiplayerContractCoordinator
             this.PendingTicks = 0;
         }
         bool newContract = previous?.ContractId != snapshot.ContractId;
+        bool entranceChanged = previous?.ContractId == snapshot.ContractId
+            && (previous.ArrivalX != snapshot.ArrivalX
+                || previous.ArrivalY != snapshot.ArrivalY
+                || previous.ArrivalSide != snapshot.ArrivalSide
+                || previous.EntranceSwitches != snapshot.EntranceSwitches);
         bool newAction = string.Equals(snapshot.Phase, "Acting", StringComparison.Ordinal)
             && (previous?.ContractId != snapshot.ContractId
                 || !string.Equals(previous.Phase, snapshot.Phase, StringComparison.Ordinal)
@@ -541,7 +555,18 @@ internal sealed class MultiplayerContractCoordinator
                 this.Translation.Get("multiplayer.hud.observing", new
                 {
                     worker = snapshot.WorkerName,
-                    task = GetTaskText(snapshot.Task)
+                    task = GetTaskText(snapshot.Task),
+                    entrance = this.GetEntranceText(snapshot.ArrivalSide)
+                }),
+                HUDMessage.newQuest_type));
+        }
+        else if (entranceChanged)
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Translation.Get("multiplayer.hud.entrance-fallback", new
+                {
+                    worker = snapshot.WorkerName,
+                    entrance = this.GetEntranceText(snapshot.ArrivalSide)
                 }),
                 HUDMessage.newQuest_type));
         }
@@ -783,6 +808,11 @@ internal sealed class MultiplayerContractCoordinator
         return this.Translation.Get(task == NamedFarmTask.Watering
             ? "contract.task.watering"
             : "contract.task.harvesting");
+    }
+
+    private string GetEntranceText(FarmBoundarySide side)
+    {
+        return this.Translation.Get($"contract.entrance.{side.ToString().ToLowerInvariant()}");
     }
 
     private bool TryAcceptHostSession(string hostSessionId)

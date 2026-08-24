@@ -60,7 +60,10 @@ internal sealed class HarvestTargetPlanner
         this.Monitor = monitor;
     }
 
-    public HarvestPlanResult TryCreate(Farm farm, NPC worker)
+    public HarvestPlanResult TryCreate(
+        Farm farm,
+        NPC worker,
+        IReadOnlySet<FarmBoundarySide>? excludedArrivalSides = null)
     {
         int width = farm.Map.Layers[0].LayerWidth;
         int height = farm.Map.Layers[0].LayerHeight;
@@ -73,7 +76,8 @@ internal sealed class HarvestTargetPlanner
         foreach (GridPoint candidate in FarmEntranceSelection.OrderBoundaryArrivalCandidates(
                      width,
                      height,
-                     farm.warps.Select(warp => new GridPoint(warp.X, warp.Y))))
+                     farm.warps.Select(warp => new GridPoint(warp.X, warp.Y)),
+                     excludedSides: excludedArrivalSides))
         {
             FarmBoundarySide arrivalSide = FarmEntranceSelection.GetNearestBoundarySide(width, height, candidate);
             int checkedOnSide = checkedPathsBySide.GetValueOrDefault(arrivalSide);

@@ -24,7 +24,8 @@ internal static class FarmEntranceSelection
         int mapWidth,
         int mapHeight,
         IEnumerable<GridPoint> warpTiles,
-        int searchRadius = DefaultSearchRadius)
+        int searchRadius = DefaultSearchRadius,
+        IReadOnlySet<FarmBoundarySide>? excludedSides = null)
     {
         if (mapWidth <= 0 || mapHeight <= 0 || searchRadius < 0)
             return Array.Empty<GridPoint>();
@@ -36,6 +37,7 @@ internal static class FarmEntranceSelection
                     Math.Clamp(tile.X, 0, mapWidth - 1),
                     Math.Clamp(tile.Y, 0, mapHeight - 1)),
                 Side: GetNearestBoundarySide(mapWidth, mapHeight, tile)))
+            .Where(anchor => excludedSides is null || !excludedSides.Contains(anchor.Side))
             .Distinct()
             .OrderBy(anchor => GetEntrancePriority(anchor.Side))
             .ThenBy(anchor => anchor.Tile.Y)

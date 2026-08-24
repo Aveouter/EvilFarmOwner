@@ -325,6 +325,10 @@ internal sealed class WateringContractExecutionController
             contract.Lease.Worker.Name,
             NamedFarmTask.Watering,
             contract.Phase.ToString(),
+            contract.Plan.ArrivalTile.X,
+            contract.Plan.ArrivalTile.Y,
+            contract.Plan.ArrivalSide,
+            contract.EntranceSwitches,
             contract.CurrentTarget.TargetTile.X,
             contract.CurrentTarget.TargetTile.Y,
             contract.Preview.MaximumAuthorizedWage,
@@ -538,10 +542,114 @@ internal sealed class WateringContractExecutionController
         if (ReferenceEquals(contract.Lease.Worker.controller, contract.Controller))
             contract.Lease.Worker.controller = null;
         contract.Lease.Worker.Halt();
+        if (this.TryHandleStalledEntrance(contract))
+            return;
+
         contract.FailedEdges.Add(WateringTargetPlanner.ToEdge(
             contract.CurrentTarget.TargetTile,
             contract.CurrentTarget.InteractionTile));
         this.BeginNextOrReturn(contract);
+    }
+
+    private bool TryHandleStalledEntrance(ActiveWateringContract contract)
+    {
+        NPC worker = contract.Lease.Worker;
+        if (contract.CompletedTargets.Count > 0
+            || !ReferenceEquals(worker.currentLocation, contract.Farm)
+            || worker.TilePoint != contract.Plan.ArrivalTile)
+            return false;
+
+        FarmBoundarySide failedSide = contract.Plan.ArrivalSide;
+        contract.FailedArrivalSides.Add(failedSide);
+        contract.Controller = null;
+        this.Monitor.Log(
+            $"Watering worker '{worker.Name}' could not leave the {failedSide} entrance at "
+            + $"{contract.Plan.ArrivalTile}; excluding that side and planning a boundary fallback.",
+            LogLevel.Warn);
+
+        WateringPlanResult replacement = this.TargetPlanner.TryCreate(
+            contract.Farm,
+            worker,
+            contract.FailedArrivalSides);
+        if (!replacement.IsSuccess || replacement.Plan is null)
+        {
+            this.Monitor.Log(
+                $"No remaining farm-boundary entrance can start watering after excluding: "
+                + $"{string.Join(", ", contract.FailedArrivalSides.OrderBy(FarmEntranceSelection.GetEntrancePriority))}.",
+                LogLevel.Warn);
+            this.FinishContract(
+                contract,
+                succeeded: false,
+                replacement.Failure == WateringPlanFailure.NoDryCrop
+                    ? "contract.failure.target-invalidated"
+                    : "contract.failure.entrance-stalled");
+            return true;
+        }
+
+        try
+        {
+            WateringWorkPlan nextPlan = replacement.Plan;
+            contract.Plan = nextPlan;
+            contract.CurrentTarget = nextPlan.FirstTarget;
+            contract.ActionApplied = false;
+            contract.Phase = WateringContractPhase.TravelingToTarget;
+            contract.PhaseTicks = 0;
+            contract.ReturnReplanAttempts = 0;
+            contract.FailedEdges.Clear();
+            contract.EntranceSwitches++;
+
+            Game1.warpCharacter(worker, contract.Farm, new Vector2(
+                nextPlan.ArrivalTile.X,
+                nextPlan.ArrivalTile.Y));
+            if (!ReferenceEquals(worker.currentLocation, contract.Farm)
+                || !contract.Farm.characters.Contains(worker)
+                || worker.TilePoint != nextPlan.ArrivalTile)
+            {
+                throw new InvalidOperationException(
+                    $"Worker did not arrive at fallback farm-edge tile {nextPlan.ArrivalTile}.");
+            }
+
+            worker.Position = FarmNavigationMap.GetAlignedCharacterPosition(nextPlan.ArrivalTile);
+            worker.Halt();
+            worker.Sprite?.ClearAnimation();
+            if (worker.TilePoint == nextPlan.FirstTarget.InteractionTile)
+            {
+                this.OnArrivedAtTarget(worker, contract.Farm);
+            }
+            else
+            {
+                PathFindController controller = this.CreatePathController(
+                    contract,
+                    nextPlan.FirstTarget.Path,
+                    nextPlan.FirstTarget.InteractionTile,
+                    nextPlan.FirstTarget.FacingDirection,
+                    this.OnArrivedAtTarget);
+                contract.Controller = controller;
+                contract.Lease.AttachController(controller);
+                contract.TravelWatchdog.Reset(worker.Position.X, worker.Position.Y);
+            }
+
+            this.Monitor.Log(
+                $"Watering contract switched from the failed {failedSide} entrance to "
+                + $"{nextPlan.ArrivalSide} at {nextPlan.ArrivalTile}.",
+                LogLevel.Warn);
+            Game1.addHUDMessage(new HUDMessage(
+                this.Translation.Get("contract.hud.entrance-fallback", new
+                {
+                    worker = worker.displayName,
+                    entrance = this.GetArrivalDescription(nextPlan.ArrivalSide)
+                }),
+                HUDMessage.newQuest_type));
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log(
+                $"Failed to switch watering worker '{worker.Name}' to a fallback entrance: {ex}",
+                LogLevel.Error);
+            this.FinishContract(contract, succeeded: false, "contract.failure.entrance-stalled");
+        }
+
+        return true;
     }
 
     private void HandleInterruptedReturnTravel(ActiveWateringContract contract)
@@ -805,9 +913,10 @@ internal sealed class WateringContractExecutionController
         public NpcWorkLease Lease { get; }
         public WorkContractPreview Preview { get; }
         public Farm Farm { get; }
-        public WateringWorkPlan Plan { get; }
+        public WateringWorkPlan Plan { get; set; }
         public HashSet<Point> CompletedTargets { get; } = new();
         public HashSet<FarmTaskRouteEdge> FailedEdges { get; } = new();
+        public HashSet<FarmBoundarySide> FailedArrivalSides { get; } = new();
         public TravelProgressWatchdog TravelWatchdog { get; } = new();
         public WateringTargetPlan CurrentTarget { get; set; }
         public WateringContractPhase Phase { get; set; } = WateringContractPhase.TravelingToTarget;
@@ -820,5 +929,6 @@ internal sealed class WateringContractExecutionController
         public int UnreachableTargets { get; set; }
         public int RemainingTargets { get; set; }
         public int ReturnReplanAttempts { get; set; }
+        public int EntranceSwitches { get; set; }
     }
 }
