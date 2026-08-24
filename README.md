@@ -78,6 +78,7 @@ efo_roster
 efo_overflow
 efo_quarantine
 efo_netstatus
+efo_report
 ```
 
 `efo_overflow` opens the persistent team inventory used only to preserve cargo already captured when a storage failure stops the contract. It is not a normal destination and never permits more harvesting. Emergency ground drops are announced explicitly and placed at the on-farm requester or a collision-free farmhouse/selected-entrance delivery tile before the worker position is considered.
@@ -85,6 +86,8 @@ efo_netstatus
 `efo_quarantine` opens the separate persistent emergency inventory used only when both ordinary overflow and a visible drop cannot be verified. Every quarantined stack carries its transfer ID. If even that inventory is temporarily unavailable, the host stores a size-bounded validated recovery record, blocks new harvest contracts, and retries exact reconstruction before allowing further harvest work. Day end, ordinary saving, and initial save creation recheck this ownership before the game writes the save; any transient remainder is forced into the private team quarantine before the contract can settle.
 
 `efo_netstatus` reports the local network role, host session, active contract, pending request, processed-request count, replay recovery health, host quarantine health, and synchronized state version for multiplayer acceptance testing.
+
+`efo_report` prints the current player's latest authoritative named-contract result without rerunning work or charging wages. It includes the worker, task, status or stop reason, completed count, grouped item/quality totals, destinations, and billing. Host reports survive a clean save/reload through the bounded recent-result ledger; farmhands read the latest validated host result synchronized for them.
 
 ### Configuration
 
@@ -155,6 +158,7 @@ efo_roster
 efo_overflow
 efo_quarantine
 efo_netstatus
+efo_report
 ```
 
 `efo_overflow` 用于打开持久化队伍溢出仓；它只保全因储存失败而终止合同时已经采下的货物，不是普通目标，也不会让工人继续收获。紧急地面掉落一定会明确提示，并优先落在仍在农场的请求者处；否则选择农舍交付区或本次入口附近无碰撞的空格，最后才考虑工人位置。
@@ -162,6 +166,8 @@ efo_netstatus
 `efo_quarantine` 用于打开独立的持久应急隔离仓；仅在普通溢出和明确掉落都无法验证时使用。每一组隔离物品都保留转移 ID。若隔离仓也暂时不可用，主机会保存经过大小限制和验证的恢复记录、禁止新的收获合同，并在允许后续收获前重试精确恢复。日终、普通保存和首次创建存档都会在写盘前再次核对货物所有权；任何仍处于临时合同中的余货都会先强制进入私有队伍隔离仓，合同才能结算。
 
 `efo_netstatus` 用于多人验收，显示本地网络角色、主机会话、活动合同、待处理请求、已处理请求数量、请求账本恢复状态、主机隔离仓恢复状态和同步状态版本。
+
+`efo_report` 只读显示当前玩家最近一份主机权威具名合同结果，不会重新执行工作或扣费。内容包括工人、任务、完成或停止原因、完成数量、按物品与品质汇总的产物、各存放去向以及工资结算。主机的最近结果会随干净存档恢复；农场工查看的是主机同步并验证后的本人最近结果。
 
 ### 配置文件
 

@@ -58,6 +58,11 @@ internal sealed class MultiplayerContractCoordinator
     public bool HasObservedActiveContract => this.CurrentHostSnapshot is not null
         || this.RemoteActiveSnapshot is not null;
 
+    public bool TryGetRecentResult(long requestingPlayerId, out ContractResultMessage? result)
+    {
+        return this.RecentResults.TryGetValue(requestingPlayerId, out result);
+    }
+
     public string GetDiagnosticStatus()
     {
         string role = Context.IsMainPlayer ? "host" : "farmhand";
@@ -646,6 +651,7 @@ internal sealed class MultiplayerContractCoordinator
             return;
 
         this.RemoteStateVersions.Commit(result.StateVersion);
+        this.RecentResults[result.RequestingPlayerId] = result;
 
         if (this.RemoteActiveSnapshot?.ContractId == result.ContractId)
             this.RemoteActiveSnapshot = null;

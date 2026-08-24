@@ -171,9 +171,18 @@
   "gmcm.open-menu-key.name": "打开可雇佣工人名单的按键",
   "gmcm.open-menu-key.tooltip": "用于打开当前可雇佣具名工人名单的按键。",
   "gmcm.contract-settings.notice": "工作范围、任务规则和工资由每份具名 NPC 合同定义，不存在以玩家为中心的全局扫描设置。",
+  "report.none": "当前玩家还没有可查看的具名合同报告。",
+  "report.status.completed": "已完成",
+  "report.status.stopped": "已停止（{{reason}}）",
+  "report.items.none": "无",
+  "report.header": "最近合同：{{worker}} · {{task}} · {{status}}。",
+  "report.work": "完成工作：{{completed}}；产物：{{items}}。",
+  "report.destinations": "去向：请求者 {{player}}，箱子 {{chest}}，溢出仓 {{overflow}}，隔离仓 {{quarantine}}，掉落 {{dropped}}。",
+  "report.billing": "结算：{{hours}} 小时，实付 {{paid}}g，退款 {{refunded}}g。",
   "cmd.roster": "打开具名工人名单并选择农活。",
   "cmd.overflow": "打开持久化收获溢出仓。",
   "cmd.quarantine": "打开持久化收获应急隔离仓。",
   "cmd.netstatus": "显示主机权威合同的网络诊断状态。",
+  "cmd.report": "显示当前玩家最近一份具名合同报告。",
   "cmd.roster-world-not-ready": "请先载入存档，再打开可雇佣工人名单。"
 }

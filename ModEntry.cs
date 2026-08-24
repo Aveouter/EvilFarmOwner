@@ -60,6 +60,7 @@ public sealed class ModEntry : Mod
         helper.ConsoleCommands.Add("efo_overflow", helper.Translation.Get("cmd.overflow"), (_, _) => this.OpenHarvestOverflow());
         helper.ConsoleCommands.Add("efo_quarantine", helper.Translation.Get("cmd.quarantine"), (_, _) => this.OpenHarvestQuarantine());
         helper.ConsoleCommands.Add("efo_netstatus", helper.Translation.Get("cmd.netstatus"), (_, _) => this.ShowNetworkStatus());
+        helper.ConsoleCommands.Add("efo_report", helper.Translation.Get("cmd.report"), (_, _) => this.ShowLastWorkReport());
 #if EFO_ACCEPTANCE_FAULTS
         helper.ConsoleCommands.Add(
             "efo_acceptance_faults",
@@ -424,6 +425,63 @@ public sealed class ModEntry : Mod
         this.Monitor.Log(
             this.MultiplayerContracts?.GetDiagnosticStatus() ?? "EFO network coordinator is unavailable.",
             LogLevel.Info);
+    }
+
+    private void ShowLastWorkReport()
+    {
+        if (!Context.IsWorldReady)
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("cmd.roster-world-not-ready"), LogLevel.Info);
+            return;
+        }
+
+        if (this.MultiplayerContracts?.TryGetRecentResult(
+                Game1.player.UniqueMultiplayerID,
+                out ContractResultMessage? result) != true
+            || result is null)
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("report.none"), LogLevel.Info);
+            return;
+        }
+
+        string task = this.Helper.Translation.Get(result.Task == NamedFarmTask.Watering
+            ? "contract.task.watering"
+            : "contract.task.harvesting");
+        string status = result.Succeeded
+            ? this.Helper.Translation.Get("report.status.completed")
+            : this.Helper.Translation.Get("report.status.stopped", new
+            {
+                reason = this.Helper.Translation.Get(result.ReasonKey)
+            });
+        string items = NamedContractReportFormatter.FormatItems(
+            result.ProducedItems,
+            this.Helper.Translation.Get("report.items.none"));
+
+        this.Monitor.Log(this.Helper.Translation.Get("report.header", new
+        {
+            worker = result.WorkerName,
+            task,
+            status
+        }), LogLevel.Info);
+        this.Monitor.Log(this.Helper.Translation.Get("report.work", new
+        {
+            completed = result.CompletedWork,
+            items
+        }), LogLevel.Info);
+        this.Monitor.Log(this.Helper.Translation.Get("report.destinations", new
+        {
+            player = result.PlayerItems,
+            chest = result.ChestItems,
+            overflow = result.OverflowItems,
+            quarantine = result.QuarantinedItems,
+            dropped = result.DroppedItems
+        }), LogLevel.Info);
+        this.Monitor.Log(this.Helper.Translation.Get("report.billing", new
+        {
+            hours = result.BillableHours,
+            paid = result.ChargedGold,
+            refunded = result.RefundedGold
+        }), LogLevel.Info);
     }
 
 }

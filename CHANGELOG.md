@@ -28,6 +28,7 @@
 - Added `efo_overflow` to retrieve already harvested cargo preserved after a storage-triggered stop.
 - Added host-authoritative multiplayer contract requests, bounded request replay protection, phase/cargo/transfer snapshots, reconnect synchronization, and host-only visual action messages.
 - Persisted the bounded processed-request ledger and latest per-player results so host restarts rebind prior transactions to the new network session without repeating work or charges.
+- Added read-only `efo_report` output for the current player's latest authoritative contract result, including grouped cargo, destinations, and billing.
 - Rejected internally inconsistent multiplayer recovery results with duplicate transfer IDs, unbalanced item destinations, impossible hours, or contradictory success reasons.
 - Required a nonce-correlated authoritative sync-state handshake before a farmhand binds a new host session or resends a pending request, so delayed responses or sync states from the prior host session cannot capture reconnect state; clean protocol-3 and protocol-4 recovery ledgers are fully validated before being rebound to protocol 5.
 - Bound wage reservation and refund to the requesting farmer instead of the host's local player.
@@ -35,7 +36,7 @@
 - Added a separate persistent emergency cargo quarantine, idempotent transfer markers, a size-bounded host recovery record, and `efo_quarantine` retrieval so failed overflow and ground-drop operations cannot release the only owned item instances.
 - Required day end, ordinary saving, and initial save creation to verify cargo ownership and force any transient remainder into the private team quarantine before contract settlement.
 - Added a compile-gated, non-distributable storage fault-injection harness for live overflow, drop, quarantine, recovery-record, and terminal-write acceptance tests; the normal Release verifier rejects any DLL which exposes its command.
-- Expanded the deterministic logic harness to 45 wage, availability, routing, storage, quarantine recovery, acceptance-control, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
+- Expanded the deterministic logic harness to 49 wage, availability, routing, storage, reporting, quarantine recovery, acceptance-control, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
 - Removed the legacy instant `efo_work`, task toggles, player-centered scan settings, and bundled user config from the production release surface.
 - Corrected manifest ownership, release description, and GitHub update metadata.
 - Added English and Chinese UI, configuration, multiplayer, failure, storage, and settlement text.

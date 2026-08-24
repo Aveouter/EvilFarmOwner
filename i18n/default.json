@@ -171,9 +171,18 @@
   "gmcm.open-menu-key.name": "Open roster key",
   "gmcm.open-menu-key.tooltip": "Key used to open the currently available named-worker roster.",
   "gmcm.contract-settings.notice": "Work scope, task rules, and wages are defined by each named NPC contract; there is no player-centered global scan setting.",
+  "report.none": "No completed named contract report is available for this player.",
+  "report.status.completed": "completed",
+  "report.status.stopped": "stopped ({{reason}})",
+  "report.items.none": "none",
+  "report.header": "Last contract: {{worker}} · {{task}} · {{status}}.",
+  "report.work": "Work completed: {{completed}}. Produced items: {{items}}.",
+  "report.destinations": "Destinations: requester {{player}}, chest {{chest}}, overflow {{overflow}}, quarantine {{quarantine}}, dropped {{dropped}}.",
+  "report.billing": "Billing: {{hours}} hour(s), paid {{paid}}g, refunded {{refunded}}g.",
   "cmd.roster": "Open the named worker roster and choose a farm task.",
   "cmd.overflow": "Open the persistent harvest overflow inventory.",
   "cmd.quarantine": "Open the persistent emergency harvest quarantine.",
   "cmd.netstatus": "Show host-authoritative contract network diagnostics.",
+  "cmd.report": "Show the current player's most recent named contract report.",
   "cmd.roster-world-not-ready": "Load a save before opening the worker roster."
 }
