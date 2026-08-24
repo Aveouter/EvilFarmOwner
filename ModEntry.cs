@@ -123,7 +123,7 @@ public sealed class ModEntry : Mod
         if (!string.Equals(args[0], "arm", StringComparison.OrdinalIgnoreCase) || args.Length < 2)
         {
             this.Monitor.Log(
-                "Usage: efo_acceptance_faults arm <overflow-lock|visible-drop|quarantine-lock|recovery-record-write|quarantine-write> [...]; clear; status; finalize",
+                "Usage: efo_acceptance_faults arm <normal-storage|overflow-lock|visible-drop|quarantine-lock|recovery-record-write|quarantine-write> [...]; clear; status; finalize",
                 LogLevel.Info);
             return;
         }

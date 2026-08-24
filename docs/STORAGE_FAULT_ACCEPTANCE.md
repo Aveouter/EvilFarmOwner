@@ -21,12 +21,13 @@ SMAPI must log `ACCEPTANCE TEST BUILD` at startup. The command
 
 ## Scenario A: persistent recovery record
 
-1. Prepare one mature crop. Remove eligible chests and completely fill the
-   requesting player's inventory.
+1. Prepare one mature crop and keep at least one ordinary eligible main-farm
+   chest so the normal harvest dispatch preflight can pass. Its contents and the
+   requesting player's free inventory space do not matter in this acceptance build.
 2. Run:
 
    ```text
-   efo_acceptance_faults arm overflow-lock visible-drop quarantine-lock
+   efo_acceptance_faults arm normal-storage overflow-lock visible-drop quarantine-lock
    ```
 
 3. Hire an NPC to harvest. After the item is captured, run
@@ -41,10 +42,10 @@ SMAPI must log `ACCEPTANCE TEST BUILD` at startup. The command
 
 ## Scenario B: save-boundary forced quarantine
 
-1. Prepare the same no-chest/full-inventory setup and run:
+1. Prepare the same one-crop/one-eligible-chest setup and run:
 
    ```text
-   efo_acceptance_faults arm overflow-lock visible-drop quarantine-lock recovery-record-write
+   efo_acceptance_faults arm normal-storage overflow-lock visible-drop quarantine-lock recovery-record-write
    ```
 
 2. Hire an NPC to harvest. After capture, run
@@ -57,7 +58,13 @@ SMAPI must log `ACCEPTANCE TEST BUILD` at startup. The command
 
 ## Scenario C: fail-closed terminal write
 
-Arm all five faults, capture one output, then invoke `finalize`. Verify the log
+Arm all six faults with:
+
+```text
+efo_acceptance_faults arm normal-storage overflow-lock visible-drop quarantine-lock recovery-record-write quarantine-write
+```
+
+Capture one output, then invoke `finalize`. Verify the log
 contains a CRITICAL save-boundary failure, the active contract remains reported,
 no successful result is published, and no second contract can start. This is a
 negative safety observation, not a releasable success path; clear the faults and

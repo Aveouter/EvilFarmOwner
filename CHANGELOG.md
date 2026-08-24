@@ -9,6 +9,7 @@
 - Added bilingual task selection, contract settlement HUDs, host-authoritative protocol 7 snapshots/results, and persistent per-transfer source/destination reports.
 - Isolated a crop after its live interaction routes are exhausted instead of marking every remaining crop unreachable; three independently stalled crops at one origin still trigger a bounded safe return.
 - Delivered each complete harvest stack to the original requesting player first when they are online, on the same main farm, and have enough inventory capacity; otherwise retained deterministic classified-chest routing.
+- Added an acceptance-only ordinary-storage rejection fault so overflow, visible-drop, quarantine, and recovery-record safety can be tested without manually filling every chest and player slot.
 - Kept recurring automatic chest sorting disabled until the manual contract passes live acceptance.
 
 ## 0.1.0-beta.1 - 2026-08-24

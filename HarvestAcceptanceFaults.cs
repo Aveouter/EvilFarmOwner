@@ -8,7 +8,8 @@ internal enum HarvestAcceptanceFault
     VisibleDrop = 1 << 1,
     QuarantineLock = 1 << 2,
     RecoveryRecordWrite = 1 << 3,
-    QuarantineWrite = 1 << 4
+    QuarantineWrite = 1 << 4,
+    NormalStorage = 1 << 5
 }
 
 /// <summary>
@@ -52,6 +53,7 @@ internal sealed class HarvestAcceptanceFaults
             "quarantine-lock" => HarvestAcceptanceFault.QuarantineLock,
             "recovery-record-write" => HarvestAcceptanceFault.RecoveryRecordWrite,
             "quarantine-write" => HarvestAcceptanceFault.QuarantineWrite,
+            "normal-storage" => HarvestAcceptanceFault.NormalStorage,
             _ => HarvestAcceptanceFault.None
         };
         return fault != HarvestAcceptanceFault.None;
@@ -66,6 +68,7 @@ internal sealed class HarvestAcceptanceFaults
             HarvestAcceptanceFault.QuarantineLock => "quarantine-lock",
             HarvestAcceptanceFault.RecoveryRecordWrite => "recovery-record-write",
             HarvestAcceptanceFault.QuarantineWrite => "quarantine-write",
+            HarvestAcceptanceFault.NormalStorage => "normal-storage",
             _ => "none"
         };
     }

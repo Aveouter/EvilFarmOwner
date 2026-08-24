@@ -1653,6 +1653,7 @@ static void TestHarvestAcceptanceFaultControls()
 {
     HarvestAcceptanceFaults faults = new();
     Equal("none", faults.Describe());
+    Equal(true, HarvestAcceptanceFaults.TryParse("normal-storage", out HarvestAcceptanceFault normalStorage));
     Equal(true, HarvestAcceptanceFaults.TryParse("overflow-lock", out HarvestAcceptanceFault overflow));
     Equal(true, HarvestAcceptanceFaults.TryParse("VISIBLE-DROP", out HarvestAcceptanceFault visibleDrop));
     Equal(true, HarvestAcceptanceFaults.TryParse("quarantine-lock", out HarvestAcceptanceFault quarantineLock));
@@ -1660,18 +1661,20 @@ static void TestHarvestAcceptanceFaultControls()
     Equal(true, HarvestAcceptanceFaults.TryParse("quarantine-write", out HarvestAcceptanceFault quarantineWrite));
     Equal(false, HarvestAcceptanceFaults.TryParse("unknown", out _));
 
+    faults.Arm(normalStorage);
     faults.Arm(overflow);
     faults.Arm(visibleDrop);
     faults.Arm(quarantineLock);
     faults.Arm(recoveryWrite);
     faults.Arm(quarantineWrite);
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.NormalStorage));
     Equal(true, faults.IsArmed(HarvestAcceptanceFault.OverflowLock));
     Equal(true, faults.IsArmed(HarvestAcceptanceFault.VisibleDrop));
     Equal(true, faults.IsArmed(HarvestAcceptanceFault.QuarantineLock));
     Equal(true, faults.IsArmed(HarvestAcceptanceFault.RecoveryRecordWrite));
     Equal(true, faults.IsArmed(HarvestAcceptanceFault.QuarantineWrite));
     Equal(
-        "overflow-lock,visible-drop,quarantine-lock,recovery-record-write,quarantine-write",
+        "overflow-lock,visible-drop,quarantine-lock,recovery-record-write,quarantine-write,normal-storage",
         faults.Describe());
 
     faults.Clear();

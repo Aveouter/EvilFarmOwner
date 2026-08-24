@@ -849,6 +849,15 @@ internal sealed class HarvestingContractExecutionController
         }
 
         HarvestCargoEntry entry = contract.Cargo[0];
+        if (this.AcceptanceFaults.IsArmed(HarvestAcceptanceFault.NormalStorage))
+        {
+            this.LogInjectedFault(HarvestAcceptanceFault.NormalStorage);
+            this.StopForUnavailableStorage(
+                contract,
+                "acceptance testing forced ordinary requester and chest storage to reject the stack");
+            return;
+        }
+
         if (this.TryDeliverToOnFarmRequester(contract, entry))
             return;
 
