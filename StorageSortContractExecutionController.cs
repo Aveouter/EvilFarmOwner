@@ -551,9 +551,20 @@ internal sealed class StorageSortContractExecutionController
         contract.Phase = StorageSortContractPhase.WaitingForFirstLock;
         contract.PhaseTicks = 0;
         int sequence = transfer.Sequence;
-        first.GetMutex().RequestLock(
-            () => this.OnFirstLockAcquired(contract.Id, sequence, first, second),
-            () => this.OnLockFailed(contract.Id, sequence, first, second));
+        try
+        {
+            first.GetMutex().RequestLock(
+                () => this.OnFirstLockAcquired(contract.Id, sequence, first, second),
+                () => this.OnLockFailed(contract.Id, sequence, first, second));
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log(
+                $"Could not request first storage-sort chest lock: {ex.Message}",
+                LogLevel.Warn);
+            this.ReleaseLocks(contract);
+            this.BeginReturn(contract, "contract.failure.storage-lock");
+        }
     }
 
     private void OnFirstLockAcquired(
@@ -577,9 +588,20 @@ internal sealed class StorageSortContractExecutionController
 
         contract.Phase = StorageSortContractPhase.WaitingForSecondLock;
         contract.PhaseTicks = 0;
-        second.GetMutex().RequestLock(
-            () => this.OnSecondLockAcquired(contract.Id, sequence, first, second),
-            () => this.OnLockFailed(contract.Id, sequence, first, second));
+        try
+        {
+            second.GetMutex().RequestLock(
+                () => this.OnSecondLockAcquired(contract.Id, sequence, first, second),
+                () => this.OnLockFailed(contract.Id, sequence, first, second));
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log(
+                $"Could not request second storage-sort chest lock: {ex.Message}",
+                LogLevel.Warn);
+            this.ReleaseLocks(contract);
+            this.BeginReturn(contract, "contract.failure.storage-lock");
+        }
     }
 
     private void OnSecondLockAcquired(
