@@ -441,9 +441,6 @@ internal sealed class HarvestingContractExecutionController
                 contract.Lease.Worker.Position.Y,
                 MaximumStalledTravelTicks))
         {
-            this.Monitor.Log(
-                $"Harvest worker '{contract.Lease.Worker.Name}' stalled during {contract.Phase} at {contract.Lease.Worker.TilePoint}; replanning.",
-                LogLevel.Warn);
             this.HandleInterruptedTravel(contract, timedOut: false);
             return;
         }
@@ -511,15 +508,15 @@ internal sealed class HarvestingContractExecutionController
                 if (this.TryHandleStalledEntrance(contract))
                     break;
 
-                contract.FailedEdges.Add(WateringTargetPlanner.ToEdge(
-                    contract.CurrentTarget.TargetTile,
-                    contract.CurrentTarget.InteractionTile));
-                this.BeginNextOrReturn(contract);
+                this.HandleFailedTargetRoute(
+                    contract,
+                    timedOut ? "travel timeout" : "stalled or stopped controller");
                 break;
 
             case HarvestContractPhase.TravelingToChest:
-                this.MarkCurrentChestAttempted(contract);
-                this.BeginDeliveryOrReturn(contract);
+                this.HandleFailedDeliveryRoute(
+                    contract,
+                    timedOut ? "travel timeout" : "stalled or stopped controller");
                 break;
 
             case HarvestContractPhase.Returning:
@@ -538,6 +535,78 @@ internal sealed class HarvestingContractExecutionController
                 this.BeginReturn(contract, depositOverflowOnReturn: false);
                 break;
         }
+    }
+
+    private void HandleFailedTargetRoute(ActiveHarvestContract contract, string reason)
+    {
+        FarmTaskRouteEdge failedEdge = WateringTargetPlanner.ToEdge(
+            contract.CurrentTarget.TargetTile,
+            contract.CurrentTarget.InteractionTile);
+        contract.FailedEdges.Add(failedEdge);
+
+        GridPoint origin = new(
+            contract.Lease.Worker.TilePoint.X,
+            contract.Lease.Worker.TilePoint.Y);
+        TravelReplanDecision decision = contract.ReplanBudget.RecordFailure(
+            TravelRoutePurpose.Target,
+            origin);
+        if (decision.CanReplan)
+        {
+            this.Monitor.Log(
+                $"Harvest target route {failedEdge} failed from {origin} ({reason}); "
+                + $"trying another safe interaction edge "
+                + $"[{decision.FailureCount}/{decision.MaximumFailures}].",
+                LogLevel.Debug);
+            this.BeginNextOrReturn(contract);
+            return;
+        }
+
+        int remaining = HarvestTargetPlanner.CountRemainingMatureCrops(
+            contract.Farm,
+            contract.CompletedTargets);
+        contract.UnreachableTargets += remaining;
+        this.Monitor.Log(
+            $"Harvest worker '{contract.Lease.Worker.Name}' exhausted "
+            + $"{decision.MaximumFailures} consecutive target routes from {origin}; "
+            + $"returning with {remaining} mature crop(s) marked unreachable.",
+            LogLevel.Warn);
+        this.BeginReturn(contract, depositOverflowOnReturn: false);
+    }
+
+    private void HandleFailedDeliveryRoute(ActiveHarvestContract contract, string reason)
+    {
+        Point? failedChest = contract.CurrentChestRoute?.ChestTile;
+        this.MarkCurrentChestAttempted(contract);
+
+        GridPoint origin = new(
+            contract.Lease.Worker.TilePoint.X,
+            contract.Lease.Worker.TilePoint.Y);
+        TravelReplanDecision decision = contract.ReplanBudget.RecordFailure(
+            TravelRoutePurpose.Delivery,
+            origin);
+        if (decision.CanReplan)
+        {
+            this.Monitor.Log(
+                $"Harvest delivery route from {origin} to chest {failedChest} failed ({reason}); "
+                + $"trying another eligible destination "
+                + $"[{decision.FailureCount}/{decision.MaximumFailures}].",
+                LogLevel.Debug);
+            this.BeginDeliveryOrReturn(contract);
+            return;
+        }
+
+        this.Monitor.Log(
+            $"Harvest worker '{contract.Lease.Worker.Name}' exhausted "
+            + $"{decision.MaximumFailures} consecutive delivery routes from {origin}; "
+            + "skipping further chest travel and using the lossless local fallback chain.",
+            LogLevel.Warn);
+        if (this.TryDeliverCargoToRequester(contract))
+        {
+            this.BeginDeliveryOrReturn(contract);
+            return;
+        }
+
+        this.BeginOverflowDeposit(contract);
     }
 
     private bool TryHandleStalledEntrance(ActiveHarvestContract contract)
@@ -587,6 +656,8 @@ internal sealed class HarvestingContractExecutionController
             contract.ReturnReplanAttempts = 0;
             contract.CurrentChestRoute = null;
             contract.FailedEdges.Clear();
+            contract.ReplanBudget.Reset(TravelRoutePurpose.Target);
+            contract.ReplanBudget.Reset(TravelRoutePurpose.Delivery);
             contract.EntranceSwitches++;
 
             Game1.warpCharacter(worker, contract.Farm, new Vector2(
@@ -653,6 +724,7 @@ internal sealed class HarvestingContractExecutionController
 
         contract.Phase = HarvestContractPhase.Acting;
         contract.PhaseTicks = 0;
+        contract.ReplanBudget.Reset(TravelRoutePurpose.Target);
         contract.Lease.Worker.Halt();
         contract.Lease.Worker.faceDirection(contract.CurrentTarget.FacingDirection);
         this.StartHarvestAnimation(contract.Lease.Worker);
@@ -670,6 +742,7 @@ internal sealed class HarvestingContractExecutionController
 
         contract.Phase = HarvestContractPhase.WaitingForChestLock;
         contract.PhaseTicks = 0;
+        contract.ReplanBudget.Reset(TravelRoutePurpose.Delivery);
         contract.Lease.Worker.Halt();
         HarvestChestRoute route = contract.CurrentChestRoute;
         contract.Lease.Worker.faceDirection(GetFacingDirection(route.InteractionTile, route.ChestTile));
@@ -786,6 +859,19 @@ internal sealed class HarvestingContractExecutionController
                 + $"to chest {route.ChestTile} (match={route.MatchKind}, capacity={route.AcceptableCapacity}).",
                 LogLevel.Debug);
             contract.CurrentChestRoute = route;
+            if (!FarmNavigationMap.CanBeginPath(
+                    contract.Farm,
+                    contract.Lease.Worker,
+                    contract.Lease.Worker.TilePoint,
+                    route.Path,
+                    out string firstStepFailure))
+            {
+                this.HandleFailedDeliveryRoute(
+                    contract,
+                    $"first-step collision probe rejected the route: {firstStepFailure}");
+                return;
+            }
+
             contract.Phase = HarvestContractPhase.TravelingToChest;
             contract.PhaseTicks = 0;
             if (contract.Lease.Worker.TilePoint == route.InteractionTile)
@@ -808,11 +894,9 @@ internal sealed class HarvestingContractExecutionController
         }
         catch (Exception ex)
         {
-            attempted.Add(route.ChestTile);
-            this.Monitor.Log(
-                $"Worker '{contract.Lease.Worker.Name}' could not reach harvest chest at {route.ChestTile}: {ex.Message}",
-                LogLevel.Warn);
-            this.BeginDeliveryOrReturn(contract);
+            this.HandleFailedDeliveryRoute(
+                contract,
+                $"controller setup failed: {ex.Message}");
         }
     }
 
@@ -1004,6 +1088,19 @@ internal sealed class HarvestingContractExecutionController
                 return;
             }
 
+            if (!FarmNavigationMap.CanBeginPath(
+                    contract.Farm,
+                    contract.Lease.Worker,
+                    contract.Lease.Worker.TilePoint,
+                    next.Target.Path,
+                    out string firstStepFailure))
+            {
+                this.HandleFailedTargetRoute(
+                    contract,
+                    $"first-step collision probe rejected the route: {firstStepFailure}");
+                return;
+            }
+
             PathFindController controller = this.CreatePathController(
                 contract,
                 next.Target.Path,
@@ -1018,13 +1115,9 @@ internal sealed class HarvestingContractExecutionController
         }
         catch (Exception ex)
         {
-            contract.FailedEdges.Add(WateringTargetPlanner.ToEdge(
-                next.Target.TargetTile,
-                next.Target.InteractionTile));
-            this.Monitor.Log(
-                $"Worker '{contract.Lease.Worker.Name}' could not start the next harvest path: {ex.Message}",
-                LogLevel.Warn);
-            this.BeginNextOrReturn(contract);
+            this.HandleFailedTargetRoute(
+                contract,
+                $"controller setup failed: {ex.Message}");
         }
     }
 
@@ -2135,6 +2228,7 @@ internal sealed class HarvestingContractExecutionController
         public HashSet<FarmTaskRouteEdge> FailedEdges { get; } = new();
         public HashSet<FarmBoundarySide> FailedArrivalSides { get; } = new();
         public TravelProgressWatchdog TravelWatchdog { get; } = new();
+        public TravelReplanBudget ReplanBudget { get; } = new();
         public HarvestTransferLedger TransferLedger { get; } = new();
         public HashSet<string> QuarantinedTransferIds { get; } = new(StringComparer.Ordinal);
         public List<HarvestCargoEntry> Cargo { get; } = new();

@@ -19,6 +19,7 @@
 - Protected active vanilla route animations, square-walk activities, sprite animations, and movement pauses from hiring without treating persisted route-end metadata as an active activity; unavailable NPCs are omitted from the roster.
 - Reworked the worker roster into compact rows that show friendship, today's hourly wage, and the six-hour maximum without redundant availability explanations or disabled footer controls.
 - Added an NPC-bounds first-pixel entrance probe so false-positive arrival tiles are rejected before wages or NPC state change.
+- Bounded target and chest replanning to three consecutive failures from one origin, with first-step probes on every dynamic route and lossless delivery fallback after exhaustion.
 - Added bounded lease recovery: controller conflicts wait briefly, then release only this mod's lease and safety flags without overriding the other activity.
 - Moved emergency harvest drops to the on-farm requester or a deterministic collision-free delivery tile before falling back to the worker position.
 - Excluded dead crops from watering target acquisition.

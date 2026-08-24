@@ -17,6 +17,7 @@ List<(string Name, Action Test)> tests = new()
     ("controller path skips current tile", TestControllerPathSkipsCurrentTile),
     ("destination tile alignment", TestDestinationTileAlignment),
     ("travel progress watchdog", TestTravelProgressWatchdog),
+    ("consecutive route failure budget", TestConsecutiveRouteFailureBudget),
     ("NPC protected activity policy", TestNpcProtectedActivityPolicy),
     ("path first-step offsets", TestPathFirstStepOffsets),
     ("external boundary arrival ordering", TestExternalBoundaryArrivalOrdering),
@@ -239,6 +240,37 @@ static void TestTravelProgressWatchdog()
     Equal(false, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
     Equal(true, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
     Equal(false, watchdog.Tick(102f, 200f, maximumStalledTicks: 3));
+}
+
+static void TestConsecutiveRouteFailureBudget()
+{
+    TravelReplanBudget budget = new(maximumFailures: 3);
+    GridPoint origin = new(68, 17);
+
+    TravelReplanDecision first = budget.RecordFailure(TravelRoutePurpose.Target, origin);
+    Equal(1, first.FailureCount);
+    Equal(3, first.MaximumFailures);
+    Equal(true, first.CanReplan);
+
+    Equal(true, budget.RecordFailure(TravelRoutePurpose.Target, origin).CanReplan);
+    TravelReplanDecision exhausted = budget.RecordFailure(TravelRoutePurpose.Target, origin);
+    Equal(3, exhausted.FailureCount);
+    Equal(false, exhausted.CanReplan);
+
+    TravelReplanDecision moved = budget.RecordFailure(
+        TravelRoutePurpose.Target,
+        new GridPoint(67, 17));
+    Equal(1, moved.FailureCount);
+    Equal(true, moved.CanReplan);
+
+    TravelReplanDecision delivery = budget.RecordFailure(
+        TravelRoutePurpose.Delivery,
+        origin);
+    Equal(1, delivery.FailureCount);
+    Equal(true, delivery.CanReplan);
+
+    budget.Reset(TravelRoutePurpose.Target);
+    Equal(1, budget.RecordFailure(TravelRoutePurpose.Target, origin).FailureCount);
 }
 
 static void TestNpcProtectedActivityPolicy()
