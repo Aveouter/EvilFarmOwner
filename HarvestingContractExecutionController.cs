@@ -546,9 +546,16 @@ internal sealed class HarvestingContractExecutionController
             attempted);
         if (route is null)
         {
+            if (this.TryDeliverCargoToRequester(contract))
+            {
+                this.BeginDeliveryOrReturn(contract);
+                return;
+            }
+
             this.Monitor.Log(
                 $"No reachable eligible chest can accept harvest cargo '{entry.Item.QualifiedItemId}' "
-                + $"q{entry.Item.Quality} x{entry.Item.Stack}; using persistent overflow.",
+                + $"q{entry.Item.Quality} x{entry.Item.Stack}, and the on-farm requester inventory "
+                + "could not accept it; using persistent overflow.",
                 LogLevel.Debug);
             this.BeginOverflowDeposit(contract);
             return;
@@ -664,6 +671,53 @@ internal sealed class HarvestingContractExecutionController
         this.BeginDeliveryOrReturn(contract);
     }
 
+    private bool TryDeliverCargoToRequester(ActiveHarvestContract contract)
+    {
+        if (contract.Cargo.Count == 0)
+            return false;
+
+        Farmer? requester = Game1.GetPlayer(contract.Requester.UniqueMultiplayerID, onlyOnline: true);
+        HarvestCargoEntry entry = contract.Cargo[0];
+        if (requester is null
+            || !ReferenceEquals(requester, contract.Requester)
+            || !ReferenceEquals(requester.currentLocation, contract.Farm)
+            || !requester.couldInventoryAcceptThisItem(entry.Item))
+            return false;
+
+        int requested = entry.Item.Stack;
+        string qualifiedItemId = entry.Item.QualifiedItemId;
+        int quality = entry.Item.Quality;
+        Item? remainder = entry.Item;
+        bool applied = contract.TransferLedger.TryApply(
+            entry.TransferId,
+            () => remainder = requester.addItemToInventory(entry.Item));
+        if (!applied)
+        {
+            contract.Cargo.RemoveAt(0);
+            return true;
+        }
+
+        int remaining = remainder?.Stack ?? 0;
+        int delivered = HarvestTransferMath.GetDeliveredCount(requested, remaining);
+        contract.PlayerInventoryItems += delivered;
+        this.Monitor.Log(
+            $"Gave harvest cargo '{qualifiedItemId}' q{quality} x{delivered} directly to on-farm "
+            + $"requester '{requester.Name}'; remainder={remaining}.",
+            LogLevel.Debug);
+
+        if (remainder is null)
+        {
+            contract.Cargo.RemoveAt(0);
+        }
+        else
+        {
+            entry.Item = remainder;
+            entry.TransferId = Guid.NewGuid().ToString("N");
+        }
+
+        return delivered > 0;
+    }
+
     private void OnChestLockFailed(Guid contractId, HarvestChestRoute route)
     {
         ActiveHarvestContract? contract = this.ActiveContract;
@@ -707,7 +761,15 @@ internal sealed class HarvestingContractExecutionController
         if (!next.IsSuccess || next.Target is null)
         {
             if (next.Failure == HarvestPlanFailure.NoReachableCrop)
+            {
                 contract.UnreachableTargets += next.CandidateTargetCount;
+                this.Monitor.Log(
+                    $"Harvest routing found {next.CandidateTargetCount} mature crop(s) but no safe interaction path "
+                    + $"from {contract.Lease.Worker.TilePoint}; completed={contract.CompletedTargets.Count}, "
+                    + $"failedEdges={contract.FailedEdges.Count}, entrance={contract.Plan.ArrivalTile}. "
+                    + "Remaining crops are isolated by live collision, raised-seed trellises, or previously failed edges.",
+                    LogLevel.Warn);
+            }
             this.BeginReturn(contract, depositOverflowOnReturn: false);
             return;
         }
@@ -844,13 +906,15 @@ internal sealed class HarvestingContractExecutionController
         int unresolvedItems = contract.Cargo.Sum(entry => entry.Item.Stack);
         bool placementBalanced = HarvestPlacementAudit.IsBalanced(
             harvestedItems,
+            contract.PlayerInventoryItems,
             contract.ChestDeliveredItems,
             contract.OverflowItems,
             contract.DroppedItems,
             unresolvedItems);
         this.Monitor.Log(
             $"Harvest placement audit for contract {contract.Id:N}: harvested={harvestedItems}, "
-            + $"chest={contract.ChestDeliveredItems}, overflow={contract.OverflowItems}, "
+            + $"player={contract.PlayerInventoryItems}, chest={contract.ChestDeliveredItems}, "
+            + $"overflow={contract.OverflowItems}, "
             + $"dropped={contract.DroppedItems}, unresolved={unresolvedItems}, balanced={placementBalanced}.",
             placementBalanced && unresolvedItems == 0 ? LogLevel.Debug : LogLevel.Error);
         if (!placementBalanced || unresolvedItems > 0)
@@ -883,6 +947,7 @@ internal sealed class HarvestingContractExecutionController
             finalSucceeded,
             finalReasonKey,
             contract.HarvestedTargets,
+            contract.PlayerInventoryItems,
             contract.ChestDeliveredItems,
             contract.OverflowItems,
             contract.DroppedItems,
@@ -917,6 +982,7 @@ internal sealed class HarvestingContractExecutionController
                     unreachable = contract.UnreachableTargets,
                     remaining = contract.RemainingTargets,
                     items,
+                    player = contract.PlayerInventoryItems,
                     chest = contract.ChestDeliveredItems,
                     overflow = contract.OverflowItems,
                     dropped = contract.DroppedItems,
@@ -941,6 +1007,7 @@ internal sealed class HarvestingContractExecutionController
                 unreachable = contract.UnreachableTargets,
                 remaining = contract.RemainingTargets,
                 items,
+                player = contract.PlayerInventoryItems,
                 chest = contract.ChestDeliveredItems,
                 overflow = contract.OverflowItems,
                 dropped = contract.DroppedItems,
@@ -1267,6 +1334,7 @@ internal sealed class HarvestingContractExecutionController
         public int SkippedTargets { get; set; }
         public int UnreachableTargets { get; set; }
         public int RemainingTargets { get; set; }
+        public int PlayerInventoryItems { get; set; }
         public int ChestDeliveredItems { get; set; }
         public int OverflowItems { get; set; }
         public int DroppedItems { get; set; }

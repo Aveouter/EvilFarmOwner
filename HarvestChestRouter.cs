@@ -62,10 +62,8 @@ internal sealed class HarvestChestRouter
             foreach (Point offset in InteractionOffsets)
             {
                 Point interaction = new(chestTile.X + offset.X, chestTile.Y + offset.Y);
-                bool alreadyStandingThere = interaction == startTile;
                 GridPoint interactionGrid = new(interaction.X, interaction.Y);
-                if ((!alreadyStandingThere && !farm.CanSpawnCharacterHere(new Vector2(interaction.X, interaction.Y)))
-                    || !routes.TryGetDistance(interactionGrid, out int distance)
+                if (!routes.TryGetDistance(interactionGrid, out int distance)
                     || !routes.TryGetPath(interactionGrid, out IReadOnlyList<GridPoint> gridPath))
                     continue;
 

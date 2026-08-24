@@ -33,7 +33,8 @@ List<(string Name, Action Test)> tests = new()
     ("multiplayer reconnect ledger", TestMultiplayerReconnectLedger),
     ("multiplayer stale snapshot rejection", TestMultiplayerStaleSnapshotRejection),
     ("multiplayer stale sync-state rejection", TestMultiplayerStaleSyncStateRejection),
-    ("multiplayer snapshot serialization", TestMultiplayerSnapshotSerialization)
+    ("multiplayer snapshot serialization", TestMultiplayerSnapshotSerialization),
+    ("multiplayer result serialization", TestMultiplayerResultSerialization)
 };
 
 int failures = 0;
@@ -325,19 +326,22 @@ static void TestHarvestPlacementConservation()
 {
     Equal(true, HarvestPlacementAudit.IsBalanced(
         harvested: 17,
-        chest: 10,
+        playerInventory: 3,
+        chest: 7,
         overflow: 4,
         dropped: 3,
         unresolved: 0));
     Equal(false, HarvestPlacementAudit.IsBalanced(
         harvested: 17,
-        chest: 10,
+        playerInventory: 3,
+        chest: 7,
         overflow: 4,
         dropped: 2,
         unresolved: 0));
     Equal(true, HarvestPlacementAudit.IsBalanced(
         harvested: 17,
-        chest: 10,
+        playerInventory: 3,
+        chest: 7,
         overflow: 4,
         dropped: 2,
         unresolved: 1));
@@ -346,11 +350,40 @@ static void TestHarvestPlacementConservation()
 static void TestHarvestOverflowFallback()
 {
     Equal(
+        HarvestFallbackDestination.Chest,
+        HarvestDeliveryFallback.Select(
+            hasEligibleChest: true,
+            requesterOnFarm: true,
+            playerInventoryCanAccept: true,
+            persistentOverflowAvailable: true));
+    Equal(
+        HarvestFallbackDestination.PlayerInventory,
+        HarvestDeliveryFallback.Select(
+            hasEligibleChest: false,
+            requesterOnFarm: true,
+            playerInventoryCanAccept: true,
+            persistentOverflowAvailable: true));
+    Equal(
         HarvestFallbackDestination.PersistentOverflow,
-        HarvestDeliveryFallback.Select(hasEligibleChest: false, persistentOverflowAvailable: true));
+        HarvestDeliveryFallback.Select(
+            hasEligibleChest: false,
+            requesterOnFarm: false,
+            playerInventoryCanAccept: true,
+            persistentOverflowAvailable: true));
+    Equal(
+        HarvestFallbackDestination.PersistentOverflow,
+        HarvestDeliveryFallback.Select(
+            hasEligibleChest: false,
+            requesterOnFarm: true,
+            playerInventoryCanAccept: false,
+            persistentOverflowAvailable: true));
     Equal(
         HarvestFallbackDestination.VisibleGroundDrop,
-        HarvestDeliveryFallback.Select(hasEligibleChest: false, persistentOverflowAvailable: false));
+        HarvestDeliveryFallback.Select(
+            hasEligibleChest: false,
+            requesterOnFarm: true,
+            playerInventoryCanAccept: false,
+            persistentOverflowAvailable: false));
 }
 
 static void TestHarvestTransferReplayProtection()
@@ -532,6 +565,34 @@ static void TestMultiplayerSnapshotSerialization()
     Equal("(O)24", restored.Cargo[0].QualifiedItemId);
     Equal(3, restored.Cargo[0].Stack);
     Equal("transfer-0", restored.CompletedTransferIds[0]);
+}
+
+static void TestMultiplayerResultSerialization()
+{
+    Equal(2, MultiplayerContractProtocol.SchemaVersion);
+    ContractResultMessage source = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = "host-session",
+        ContractId = "contract-1",
+        Sequence = 8,
+        StateVersion = 13,
+        RequestId = "request-1",
+        RequestingPlayerId = 55,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.Harvesting,
+        Succeeded = true,
+        CompletedWork = 3,
+        PlayerItems = 2,
+        ChestItems = 1
+    };
+
+    string json = JsonSerializer.Serialize(source);
+    ContractResultMessage? restored = JsonSerializer.Deserialize<ContractResultMessage>(json);
+    Equal(2, restored!.PlayerItems);
+    Equal(1, restored.ChestItems);
+    Equal(13L, restored.StateVersion);
 }
 
 static ContractStartRequestMessage NewMultiplayerRequest(long playerId)

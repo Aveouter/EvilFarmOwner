@@ -150,7 +150,6 @@ internal sealed class WateringTargetPlanner
                     FarmTaskRouteEdge edge = ToEdge(targetPoint, interaction);
                     GridPoint interactionGrid = new(interaction.X, interaction.Y);
                     if (failedEdges.Contains(edge)
-                        || !farm.CanSpawnCharacterHere(new Vector2(interaction.X, interaction.Y))
                         || !routes.TryGetDistance(interactionGrid, out int distance))
                         continue;
 

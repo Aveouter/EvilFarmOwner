@@ -691,6 +691,7 @@ internal sealed class WateringContractExecutionController
             finalSucceeded,
             finalReasonKey,
             contract.WateredTargets,
+            PlayerItems: 0,
             ChestItems: 0,
             OverflowItems: 0,
             DroppedItems: 0,

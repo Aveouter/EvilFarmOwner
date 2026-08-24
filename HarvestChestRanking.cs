@@ -68,20 +68,27 @@ internal static class HarvestPlacementAudit
 {
     public static bool IsBalanced(
         int harvested,
+        int playerInventory,
         int chest,
         int overflow,
         int dropped,
         int unresolved)
     {
-        if (harvested < 0 || chest < 0 || overflow < 0 || dropped < 0 || unresolved < 0)
+        if (harvested < 0
+            || playerInventory < 0
+            || chest < 0
+            || overflow < 0
+            || dropped < 0
+            || unresolved < 0)
             return false;
-        return harvested == (long)chest + overflow + dropped + unresolved;
+        return harvested == (long)playerInventory + chest + overflow + dropped + unresolved;
     }
 }
 
 internal enum HarvestFallbackDestination
 {
     Chest,
+    PlayerInventory,
     PersistentOverflow,
     VisibleGroundDrop
 }
@@ -90,10 +97,14 @@ internal static class HarvestDeliveryFallback
 {
     public static HarvestFallbackDestination Select(
         bool hasEligibleChest,
+        bool requesterOnFarm,
+        bool playerInventoryCanAccept,
         bool persistentOverflowAvailable)
     {
         if (hasEligibleChest)
             return HarvestFallbackDestination.Chest;
+        if (requesterOnFarm && playerInventoryCanAccept)
+            return HarvestFallbackDestination.PlayerInventory;
         return persistentOverflowAvailable
             ? HarvestFallbackDestination.PersistentOverflow
             : HarvestFallbackDestination.VisibleGroundDrop;
