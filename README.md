@@ -36,7 +36,7 @@ Press one key to review named worker candidates and see why someone is currently
 - Open a named worker roster with the `K` key.
 - Show each NPC's current availability and an explicit reason when they cannot be hired.
 - Choose watering or harvesting, then confirm a named contract after reviewing the itemized wage.
-- Watch the selected NPC enter from the farm's left boundary, walk between reachable crops, water them, return to that entrance, and resume their prior state.
+- Watch the selected NPC enter from a genuine external farm entrance, walk between reachable crops, water them, return to that entrance, and resume their prior state.
 - Watch a selected NPC harvest every reachable mature crop through the vanilla crop logic, carry every exact output, deliver it to ranked ordinary farm chests, and return safely.
 - Route around kegs, chests, machines, fences, trellis crops, and other occupied tiles without moving or destroying them; dynamically retry another interaction edge if a route becomes blocked.
 - Route harvest outputs by exact stack compatibility, same item, same category, then real acceptable capacity; use persistent team overflow before any explicit emergency ground drop.
@@ -59,7 +59,7 @@ Load a save and press:
 K
 ```
 
-Select a green available row, choose watering or harvesting, then review the six-hour maximum authorization, one-hour minimum callout, friendship multiplier, workday or rest-day multiplier, baseline efficiency, and overtime policy. Confirm while standing on the main farm. The mod rechecks the NPC, funds, target, and required paths before changing money or NPC state. Watering handles every reachable dry crop before 9 PM. Harvesting handles every reachable mature crop before 9 PM, visibly walks to the best eligible chest for each exact output, and falls back to persistent overflow without using player inventory or auto-shipping. Both tasks enter and return through the farm's left boundary. A single-source shortest-path scan uses reachable adjacent interaction tiles and actual walking cost, so trellis crops and placed objects are routed around rather than altered. Settlement charges each started work hour up to six and refunds the unused authorization. Rest-day confirmation explicitly authorizes triple pay.
+Select a green available row, choose watering or harvesting, then review the six-hour maximum authorization, one-hour minimum callout, friendship multiplier, workday or rest-day multiplier, baseline efficiency, and overtime policy. Confirm while standing on the main farm. The mod rechecks the NPC, funds, target, and required paths before changing money or NPC state. Watering handles every reachable dry crop before 9 PM. Harvesting handles every reachable mature crop before 9 PM, visibly walks to the best eligible chest for each exact output, and falls back to persistent overflow without using player inventory or auto-shipping. Both tasks enter and return through a genuine external farm entrance. A single-source shortest-path scan uses reachable adjacent interaction tiles and actual walking cost, so trellis crops and placed objects are routed around rather than altered. Settlement charges each started work hour up to six and refunds the unused authorization. Rest-day confirmation explicitly authorizes triple pay.
 
 The route algorithm and object-safety invariants are documented in [`docs/ROUTE_PLANNING.md`](docs/ROUTE_PLANNING.md).
 
@@ -110,7 +110,7 @@ Mods/EvilFarmOwner/config.json
 - 按 `K` 打开具名工人候选名单。
 - 显示 NPC 当前是否可雇佣，以及不能雇佣的明确原因。
 - 选择浇水或收获，查看逐项工资后确认具名合同。
-- 观看所选 NPC 从农场左侧边界进入、逐格走到可到达的干旱作物旁浇水、从同一入口返回并恢复原状态。
+- 观看所选 NPC 从真实农场边界入口进入、逐格走到可到达的干旱作物旁浇水、从同一入口返回并恢复原状态。
 - 观看所选 NPC 通过游戏原生作物逻辑收获全部可到达的成熟作物，携带每一件实际产物、送入按规则选择的普通农场箱子，再安全返回。
 - 木桶、箱子、机器、栅栏、棚架作物和其他占用格都作为不可破坏的障碍绕行；途中路线失效时会换一个交互边重新规划，不会移动或清除摆件。
 - 收获成果依次按“可堆叠同品质、同物品、同类别、真实可用容量”选择箱子；普通箱不可用时进入持久化队伍溢出仓，最后才会明确警告并掉落。
@@ -133,7 +133,7 @@ Mods/EvilFarmOwner/config.json
 K
 ```
 
-选择绿色“当前可雇佣”行，再选择浇水或收获，可以查看六小时最高授权金额、一小时最低出工费、好感度系数、工作日或休息日系数、基础效率和加班政策。站在主农场确认后，模组会重新检查 NPC、资金、目标以及所需路线；所有检查通过后才预留工资并让 NPC 出工。浇水会处理晚上 9 点前全部可到达的缺水作物；收获会处理晚上 9 点前全部可到达的成熟作物，逐件走到最合适的箱子交付，无法入箱时进入持久化溢出仓，不会借用玩家背包或自动出售。两种任务都从农场左侧入口进入并返回。每次动作后只做一次单源最短路扫描，以可到达的相邻交互格和实际步行成本选择下一个目标，因此会绕过棚架作物和玩家摆件。工资按已开始的小时结算，未使用的授权金额会退还；休息日按钮会明确要求授权三倍工资。
+选择绿色“当前可雇佣”行，再选择浇水或收获，可以查看六小时最高授权金额、一小时最低出工费、好感度系数、工作日或休息日系数、基础效率和加班政策。站在主农场确认后，模组会重新检查 NPC、资金、目标以及所需路线；所有检查通过后才预留工资并让 NPC 出工。浇水会处理晚上 9 点前全部可到达的缺水作物；收获会处理晚上 9 点前全部可到达的成熟作物，逐件走到最合适的箱子交付，无法入箱时进入持久化溢出仓，不会借用玩家背包或自动出售。两种任务都从真实农场边界入口进入并返回。每次动作后只做一次单源最短路扫描，以可到达的相邻交互格和实际步行成本选择下一个目标，因此会绕过棚架作物和玩家摆件。工资按已开始的小时结算，未使用的授权金额会退还；休息日按钮会明确要求授权三倍工资。
 
 具名合同最迟必须在下午 4:00 开始，并受晚上 10:00 安全停止时间约束；同一时间只能执行一份。发布构建不提供瞬时全局工作命令：所有生产环境农场变更都必须经过具名合同。
 

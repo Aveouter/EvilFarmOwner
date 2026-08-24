@@ -69,7 +69,10 @@ internal sealed class WateringTargetPlanner
         bool foundSafeArrival = false;
         int checkedPaths = 0;
         WateringPlanFailure lastFailure = WateringPlanFailure.NoReachableCrop;
-        foreach (GridPoint candidate in FarmEntranceSelection.OrderLeftBoundaryCandidates(width, height))
+        foreach (GridPoint candidate in FarmEntranceSelection.OrderBoundaryArrivalCandidates(
+                     width,
+                     height,
+                     farm.warps.Select(warp => new GridPoint(warp.X, warp.Y))))
         {
             Vector2 candidateTile = new(candidate.X, candidate.Y);
             if (farm.warps.Any(warp => warp.X == candidate.X && warp.Y == candidate.Y)

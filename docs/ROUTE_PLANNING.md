@@ -1,8 +1,8 @@
 # Farm Work Route Planning
 
-Named watering and harvesting contracts dispatch the leased NPC at the farm's left entrance. They do not reuse the NPC's vanilla schedule path because vanilla NPC movement may clear player-placed objects when blocked.
+Named watering and harvesting contracts dispatch the leased NPC at a genuine external farm entrance. They do not reuse the NPC's vanilla schedule path because vanilla NPC movement may clear player-placed objects when blocked.
 
-The arrival planner searches only the first nine columns inside the farm's visible left boundary. Interior transfer tiles such as farmhouse, greenhouse, cave, and custom-map doors are excluded; they must never be mistaken for an outdoor entrance. Dispatch is committed only after the worker is present at the planned farm-edge tile and an object-safe route to a real target has been found.
+The arrival planner reads the farm map's boundary warps, clamps their off-map source tiles to visible edge anchors, and interleaves a bounded search around every entrance. Interior transfer tiles such as farmhouse, greenhouse, cave, and custom-map doors are excluded because their source tiles are not on the map boundary. Dispatch is committed only after the worker is present at the planned farm-edge tile and an object-safe route to a real target has been found.
 
 ## Safety invariants
 
