@@ -164,7 +164,6 @@ internal sealed class HarvestingContractExecutionController
             }
 
             worker.Halt();
-            worker.Sprite?.ClearAnimation();
             this.Monitor.Log(
                 $"Dispatching harvest worker '{worker.Name}' from {planResult.Plan.ArrivalSide} "
                 + $"farm-boundary tile {planResult.Plan.ArrivalTile}.",
@@ -603,7 +602,6 @@ internal sealed class HarvestingContractExecutionController
 
             worker.Position = FarmNavigationMap.GetAlignedCharacterPosition(nextPlan.ArrivalTile);
             worker.Halt();
-            worker.Sprite?.ClearAnimation();
             if (worker.TilePoint == nextPlan.FirstTarget.InteractionTile)
             {
                 this.OnArrivedAtTarget(worker, contract.Farm);

@@ -17,6 +17,8 @@ List<(string Name, Action Test)> tests = new()
     ("controller path skips current tile", TestControllerPathSkipsCurrentTile),
     ("destination tile alignment", TestDestinationTileAlignment),
     ("travel progress watchdog", TestTravelProgressWatchdog),
+    ("NPC protected activity policy", TestNpcProtectedActivityPolicy),
+    ("path first-step offsets", TestPathFirstStepOffsets),
     ("external boundary arrival ordering", TestExternalBoundaryArrivalOrdering),
     ("right entrance priority", TestRightEntrancePriority),
     ("stalled entrance fallback ordering", TestStalledEntranceFallbackOrdering),
@@ -237,6 +239,74 @@ static void TestTravelProgressWatchdog()
     Equal(false, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
     Equal(true, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
     Equal(false, watchdog.Tick(102f, 200f, maximumStalledTicks: 3));
+}
+
+static void TestNpcProtectedActivityPolicy()
+{
+    Equal(false, NpcActivityPolicy.HasProtectedActivity(
+        doingEndOfRouteAnimation: false,
+        goingToDoEndOfRouteAnimation: false,
+        isWalkingInSquare: false,
+        hasSpriteAnimation: false,
+        movementPause: 0,
+        endOfRouteBehaviorName: null,
+        endOfRouteMessage: null));
+
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, 1, null, null));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(true, false, false, false, 0, null, null));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, 0, "jodi_dishes", null));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, true, false, false, 0, null, null));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, true, false, 0, null, null));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, true, 0, null, null));
+    Equal(true, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, 0, null, "route dialogue"));
+    Equal(false, NpcActivityPolicy.HasProtectedActivity(false, false, false, false, -1, " ", " "));
+}
+
+static void TestPathFirstStepOffsets()
+{
+    Equal(true, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(9, 10),
+        2,
+        out GridPoint left));
+    Equal(new GridPoint(-2, 0), left);
+
+    Equal(true, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(11, 10),
+        2,
+        out GridPoint right));
+    Equal(new GridPoint(2, 0), right);
+
+    Equal(true, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(10, 9),
+        2,
+        out GridPoint up));
+    Equal(new GridPoint(0, -2), up);
+
+    Equal(true, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(10, 11),
+        2,
+        out GridPoint down));
+    Equal(new GridPoint(0, 2), down);
+
+    Equal(false, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(11, 11),
+        2,
+        out _));
+    Equal(false, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(10, 10),
+        2,
+        out _));
+    Equal(false, FarmNavigationMap.TryGetFirstStepOffset(
+        new GridPoint(10, 10),
+        new GridPoint(11, 10),
+        0,
+        out _));
 }
 
 static void TestExternalBoundaryArrivalOrdering()

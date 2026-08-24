@@ -180,7 +180,14 @@ internal sealed class WorkerRosterService
             if (npc.CurrentDialogue.Count > 0 && npc.CurrentDialogue.Peek().removeOnNextMove)
                 return Unavailable(WorkerAvailabilityReason.DialogueActivity);
 
-            if (npc.doingEndOfRouteAnimation.Value || npc.Sprite?.CurrentAnimation is not null)
+            if (NpcActivityPolicy.HasProtectedActivity(
+                    npc.doingEndOfRouteAnimation.Value,
+                    npc.goingToDoEndOfRouteAnimation.Value,
+                    npc.IsWalkingInSquare,
+                    npc.Sprite?.CurrentAnimation is not null,
+                    npc.movementPause,
+                    npc.endOfRouteBehaviorName.Value,
+                    npc.endOfRouteMessage.Value))
                 return Unavailable(WorkerAvailabilityReason.ScriptedAnimation);
 
             return new WorkerAvailabilityResult(
