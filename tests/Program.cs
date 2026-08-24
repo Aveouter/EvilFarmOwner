@@ -44,6 +44,7 @@ List<(string Name, Action Test)> tests = new()
     ("harvest stable category destination", TestHarvestStableCategoryDestination),
     ("harvest empty chest capacity fallback", TestHarvestEmptyChestCapacityFallback),
     ("harvest chest route attempt isolation", TestHarvestChestRouteAttemptIsolation),
+    ("harvest contract destination policy", TestHarvestContractDestinationPolicy),
     ("storage sort classification priority", TestStorageSortClassificationPriority),
     ("storage sort category purity", TestStorageSortCategoryPurity),
     ("storage sort stable tie", TestStorageSortStableTie),
@@ -806,6 +807,53 @@ static void TestHarvestChestRouteAttemptIsolation()
         west,
         attemptedChests,
         attemptedRoutes));
+}
+
+static void TestHarvestContractDestinationPolicy()
+{
+    Equal(
+        HarvestDestinationMode.ClassifiedChests,
+        HarvestDestinationPolicy.DefaultManualMode);
+    Equal(
+        HarvestDestinationMode.ClassifiedChests,
+        HarvestDestinationPolicy.AutomaticMode);
+    Equal(true, HarvestDestinationPolicy.IsValidForTask(
+        NamedFarmTask.Harvesting,
+        HarvestDestinationMode.RequesterInventory));
+    Equal(false, HarvestDestinationPolicy.IsValidForTask(
+        NamedFarmTask.Watering,
+        HarvestDestinationMode.RequesterInventory));
+    Equal(
+        HarvestDestinationAction.RouteToClassifiedChest,
+        HarvestDestinationPolicy.SelectAction(
+            HarvestDestinationMode.ClassifiedChests,
+            requesterIsOnline: true,
+            requesterIsOnMainFarm: true,
+            requesterCanAcceptCompleteStack: true));
+    Equal(
+        HarvestDestinationAction.DeliverToRequester,
+        HarvestDestinationPolicy.SelectAction(
+            HarvestDestinationMode.RequesterInventory,
+            requesterIsOnline: true,
+            requesterIsOnMainFarm: true,
+            requesterCanAcceptCompleteStack: true));
+    Equal(
+        HarvestDestinationAction.StopUnavailable,
+        HarvestDestinationPolicy.SelectAction(
+            HarvestDestinationMode.RequesterInventory,
+            requesterIsOnline: true,
+            requesterIsOnMainFarm: true,
+            requesterCanAcceptCompleteStack: false));
+    Equal(
+        HarvestDestinationAction.StopUnavailable,
+        HarvestDestinationPolicy.SelectAction(
+            HarvestDestinationMode.RequesterInventory,
+            requesterIsOnline: false,
+            requesterIsOnMainFarm: false,
+            requesterCanAcceptCompleteStack: true));
+    Equal(0, HarvestDestinationPolicy.GetRetainedCount(20, 20, 7));
+    Equal(3, HarvestDestinationPolicy.GetRetainedCount(20, 23, 7));
+    Equal(7, HarvestDestinationPolicy.GetRetainedCount(20, 29, 7));
 }
 
 static void TestStorageSortClassificationPriority()
@@ -1681,7 +1729,18 @@ static void TestMultiplayerRequestAuthorization()
     valid.TotalDays = 12;
     valid.Task = (NamedFarmTask)999;
     Equal(
-    ContractRequestValidationFailure.InvalidTask,
+        ContractRequestValidationFailure.InvalidTask,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.Task = NamedFarmTask.Watering;
+    valid.HarvestDestination = HarvestDestinationMode.RequesterInventory;
+    Equal(
+        ContractRequestValidationFailure.InvalidHarvestDestination,
+        ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.Task = NamedFarmTask.Harvesting;
+    Equal(
+        ContractRequestValidationFailure.None,
         ContractRequestValidator.Validate(valid, playerId, context));
 }
 
@@ -1800,6 +1859,15 @@ static void TestMultiplayerRestartRecoveryState()
     foreach (ContractResultMessage legacyResult in legacyPlacement.RecentResults)
         legacyResult.SchemaVersion = 5;
     Equal(true, MultiplayerRecoveryState.IsValid(legacyPlacement, 445566));
+
+    MultiplayerRecoverySaveData legacyEfficiency =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json)!;
+    legacyEfficiency.ProtocolSchemaVersion = 6;
+    foreach (ContractStartResponseMessage legacyResponse in legacyEfficiency.ProcessedRequests)
+        legacyResponse.SchemaVersion = 6;
+    foreach (ContractResultMessage legacyResult in legacyEfficiency.RecentResults)
+        legacyResult.SchemaVersion = 6;
+    Equal(true, MultiplayerRecoveryState.IsValid(legacyEfficiency, 445566));
 
     MultiplayerRecoveryState.RebindResponse(
         restored!.ProcessedRequests[0],
@@ -2024,6 +2092,7 @@ static void TestMultiplayerSnapshotSerialization()
         RequestingPlayerId = 55,
         WorkerName = "Leah",
         Task = NamedFarmTask.Harvesting,
+        HarvestDestination = HarvestDestinationMode.RequesterInventory,
         EfficiencyMultiplier = 1.10m,
         Phase = "TravelingToChest",
         ArrivalX = 78,
@@ -2053,6 +2122,7 @@ static void TestMultiplayerSnapshotSerialization()
     Equal("contract-1", restored!.ContractId);
     Equal(12L, restored.StateVersion);
     Equal(NamedFarmTask.Harvesting, restored.Task);
+    Equal(HarvestDestinationMode.RequesterInventory, restored.HarvestDestination);
     Equal(1.10m, restored.EfficiencyMultiplier);
     Equal(78, restored.ArrivalX);
     Equal(15, restored.ArrivalY);
@@ -2065,7 +2135,7 @@ static void TestMultiplayerSnapshotSerialization()
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(6, MultiplayerContractProtocol.SchemaVersion);
+    Equal(7, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
@@ -2078,6 +2148,7 @@ static void TestMultiplayerResultSerialization()
         RequestingPlayerId = 55,
         WorkerName = "Leah",
         Task = NamedFarmTask.Harvesting,
+        HarvestDestination = HarvestDestinationMode.RequesterInventory,
         Succeeded = true,
         CompletedWork = 3,
         PlayerItems = 2,
@@ -2090,6 +2161,7 @@ static void TestMultiplayerResultSerialization()
     Equal(2, restored!.PlayerItems);
     Equal(1, restored.ChestItems);
     Equal(4, restored.QuarantinedItems);
+    Equal(HarvestDestinationMode.RequesterInventory, restored.HarvestDestination);
     Equal(13L, restored.StateVersion);
 }
 
@@ -2128,7 +2200,8 @@ static ContractStartRequestMessage NewMultiplayerRequest(long playerId)
         RequestId = Guid.NewGuid().ToString("N"),
         RequestingPlayerId = playerId,
         WorkerName = "Leah",
-        Task = NamedFarmTask.Watering
+        Task = NamedFarmTask.Watering,
+        HarvestDestination = HarvestDestinationMode.ClassifiedChests
     };
 }
 

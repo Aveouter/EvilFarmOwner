@@ -257,7 +257,10 @@ public sealed class ModEntry : Mod
             task,
             this.Helper.Translation,
             () => this.OpenWorkerTaskSelection(worker, rosterPage),
-            () => this.TryStartNamedContract(worker.InternalName, task));
+            destinationMode => this.TryStartNamedContract(
+                worker.InternalName,
+                task,
+                destinationMode));
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -313,9 +316,15 @@ public sealed class ModEntry : Mod
             || this.MultiplayerContracts?.HasPendingRequest == true;
     }
 
-    private bool TryStartNamedContract(string workerInternalName, NamedFarmTask task)
+    private bool TryStartNamedContract(
+        string workerInternalName,
+        NamedFarmTask task,
+        HarvestDestinationMode destinationMode)
     {
-        return this.MultiplayerContracts?.RequestStart(workerInternalName, task) == true;
+        return this.MultiplayerContracts?.RequestStart(
+            workerInternalName,
+            task,
+            destinationMode) == true;
     }
 
     private void OpenRecurringContractMenu()
@@ -578,6 +587,16 @@ public sealed class ModEntry : Mod
             quarantine = result.QuarantinedItems,
             dropped = result.DroppedItems
         }), LogLevel.Info);
+        if (result.Task == NamedFarmTask.Harvesting)
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("report.destination-mode", new
+            {
+                destination = this.Helper.Translation.Get(
+                    result.HarvestDestination == HarvestDestinationMode.RequesterInventory
+                        ? "contract.destination.requester"
+                        : "contract.destination.chests")
+            }), LogLevel.Info);
+        }
         this.Monitor.Log(this.Helper.Translation.Get("report.billing", new
         {
             hours = result.BillableHours,

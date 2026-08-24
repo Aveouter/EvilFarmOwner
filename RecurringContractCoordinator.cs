@@ -312,7 +312,11 @@ internal sealed class RecurringContractCoordinator
             return;
         }
 
-        bool accepted = this.MultiplayerContracts.RequestStart(selected.WorkerName, template.Task, runId);
+        bool accepted = this.MultiplayerContracts.RequestStart(
+            selected.WorkerName,
+            template.Task,
+            HarvestDestinationPolicy.AutomaticMode,
+            runId);
         if (!accepted)
         {
             this.Skip(

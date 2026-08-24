@@ -85,6 +85,7 @@ internal sealed class MultiplayerContractCoordinator
     public bool RequestStart(
         string workerInternalName,
         NamedFarmTask task,
+        HarvestDestinationMode destinationMode = HarvestDestinationMode.ClassifiedChests,
         string? requestId = null)
     {
         this.LastRequestFailureKey = null;
@@ -110,7 +111,8 @@ internal sealed class MultiplayerContractCoordinator
                 : requestId,
             RequestingPlayerId = Game1.player.UniqueMultiplayerID,
             WorkerName = workerInternalName,
-            Task = task
+            Task = task,
+            HarvestDestination = destinationMode
         };
 
         if (Context.IsMainPlayer)
@@ -414,7 +416,8 @@ internal sealed class MultiplayerContractCoordinator
                 accepted = this.HarvestingContracts.TryStart(
                     request.RequestingPlayerId,
                     request.WorkerName,
-                    request.RequestId);
+                    request.RequestId,
+                    request.HarvestDestination);
                 failureKey = this.HarvestingContracts.LastStartFailureKey;
                 contractId = this.HarvestingContracts.ActiveContractId;
                 break;
@@ -449,6 +452,7 @@ internal sealed class MultiplayerContractCoordinator
             '|',
             state.ContractId,
             state.Phase,
+            state.HarvestDestination,
             state.EfficiencyMultiplier,
             state.ArrivalX,
             state.ArrivalY,
@@ -476,6 +480,7 @@ internal sealed class MultiplayerContractCoordinator
             RequestingPlayerId = state.RequestingPlayerId,
             WorkerName = state.WorkerName,
             Task = state.Task,
+            HarvestDestination = state.HarvestDestination,
             EfficiencyMultiplier = state.EfficiencyMultiplier,
             Phase = state.Phase,
             ArrivalX = state.ArrivalX,
@@ -521,6 +526,7 @@ internal sealed class MultiplayerContractCoordinator
                 RequestingPlayerId = completion.RequestingPlayerId,
                 WorkerName = completion.WorkerName,
                 Task = completion.Task,
+                HarvestDestination = completion.HarvestDestination,
                 Succeeded = completion.Succeeded,
                 ReasonKey = completion.ReasonKey,
                 CompletedWork = completion.CompletedWork,
@@ -596,6 +602,9 @@ internal sealed class MultiplayerContractCoordinator
     private void HandleSnapshot(ContractSnapshotMessage snapshot)
     {
         if (!Enum.IsDefined(snapshot.Task)
+            || !HarvestDestinationPolicy.IsValidForTask(
+                snapshot.Task,
+                snapshot.HarvestDestination)
             || !Enum.IsDefined(snapshot.ArrivalSide)
             || !WorkerEfficiencyProfiles.IsValidMultiplier(snapshot.EfficiencyMultiplier)
             || !this.ClientHostSession.Matches(snapshot.HostSessionId)
@@ -655,6 +664,9 @@ internal sealed class MultiplayerContractCoordinator
     private void HandleResult(ContractResultMessage result)
     {
         if (!Enum.IsDefined(result.Task)
+            || !HarvestDestinationPolicy.IsValidForTask(
+                result.Task,
+                result.HarvestDestination)
             || !this.ClientHostSession.Matches(result.HostSessionId)
             || !this.RemoteStateVersions.CanAccept(result.StateVersion)
             || !this.SnapshotTracker.TryAccept(

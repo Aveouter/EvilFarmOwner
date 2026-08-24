@@ -2,7 +2,7 @@ namespace EvilFarmOwner;
 
 internal static class MultiplayerContractProtocol
 {
-    public const int SchemaVersion = 6;
+    public const int SchemaVersion = 7;
     public const int ProcessedRequestCapacity = 256;
     public const string StartRequestType = "Contract/StartRequest";
     public const string StartResponseType = "Contract/StartResponse";
@@ -22,6 +22,7 @@ internal sealed class ContractStartRequestMessage
     public long RequestingPlayerId { get; set; }
     public string WorkerName { get; set; } = "";
     public NamedFarmTask Task { get; set; }
+    public HarvestDestinationMode HarvestDestination { get; set; }
 }
 
 internal sealed class ContractStartResponseMessage
@@ -49,6 +50,7 @@ internal sealed class ContractSnapshotMessage
     public long RequestingPlayerId { get; set; }
     public string WorkerName { get; set; } = "";
     public NamedFarmTask Task { get; set; }
+    public HarvestDestinationMode HarvestDestination { get; set; }
     public decimal EfficiencyMultiplier { get; set; }
     public string Phase { get; set; } = "";
     public int ArrivalX { get; set; }
@@ -86,6 +88,7 @@ internal sealed class ContractResultMessage
     public long RequestingPlayerId { get; set; }
     public string WorkerName { get; set; } = "";
     public NamedFarmTask Task { get; set; }
+    public HarvestDestinationMode HarvestDestination { get; set; }
     public bool Succeeded { get; set; }
     public string ReasonKey { get; set; } = "";
     public int CompletedWork { get; set; }
@@ -139,7 +142,8 @@ internal enum ContractRequestValidationFailure
     UnknownPlayer,
     InvalidRequestId,
     InvalidWorker,
-    InvalidTask
+    InvalidTask,
+    InvalidHarvestDestination
 }
 
 internal static class ContractRequestValidator
@@ -167,6 +171,8 @@ internal static class ContractRequestValidator
             return ContractRequestValidationFailure.InvalidWorker;
         if (!Enum.IsDefined(request.Task))
             return ContractRequestValidationFailure.InvalidTask;
+        if (!HarvestDestinationPolicy.IsValidForTask(request.Task, request.HarvestDestination))
+            return ContractRequestValidationFailure.InvalidHarvestDestination;
 
         return ContractRequestValidationFailure.None;
     }
@@ -184,6 +190,7 @@ internal static class ContractRequestValidator
             ContractRequestValidationFailure.InvalidRequestId => "multiplayer.reject.request-id",
             ContractRequestValidationFailure.InvalidWorker => "multiplayer.reject.worker",
             ContractRequestValidationFailure.InvalidTask => "multiplayer.reject.task",
+            ContractRequestValidationFailure.InvalidHarvestDestination => "multiplayer.reject.destination",
             _ => "contract.failure.unknown"
         };
     }
@@ -415,6 +422,8 @@ internal sealed record NamedContractRuntimeState(
     IReadOnlyList<string> CompletedTransferIds)
 {
     public int CargoCount => this.Cargo.Sum(item => item.Stack);
+    public HarvestDestinationMode HarvestDestination { get; init; } =
+        HarvestDestinationMode.ClassifiedChests;
 }
 
 internal sealed record NamedContractCargoState(
@@ -442,4 +451,8 @@ internal sealed record NamedContractCompletionState(
     int ChargedGold,
     int RefundedGold,
     IReadOnlyList<NamedContractCargoState> ProducedItems,
-    IReadOnlyList<string> CompletedTransferIds);
+    IReadOnlyList<string> CompletedTransferIds)
+{
+    public HarvestDestinationMode HarvestDestination { get; init; } =
+        HarvestDestinationMode.ClassifiedChests;
+}
