@@ -101,11 +101,25 @@ internal sealed class HarvestTargetPlanner
                 arrivalTile,
                 new HashSet<Point>(),
                 new HashSet<FarmTaskRouteEdge>());
-            if (firstTarget.IsSuccess && firstTarget.Target is not null)
+            if (firstTarget.IsSuccess && firstTarget.Target is { } firstPlan)
             {
-                return new HarvestPlanResult(
-                    new HarvestWorkPlan(arrivalTile, arrivalSide, firstTarget.Target),
-                    HarvestPlanFailure.None);
+                if (FarmNavigationMap.CanBeginPath(
+                        farm,
+                        worker,
+                        arrivalTile,
+                        firstPlan.Path,
+                        out string firstStepFailure))
+                {
+                    return new HarvestPlanResult(
+                        new HarvestWorkPlan(arrivalTile, arrivalSide, firstPlan),
+                        HarvestPlanFailure.None);
+                }
+
+                this.Monitor.Log(
+                    $"Rejected harvest arrival {arrivalTile} on {arrivalSide}: {firstStepFailure}.",
+                    LogLevel.Trace);
+                lastFailure = HarvestPlanFailure.NoSafeArrivalTile;
+                continue;
             }
 
             lastFailure = firstTarget.Failure;

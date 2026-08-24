@@ -13,11 +13,11 @@ internal sealed class WorkerRosterMenu : IClickableMenu
     private const int MaximumHeight = 760;
     private const int ScreenMargin = 64;
     private const int HorizontalPadding = 56;
-    private const int HeaderHeight = 176;
-    private const int FooterHeight = 80;
-    private const int RowHeight = 108;
-    private const int ButtonWidth = 168;
-    private const int ButtonHeight = 52;
+    private const int HeaderHeight = 108;
+    private const int FooterHeight = 64;
+    private const int RowHeight = 92;
+    private const int ButtonWidth = 144;
+    private const int ButtonHeight = 44;
 
     private readonly IReadOnlyList<WorkerRosterEntry> Entries;
     private readonly ITranslationHelper Translation;
@@ -45,7 +45,7 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         this.PageSize = Math.Max(1, (this.height - HeaderHeight - FooterHeight) / RowHeight);
         this.CurrentPage = Math.Clamp(initialPage, 0, this.PageCount - 1);
 
-        int buttonY = this.yPositionOnScreen + this.height - FooterHeight + 10;
+        int buttonY = this.yPositionOnScreen + this.height - FooterHeight + 8;
         this.PreviousButton = new ClickableComponent(
             new Rectangle(this.xPositionOnScreen + HorizontalPadding, buttonY, ButtonWidth, ButtonHeight),
             translation.Get("roster.previous"));
@@ -142,28 +142,13 @@ internal sealed class WorkerRosterMenu : IClickableMenu
 
         int contentX = this.xPositionOnScreen + HorizontalPadding;
         int contentWidth = this.width - HorizontalPadding * 2;
-        int contentY = this.yPositionOnScreen + 42;
+        int contentY = this.yPositionOnScreen + 40;
 
         batch.DrawString(
             Game1.dialogueFont,
             this.Translation.Get("roster.title"),
             new Vector2(contentX, contentY),
             Game1.textColor);
-
-        contentY += 58;
-        string subtitle = Game1.parseText(
-            this.Translation.Get("roster.subtitle"),
-            Game1.smallFont,
-            contentWidth);
-        batch.DrawString(Game1.smallFont, subtitle, new Vector2(contentX, contentY), Game1.textColor);
-
-        contentY = this.yPositionOnScreen + 140;
-        int eligibleCount = this.Entries.Count(entry => entry.Availability.State == WorkerAvailabilityState.EligibleForPreview);
-        batch.DrawString(
-            Game1.smallFont,
-            this.Translation.Get("roster.summary", new { total = this.Entries.Count, eligible = eligibleCount }),
-            new Vector2(contentX, contentY),
-            Color.DimGray);
 
         int rowY = this.yPositionOnScreen + HeaderHeight;
         if (this.Entries.Count == 0)
@@ -183,22 +168,27 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             }
         }
 
-        string pageText = this.Translation.Get("roster.page", new
+        if (this.PageCount > 1)
         {
-            current = this.CurrentPage + 1,
-            total = this.PageCount
-        });
-        Vector2 pageSize = Game1.smallFont.MeasureString(pageText);
-        batch.DrawString(
-            Game1.smallFont,
-            pageText,
-            new Vector2(
-                this.xPositionOnScreen + this.width / 2f - pageSize.X / 2f,
-                this.PreviousButton.bounds.Center.Y - pageSize.Y / 2f),
-            Game1.textColor);
+            string pageText = this.Translation.Get("roster.page", new
+            {
+                current = this.CurrentPage + 1,
+                total = this.PageCount
+            });
+            Vector2 pageSize = Game1.smallFont.MeasureString(pageText);
+            batch.DrawString(
+                Game1.smallFont,
+                pageText,
+                new Vector2(
+                    this.xPositionOnScreen + this.width / 2f - pageSize.X / 2f,
+                    this.PreviousButton.bounds.Center.Y - pageSize.Y / 2f),
+                Color.DimGray);
+        }
 
-        this.DrawButton(batch, this.PreviousButton, this.CurrentPage > 0);
-        this.DrawButton(batch, this.NextButton, this.CurrentPage < this.PageCount - 1);
+        if (this.CurrentPage > 0)
+            this.DrawButton(batch, this.PreviousButton);
+        if (this.CurrentPage < this.PageCount - 1)
+            this.DrawButton(batch, this.NextButton);
 
         base.draw(batch);
         this.drawMouse(batch);
@@ -221,31 +211,27 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         int portraitSize = Math.Min(64, Math.Min(entry.Portrait.Width, entry.Portrait.Height));
         batch.Draw(
             entry.Portrait,
-            new Rectangle(x + 16, y + 18, 64, 64),
+            new Rectangle(x + 16, y + 18, 56, 56),
             new Rectangle(0, 0, portraitSize, portraitSize),
             Color.White);
 
-        int textX = x + 96;
-        int textWidth = width - 112;
-        batch.DrawString(Game1.smallFont, entry.DisplayName, new Vector2(textX, y + 18), Game1.textColor);
+        int textX = x + 88;
+        int textWidth = width - 106;
+        batch.DrawString(Game1.smallFont, entry.DisplayName, new Vector2(textX, y + 14), Game1.textColor);
 
-        string stateText = this.GetStateText(entry.Availability.State);
-        Color stateColor = this.GetStateColor(entry.Availability.State);
-        Vector2 stateSize = Game1.smallFont.MeasureString(stateText);
-        batch.DrawString(
-            Game1.smallFont,
-            stateText,
-            new Vector2(x + width - stateSize.X - 18, y + 18),
-            stateColor);
-
-        string reasonText = Game1.parseText(
-            this.GetReasonText(entry.Availability.Reason),
+        string employmentText = Game1.parseText(
+            this.Translation.Get("roster.worker.employment", new
+            {
+                hearts = entry.WagePreview.FriendshipHearts,
+                hourly = entry.WagePreview.MinimumCalloutWage,
+                maximum = entry.WagePreview.MaximumAuthorizedWage
+            }),
             Game1.smallFont,
             textWidth);
-        batch.DrawString(Game1.smallFont, reasonText, new Vector2(textX, y + 54), Color.DimGray);
+        batch.DrawString(Game1.smallFont, employmentText, new Vector2(textX, y + 48), Color.DimGray);
     }
 
-    private void DrawButton(SpriteBatch batch, ClickableComponent button, bool enabled)
+    private void DrawButton(SpriteBatch batch, ClickableComponent button)
     {
         IClickableMenu.drawTextureBox(
             batch,
@@ -255,7 +241,7 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             button.bounds.Y,
             button.bounds.Width,
             button.bounds.Height,
-            enabled ? Color.White : Color.Gray,
+            Color.White,
             0.8f,
             drawShadow: false);
 
@@ -266,7 +252,7 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             new Vector2(
                 button.bounds.Center.X - labelSize.X / 2,
                 button.bounds.Center.Y - labelSize.Y / 2),
-            enabled ? Game1.textColor : Color.DimGray);
+            Game1.textColor);
     }
 
     private void ChangePage(int offset)
@@ -298,55 +284,6 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         return entry.Availability.State == WorkerAvailabilityState.EligibleForPreview
             ? entry
             : null;
-    }
-
-    private string GetStateText(WorkerAvailabilityState state)
-    {
-        string key = state switch
-        {
-            WorkerAvailabilityState.EligibleForPreview => "roster.state.eligible",
-            WorkerAvailabilityState.TemporarilyUnavailable => "roster.state.unavailable",
-            WorkerAvailabilityState.Ineligible => "roster.state.ineligible",
-            _ => "roster.state.unknown"
-        };
-
-        return this.Translation.Get(key);
-    }
-
-    private string GetReasonText(WorkerAvailabilityReason reason)
-    {
-        string key = reason switch
-        {
-            WorkerAvailabilityReason.AvailableForPreview => "roster.reason.available",
-            WorkerAvailabilityReason.Child => "roster.reason.child",
-            WorkerAvailabilityReason.UnsupportedCharacter => "roster.reason.unsupported-character",
-            WorkerAvailabilityReason.ActiveFestival => "roster.reason.festival",
-            WorkerAvailabilityReason.ActiveEvent => "roster.reason.event",
-            WorkerAvailabilityReason.MissingLocation => "roster.reason.missing-location",
-            WorkerAvailabilityReason.Sleeping => "roster.reason.sleeping",
-            WorkerAvailabilityReason.IslandActivity => "roster.reason.island",
-            WorkerAvailabilityReason.MedicalActivity => "roster.reason.medical",
-            WorkerAvailabilityReason.WorkActivity => "roster.reason.work",
-            WorkerAvailabilityReason.ControlledActivity => "roster.reason.controlled",
-            WorkerAvailabilityReason.MovementActivity => "roster.reason.movement",
-            WorkerAvailabilityReason.DialogueActivity => "roster.reason.dialogue",
-            WorkerAvailabilityReason.ScriptedAnimation => "roster.reason.animation",
-            WorkerAvailabilityReason.UnsupportedCustomNpc => "roster.reason.custom-npc",
-            _ => "roster.reason.evaluation-failed"
-        };
-
-        return this.Translation.Get(key);
-    }
-
-    private Color GetStateColor(WorkerAvailabilityState state)
-    {
-        return state switch
-        {
-            WorkerAvailabilityState.EligibleForPreview => new Color(35, 110, 45),
-            WorkerAvailabilityState.TemporarilyUnavailable => new Color(170, 100, 20),
-            WorkerAvailabilityState.Ineligible => new Color(150, 45, 40),
-            _ => Color.DimGray
-        };
     }
 
     private static int GetMenuWidth()

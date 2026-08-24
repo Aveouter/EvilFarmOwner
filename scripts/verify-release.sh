@@ -6,14 +6,35 @@ package_path="$project_root/bin/Release/net6.0/EvilFarmOwner 0.1.0.zip"
 
 cd "$project_root"
 
+source_commit="$(git rev-parse HEAD)"
+source_tree="$(git rev-parse 'HEAD^{tree}')"
+source_status="$(git status --porcelain=v1 --untracked-files=all)"
+if [[ -n "$source_status" && "${EFO_RELEASE_ALLOW_DIRTY:-0}" != "1" ]]; then
+  echo "Release verification requires a clean Git worktree." >&2
+  echo "Commit or remove these source changes before producing audited hashes:" >&2
+  printf '%s\n' "$source_status" >&2
+  echo "For a non-audited pre-commit diagnostic only, set EFO_RELEASE_ALLOW_DIRTY=1." >&2
+  exit 1
+fi
+
+if [[ -n "$source_status" ]]; then
+  echo "WARNING: running a non-audited verification from a dirty worktree." >&2
+fi
+
+echo "Source commit: $source_commit"
+echo "Source tree: $source_tree"
+
 dotnet run \
   -c Release \
   --project tests/EvilFarmOwner.LogicTests.csproj \
+  -p:EnableAcceptanceFaults=false \
   -p:EnableModDeploy=false \
   -p:EnableModZip=false
 
 dotnet build EvilFarmOwner.csproj \
+  -t:Rebuild \
   -c Release \
+  -p:EnableAcceptanceFaults=false \
   -p:EnableModDeploy=false \
   -p:EnableModZip=true
 
@@ -40,9 +61,9 @@ unzip -p "$package_path" EvilFarmOwner/manifest.json \
       and (.UpdateKeys | index("GitHub:Aveouter/EvilFarmOwner") != null)
     ' >/dev/null
 
-if strings "$project_root/bin/Release/net6.0/EvilFarmOwner.dll" \
-  | rg -q 'efo_work|efo_toggle|efo_status|WorkRadius|DailyWage|ClearDebris|PlantSeedsFromInventory|FertilizeEmptyDirt'; then
-  echo "Release DLL still exposes a legacy prototype command or setting." >&2
+dll_search_text="$(LC_ALL=C tr -d '\000' < "$project_root/bin/Release/net6.0/EvilFarmOwner.dll")"
+if [[ "$dll_search_text" =~ efo_work|efo_toggle|efo_status|efo_acceptance_faults|WorkRadius|DailyWage|ClearDebris|PlantSeedsFromInventory|FertilizeEmptyDirt ]]; then
+  echo "Release DLL still exposes a legacy prototype or acceptance-test command/setting." >&2
   exit 1
 fi
 
@@ -52,4 +73,6 @@ else
   shasum -a 256 "$package_path"
 fi
 
+echo "Verified source commit: $source_commit"
+echo "Verified source tree: $source_tree"
 echo "Release package verification passed."
