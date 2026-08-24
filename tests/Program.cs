@@ -52,6 +52,9 @@ List<(string Name, Action Test)> tests = new()
     ("storage sort invalid snapshot", TestStorageSortInvalidSnapshot),
     ("storage sort generated invariants", TestStorageSortGeneratedInvariants),
     ("storage snapshot validation", TestStorageSnapshotValidation),
+    ("storage transfer lock order", TestStorageTransferLockOrder),
+    ("storage transfer sequence", TestStorageTransferSequence),
+    ("storage transfer conservation", TestStorageTransferConservation),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
@@ -1076,6 +1079,84 @@ static void TestStorageSnapshotValidation()
     Equal(false, StorageSortSnapshotValidation.IsChestUnchanged(
         expected,
         unchanged with { ChestTile = secondTile }));
+}
+
+static void TestStorageTransferLockOrder()
+{
+    GridPoint earlier = new(8, 2);
+    GridPoint later = new(1, 3);
+    Equal(new StorageSortLockPair(earlier, later),
+        StorageSortTransferPolicy.GetLockOrder(later, earlier));
+    Equal(new StorageSortLockPair(earlier, later),
+        StorageSortTransferPolicy.GetLockOrder(earlier, later));
+
+    GridPoint left = new(1, 5);
+    GridPoint right = new(9, 5);
+    Equal(new StorageSortLockPair(left, right),
+        StorageSortTransferPolicy.GetLockOrder(right, left));
+}
+
+static void TestStorageTransferSequence()
+{
+    StorageSortTransfer first = new(
+        Sequence: 1,
+        SourceChest: new GridPoint(1, 1),
+        DestinationChest: new GridPoint(2, 2),
+        StackId: "stack-1",
+        StackingKey: "carrot-q0",
+        ItemId: "(O)24",
+        Category: -75,
+        Quantity: 10);
+    StorageSortTransfer second = first with
+    {
+        Sequence = 2,
+        StackId = "stack-2",
+        Quantity = 5
+    };
+    StorageSortTransfer[] transfers = { first, second };
+
+    Equal(true, StorageSortTransferPolicy.IsExpectedTransfer(transfers, 1, first));
+    Equal(false, StorageSortTransferPolicy.IsExpectedTransfer(transfers, 1, second));
+    Equal(true, StorageSortTransferPolicy.IsExpectedTransfer(transfers, 2, second));
+    Equal(false, StorageSortTransferPolicy.IsExpectedTransfer(transfers, 3, second));
+    Equal(false, StorageSortTransferPolicy.IsExpectedTransfer(
+        transfers,
+        1,
+        first with { Quantity = 9 }));
+}
+
+static void TestStorageTransferConservation()
+{
+    Equal(true, StorageSortTransferAudit.IsConserved(
+        expected: 20,
+        destination: 20,
+        restoredSource: 0,
+        quarantine: 0,
+        unresolved: 0));
+    Equal(true, StorageSortTransferAudit.IsConserved(
+        expected: 20,
+        destination: 0,
+        restoredSource: 20,
+        quarantine: 0,
+        unresolved: 0));
+    Equal(true, StorageSortTransferAudit.IsConserved(
+        expected: 20,
+        destination: 7,
+        restoredSource: 0,
+        quarantine: 8,
+        unresolved: 5));
+    Equal(false, StorageSortTransferAudit.IsConserved(
+        expected: 20,
+        destination: 20,
+        restoredSource: 1,
+        quarantine: 0,
+        unresolved: 0));
+    Equal(false, StorageSortTransferAudit.IsConserved(
+        expected: 20,
+        destination: -1,
+        restoredSource: 21,
+        quarantine: 0,
+        unresolved: 0));
 }
 
 static StorageSortChestSnapshot SortChest(
