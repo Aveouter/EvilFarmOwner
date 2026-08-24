@@ -37,6 +37,8 @@ internal sealed class MultiplayerContractCoordinator
     private string LastHostStateSignature = "";
     private bool RecoveryStateHealthy = true;
 
+    public string? LastRequestFailureKey { get; private set; }
+
     public MultiplayerContractCoordinator(
         IModHelper helper,
         IManifest manifest,
@@ -80,8 +82,12 @@ internal sealed class MultiplayerContractCoordinator
             + $"stateVersion={(Context.IsMainPlayer ? this.HostStateVersion : this.RemoteStateVersions.Latest)}";
     }
 
-    public bool RequestStart(string workerInternalName, NamedFarmTask task)
+    public bool RequestStart(
+        string workerInternalName,
+        NamedFarmTask task,
+        string? requestId = null)
     {
+        this.LastRequestFailureKey = null;
         if (!Context.IsWorldReady)
             return false;
 
@@ -99,7 +105,9 @@ internal sealed class MultiplayerContractCoordinator
             ModVersion = this.Manifest.Version.ToString(),
             SaveId = Game1.uniqueIDForThisGame,
             TotalDays = Game1.Date.TotalDays,
-            RequestId = Guid.NewGuid().ToString("N"),
+            RequestId = string.IsNullOrWhiteSpace(requestId)
+                ? Guid.NewGuid().ToString("N")
+                : requestId,
             RequestingPlayerId = Game1.player.UniqueMultiplayerID,
             WorkerName = workerInternalName,
             Task = task
@@ -110,6 +118,7 @@ internal sealed class MultiplayerContractCoordinator
             ContractStartResponseMessage response = this.ProcessHostRequest(
                 request,
                 Game1.player.UniqueMultiplayerID);
+            this.LastRequestFailureKey = response.Accepted ? null : response.ReasonKey;
             return response.Accepted;
         }
 

@@ -16,6 +16,7 @@ public sealed class ModEntry : Mod
     private WateringContractExecutionController? WateringContracts;
     private HarvestingContractExecutionController? HarvestingContracts;
     private MultiplayerContractCoordinator? MultiplayerContracts;
+    private RecurringContractCoordinator? RecurringContracts;
     private readonly HarvestAcceptanceFaults AcceptanceFaults = new();
 
     public override void Entry(IModHelper helper)
@@ -40,6 +41,12 @@ public sealed class ModEntry : Mod
             this.Monitor,
             this.WateringContracts,
             this.HarvestingContracts);
+        this.RecurringContracts = new RecurringContractCoordinator(
+            helper,
+            helper.Translation,
+            this.Monitor,
+            this.WorkerRoster,
+            this.MultiplayerContracts);
 
         if (this.HasKnownHotkeyConflict)
             this.Monitor.Log(helper.Translation.Get("hud.hotkey-conflict"), LogLevel.Warn);
@@ -61,6 +68,7 @@ public sealed class ModEntry : Mod
         helper.ConsoleCommands.Add("efo_quarantine", helper.Translation.Get("cmd.quarantine"), (_, _) => this.OpenHarvestQuarantine());
         helper.ConsoleCommands.Add("efo_netstatus", helper.Translation.Get("cmd.netstatus"), (_, _) => this.ShowNetworkStatus());
         helper.ConsoleCommands.Add("efo_report", helper.Translation.Get("cmd.report"), (_, _) => this.ShowLastWorkReport());
+        helper.ConsoleCommands.Add("efo_auto", helper.Translation.Get("cmd.recurring"), (_, _) => this.OpenRecurringContractMenu());
 #if EFO_ACCEPTANCE_FAULTS
         helper.ConsoleCommands.Add(
             "efo_acceptance_faults",
@@ -161,6 +169,7 @@ public sealed class ModEntry : Mod
     {
         this.HarvestingContracts?.OnSaveLoaded();
         this.MultiplayerContracts?.OnSaveLoaded();
+        this.RecurringContracts?.OnSaveLoaded();
         Game1.addHUDMessage(new HUDMessage(this.Helper.Translation.Get("hud.ready", new { key = this.Config.OpenMenuKey }), HUDMessage.newQuest_type));
 
         if (this.HasKnownHotkeyConflict)
@@ -206,6 +215,7 @@ public sealed class ModEntry : Mod
             this.WorkerRoster.GetRoster(),
             this.Helper.Translation,
             this.OpenWorkerTaskSelection,
+            Context.IsMainPlayer ? this.OpenRecurringContractMenu : null,
             initialPage);
     }
 
@@ -252,6 +262,7 @@ public sealed class ModEntry : Mod
         this.WateringContracts?.Update();
         this.HarvestingContracts?.Update();
         this.MultiplayerContracts?.Update();
+        this.RecurringContracts?.Update(this.HasActiveNamedContract());
     }
 
     private void OnDayEnding(object? sender, DayEndingEventArgs e)
@@ -277,6 +288,7 @@ public sealed class ModEntry : Mod
         this.HarvestingContracts?.OnSaving();
         this.MultiplayerContracts?.Update();
         this.MultiplayerContracts?.OnSaving();
+        this.RecurringContracts?.OnSaving();
     }
 
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
@@ -285,6 +297,7 @@ public sealed class ModEntry : Mod
         this.HarvestingContracts?.OnReturnedToTitle();
         this.MultiplayerContracts?.Update();
         this.MultiplayerContracts?.OnReturnedToTitle();
+        this.RecurringContracts?.OnReturnedToTitle();
     }
 
     private bool HasActiveNamedContract()
@@ -298,6 +311,85 @@ public sealed class ModEntry : Mod
     private bool TryStartNamedContract(string workerInternalName, NamedFarmTask task)
     {
         return this.MultiplayerContracts?.RequestStart(workerInternalName, task) == true;
+    }
+
+    private void OpenRecurringContractMenu()
+    {
+        if (!Context.IsWorldReady)
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("cmd.roster-world-not-ready"), LogLevel.Info);
+            return;
+        }
+
+        if (!Context.IsMainPlayer)
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("recurring.hud.host-only"),
+                HUDMessage.error_type));
+            return;
+        }
+
+        if (this.RecurringContracts is null || this.WorkerRoster is null)
+            return;
+
+        Game1.activeClickableMenu = new RecurringContractMenu(
+            this.RecurringContracts,
+            this.Helper.Translation,
+            () => this.OpenRecurringWorkerRoster());
+    }
+
+    private void OpenRecurringWorkerRoster(int initialPage = 0)
+    {
+        if (!Context.IsWorldReady
+            || !Context.IsMainPlayer
+            || this.WorkerRoster is null)
+            return;
+
+        IReadOnlyList<WorkerRosterEntry> workers = this.WorkerRoster.GetRoster();
+        Game1.activeClickableMenu = new WorkerRosterMenu(
+            workers,
+            this.Helper.Translation,
+            (worker, page) => this.OpenRecurringTaskSelection(worker, page, workers),
+            this.OpenRecurringContractMenu,
+            initialPage);
+    }
+
+    private void OpenRecurringTaskSelection(
+        WorkerRosterEntry worker,
+        int rosterPage,
+        IReadOnlyList<WorkerRosterEntry> availableWorkers)
+    {
+        if (!Context.IsWorldReady
+            || !Context.IsMainPlayer
+            || worker.Availability.State != WorkerAvailabilityState.EligibleForPreview)
+            return;
+
+        Game1.activeClickableMenu = new WorkerTaskSelectionMenu(
+            worker,
+            this.Helper.Translation,
+            () => this.OpenRecurringWorkerRoster(rosterPage),
+            task => this.OpenRecurringAuthorization(worker, rosterPage, task, availableWorkers));
+    }
+
+    private void OpenRecurringAuthorization(
+        WorkerRosterEntry worker,
+        int rosterPage,
+        NamedFarmTask task,
+        IReadOnlyList<WorkerRosterEntry> availableWorkers)
+    {
+        if (!Context.IsWorldReady
+            || !Context.IsMainPlayer
+            || this.RecurringContracts is null)
+            return;
+
+        Game1.activeClickableMenu = new RecurringContractAuthorizationMenu(
+            worker,
+            task,
+            availableWorkers,
+            this.RecurringContracts,
+            this.Helper.Translation,
+            () => this.OpenRecurringTaskSelection(worker, rosterPage, availableWorkers),
+            this.OpenRecurringContractMenu);
     }
 
     private void OnModMessageReceived(object? sender, ModMessageReceivedEventArgs e)

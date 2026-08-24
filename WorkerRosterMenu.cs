@@ -22,8 +22,10 @@ internal sealed class WorkerRosterMenu : IClickableMenu
     private readonly IReadOnlyList<WorkerRosterEntry> Entries;
     private readonly ITranslationHelper Translation;
     private readonly Action<WorkerRosterEntry, int> OpenContractPreview;
+    private readonly Action? OpenRecurringContracts;
     private readonly ClickableComponent PreviousButton;
     private readonly ClickableComponent NextButton;
+    private readonly ClickableComponent RecurringButton;
     private readonly int PageSize;
     private int CurrentPage;
 
@@ -31,6 +33,7 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         IReadOnlyList<WorkerRosterEntry> entries,
         ITranslationHelper translation,
         Action<WorkerRosterEntry, int> openContractPreview,
+        Action? openRecurringContracts = null,
         int initialPage = 0)
         : base(
             GetMenuX(),
@@ -42,6 +45,7 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         this.Entries = entries;
         this.Translation = translation;
         this.OpenContractPreview = openContractPreview;
+        this.OpenRecurringContracts = openRecurringContracts;
         this.PageSize = Math.Max(1, (this.height - HeaderHeight - FooterHeight) / RowHeight);
         this.CurrentPage = Math.Clamp(initialPage, 0, this.PageCount - 1);
 
@@ -52,17 +56,27 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         this.NextButton = new ClickableComponent(
             new Rectangle(this.xPositionOnScreen + this.width - HorizontalPadding - ButtonWidth, buttonY, ButtonWidth, ButtonHeight),
             translation.Get("roster.next"));
+        this.RecurringButton = new ClickableComponent(
+            new Rectangle(
+                this.xPositionOnScreen + this.width / 2 - 110,
+                buttonY,
+                220,
+                ButtonHeight),
+            translation.Get("roster.recurring"));
 
         this.PreviousButton.myID = 100;
         this.PreviousButton.rightNeighborID = 101;
         this.NextButton.myID = 101;
         this.NextButton.leftNeighborID = 100;
+        this.RecurringButton.myID = 102;
 
         this.allClickableComponents = new List<ClickableComponent>
         {
             this.PreviousButton,
             this.NextButton
         };
+        if (this.OpenRecurringContracts is not null)
+            this.allClickableComponents.Add(this.RecurringButton);
 
         if (this.upperRightCloseButton is not null)
             this.allClickableComponents.Add(this.upperRightCloseButton);
@@ -92,6 +106,13 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         if (this.NextButton.containsPoint(x, y) && this.CurrentPage < this.PageCount - 1)
         {
             this.ChangePage(1);
+            return;
+        }
+
+        if (this.OpenRecurringContracts is not null && this.RecurringButton.containsPoint(x, y))
+        {
+            Game1.playSound("smallSelect");
+            this.OpenRecurringContracts();
             return;
         }
 
@@ -189,6 +210,8 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             this.DrawButton(batch, this.PreviousButton);
         if (this.CurrentPage < this.PageCount - 1)
             this.DrawButton(batch, this.NextButton);
+        if (this.OpenRecurringContracts is not null)
+            this.DrawButton(batch, this.RecurringButton);
 
         base.draw(batch);
         this.drawMouse(batch);
