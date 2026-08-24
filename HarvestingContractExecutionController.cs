@@ -593,7 +593,8 @@ internal sealed class HarvestingContractExecutionController
     private void HandleFailedDeliveryRoute(ActiveHarvestContract contract, string reason)
     {
         Point? failedChest = contract.CurrentChestRoute?.ChestTile;
-        this.MarkCurrentChestAttempted(contract);
+        Point? failedInteraction = contract.CurrentChestRoute?.InteractionTile;
+        this.MarkCurrentChestRouteAttempted(contract);
 
         GridPoint origin = new(
             contract.Lease.Worker.TilePoint.X,
@@ -604,8 +605,9 @@ internal sealed class HarvestingContractExecutionController
         if (decision.CanReplan)
         {
             this.Monitor.Log(
-                $"Harvest delivery route from {origin} to chest {failedChest} failed ({reason}); "
-                + $"trying another eligible destination "
+                $"Harvest delivery route from {origin} to chest {failedChest} "
+                + $"through interaction {failedInteraction} failed ({reason}); "
+                + $"trying another safe interaction route "
                 + $"[{decision.FailureCount}/{decision.MaximumFailures}].",
                 LogLevel.Debug);
             this.BeginDeliveryOrReturn(contract);
@@ -615,7 +617,8 @@ internal sealed class HarvestingContractExecutionController
         this.Monitor.Log(
             $"Harvest worker '{contract.Lease.Worker.Name}' exhausted "
             + $"{decision.MaximumFailures} consecutive delivery routes from {origin}; "
-            + "stopping the contract because no classified chest remains safely reachable.",
+            + $"last chest={failedChest}, interaction={failedInteraction}; "
+            + "stopping the contract because no classified chest route remains safely reachable.",
             LogLevel.Warn);
         this.StopForUnavailableStorage(contract, "delivery route retries were exhausted");
     }
@@ -840,12 +843,15 @@ internal sealed class HarvestingContractExecutionController
 
         HarvestCargoEntry entry = contract.Cargo[0];
         HashSet<Point> attempted = contract.GetAttemptedChests(entry.TransferId);
+        HashSet<HarvestChestRouteKey> attemptedRoutes =
+            contract.GetAttemptedChestRoutes(entry.TransferId);
         HarvestChestRoute? route = this.ChestRouter.FindBestRoute(
             contract.Farm,
             contract.Lease.Worker,
             contract.Lease.Worker.TilePoint,
             entry.Item,
-            attempted);
+            attempted,
+            attemptedRoutes);
         if (route is null)
         {
             this.StopForUnavailableStorage(
@@ -2148,6 +2154,18 @@ internal sealed class HarvestingContractExecutionController
         contract.GetAttemptedChests(contract.Cargo[0].TransferId).Add(contract.CurrentChestRoute.ChestTile);
     }
 
+    private void MarkCurrentChestRouteAttempted(ActiveHarvestContract contract)
+    {
+        if (contract.CurrentChestRoute is null || contract.Cargo.Count == 0)
+            return;
+
+        HarvestChestRoute route = contract.CurrentChestRoute;
+        contract.GetAttemptedChestRoutes(contract.Cargo[0].TransferId).Add(
+            new HarvestChestRouteKey(
+                new GridPoint(route.ChestTile.X, route.ChestTile.Y),
+                new GridPoint(route.InteractionTile.X, route.InteractionTile.Y)));
+    }
+
     private void ReleaseCurrentChestLock(ActiveHarvestContract contract)
     {
         NetMutex? mutex = contract.CurrentChestRoute?.Chest.GetMutex();
@@ -2215,6 +2233,8 @@ internal sealed class HarvestingContractExecutionController
     private sealed class ActiveHarvestContract
     {
         private readonly Dictionary<string, HashSet<Point>> AttemptedChestTiles = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, HashSet<HarvestChestRouteKey>> AttemptedChestRoutes =
+            new(StringComparer.Ordinal);
 
         public ActiveHarvestContract(
             Guid id,
@@ -2289,6 +2309,19 @@ internal sealed class HarvestingContractExecutionController
             {
                 attempted = new HashSet<Point>();
                 this.AttemptedChestTiles[transferId] = attempted;
+            }
+
+            return attempted;
+        }
+
+        public HashSet<HarvestChestRouteKey> GetAttemptedChestRoutes(string transferId)
+        {
+            if (!this.AttemptedChestRoutes.TryGetValue(
+                    transferId,
+                    out HashSet<HarvestChestRouteKey>? attempted))
+            {
+                attempted = new HashSet<HarvestChestRouteKey>();
+                this.AttemptedChestRoutes[transferId] = attempted;
             }
 
             return attempted;
