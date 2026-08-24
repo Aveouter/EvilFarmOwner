@@ -57,6 +57,7 @@ List<(string Name, Action Test)> tests = new()
     ("storage transfer conservation", TestStorageTransferConservation),
     ("storage transfer recovery ownership", TestStorageTransferRecoveryOwnership),
     ("storage sort interaction ordering", TestStorageSortInteractionOrdering),
+    ("storage sort report accounting", TestStorageSortReportAccounting),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
@@ -1241,6 +1242,55 @@ static void TestStorageSortInteractionOrdering()
         "6,5|5,6|4,5|5,4",
         string.Join("|", StorageSortRouteSelection.Order(options)
             .Select(option => $"{option.InteractionTile.X},{option.InteractionTile.Y}")));
+}
+
+static void TestStorageSortReportAccounting()
+{
+    StorageSortCompletedTransfer first = new(
+        Sequence: 1,
+        ItemId: "(O)24",
+        Category: -75,
+        Quantity: 8,
+        SourceChest: new GridPoint(1, 1),
+        DestinationChest: new GridPoint(2, 2));
+    StorageSortCompletedTransfer second = first with
+    {
+        Sequence = 2,
+        ItemId = "(O)190",
+        Category = -79,
+        Quantity = 3
+    };
+
+    Equal(true, StorageSortContractAudit.IsReportBalanced(
+        plannedTransfers: 2,
+        completed: new[] { first },
+        skipped: new[] { second },
+        movedItems: 8,
+        persistedRecoveryItems: 0));
+    Equal(false, StorageSortContractAudit.IsReportBalanced(
+        plannedTransfers: 2,
+        completed: new[] { first },
+        skipped: Array.Empty<StorageSortCompletedTransfer>(),
+        movedItems: 8,
+        persistedRecoveryItems: 0));
+    Equal(false, StorageSortContractAudit.IsReportBalanced(
+        plannedTransfers: 2,
+        completed: new[] { first },
+        skipped: new[] { second with { Sequence = 1 } },
+        movedItems: 8,
+        persistedRecoveryItems: 0));
+    Equal(false, StorageSortContractAudit.IsReportBalanced(
+        plannedTransfers: 2,
+        completed: new[] { first },
+        skipped: new[] { second },
+        movedItems: 7,
+        persistedRecoveryItems: 0));
+    Equal(false, StorageSortContractAudit.IsReportBalanced(
+        plannedTransfers: 2,
+        completed: new[] { first },
+        skipped: new[] { second },
+        movedItems: 8,
+        persistedRecoveryItems: 4));
 }
 
 static StorageSortChestSnapshot SortChest(
