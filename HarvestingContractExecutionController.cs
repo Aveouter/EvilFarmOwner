@@ -131,6 +131,9 @@ internal sealed class HarvestingContractExecutionController
         if (!planResult.IsSuccess || planResult.Plan is null)
             return this.FailStart(this.GetPlanFailureTranslationKey(planResult.Failure));
 
+        if (!HarvestChestRouter.HasEligibleChest(mainFarm))
+            return this.FailStart("harvest.start.no-storage-chest");
+
         if (!NpcWorkLease.TryAcquire(
                 worker,
                 preview.MaximumAuthorizedWage,
@@ -296,7 +299,7 @@ internal sealed class HarvestingContractExecutionController
                 if (contract.PhaseTicks >= MaximumOverflowWaitTicks)
                 {
                     this.DropCargoVisibly(contract, "persistent overflow stayed locked until timeout");
-                    this.BeginNextOrReturn(contract);
+                    this.ContinueAfterCargoStorage(contract);
                 }
                 else if (!contract.OverflowLockRequested
                     && contract.PhaseTicks % OverflowRetryIntervalTicks == 0)
@@ -308,10 +311,14 @@ internal sealed class HarvestingContractExecutionController
             case HarvestContractPhase.Returned:
                 this.FinishContract(
                     contract,
-                    contract.HarvestedTargets > 0 && contract.Cargo.Count == 0,
-                    contract.HarvestedTargets > 0
-                        ? null
-                        : "harvest.failure.target-invalidated");
+                    !contract.StorageUnavailable
+                        && contract.HarvestedTargets > 0
+                        && contract.Cargo.Count == 0,
+                    contract.StorageUnavailable
+                        ? "harvest.failure.storage-unavailable"
+                        : contract.HarvestedTargets > 0
+                            ? null
+                            : "harvest.failure.target-invalidated");
                 break;
 
             case HarvestContractPhase.QuarantiningCargo:
@@ -598,15 +605,9 @@ internal sealed class HarvestingContractExecutionController
         this.Monitor.Log(
             $"Harvest worker '{contract.Lease.Worker.Name}' exhausted "
             + $"{decision.MaximumFailures} consecutive delivery routes from {origin}; "
-            + "skipping further chest travel and using the lossless local fallback chain.",
+            + "stopping the contract because no classified chest remains safely reachable.",
             LogLevel.Warn);
-        if (this.TryDeliverCargoToRequester(contract))
-        {
-            this.BeginDeliveryOrReturn(contract);
-            return;
-        }
-
-        this.BeginOverflowDeposit(contract);
+        this.StopForUnavailableStorage(contract, "delivery route retries were exhausted");
     }
 
     private bool TryHandleStalledEntrance(ActiveHarvestContract contract)
@@ -837,18 +838,10 @@ internal sealed class HarvestingContractExecutionController
             attempted);
         if (route is null)
         {
-            if (this.TryDeliverCargoToRequester(contract))
-            {
-                this.BeginDeliveryOrReturn(contract);
-                return;
-            }
-
-            this.Monitor.Log(
-                $"No reachable eligible chest can accept harvest cargo '{entry.Item.QualifiedItemId}' "
-                + $"q{entry.Item.Quality} x{entry.Item.Stack}, and the on-farm requester inventory "
-                + "could not accept it; using persistent overflow.",
-                LogLevel.Debug);
-            this.BeginOverflowDeposit(contract);
+            this.StopForUnavailableStorage(
+                contract,
+                $"no reachable category-compatible chest can fully accept "
+                + $"'{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{entry.Item.Stack}");
             return;
         }
 
@@ -913,6 +906,7 @@ internal sealed class HarvestingContractExecutionController
             return;
         }
 
+        bool storageBecameUnavailable = false;
         try
         {
             Vector2 chestTile = new(route.ChestTile.X, route.ChestTile.Y);
@@ -927,33 +921,45 @@ internal sealed class HarvestingContractExecutionController
             else
             {
                 HarvestCargoEntry entry = contract.Cargo[0];
-                int requested = entry.Item.Stack;
-                Item? remainder = entry.Item;
-                bool applied = contract.TransferLedger.TryApply(
-                    entry.TransferId,
-                    () => remainder = route.Chest.addItem(entry.Item));
-                if (!applied)
+                HarvestChestContents contents = HarvestChestRouter.GetContents(route.Chest, entry.Item);
+                bool stillMatchesCategory = HarvestChestClassification.Classify(contents).HasValue;
+                bool canFullyAccept = HarvestChestRouter.GetAcceptableCapacity(route.Chest, entry.Item)
+                    >= entry.Item.Stack;
+                if (!stillMatchesCategory || !canFullyAccept)
                 {
-                    contract.Cargo.RemoveAt(0);
+                    this.MarkCurrentChestAttempted(contract);
                 }
                 else
                 {
-                    int remaining = remainder?.Stack ?? 0;
-                    int delivered = HarvestTransferMath.GetDeliveredCount(requested, remaining);
-                    contract.ChestDeliveredItems += delivered;
-                    this.Monitor.Log(
-                        $"Placed harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{delivered} "
-                        + $"in chest {route.ChestTile}; remainder={remaining}.",
-                        LogLevel.Debug);
-                    if (remainder is null)
+                    int requested = entry.Item.Stack;
+                    Item? remainder = entry.Item;
+                    bool applied = contract.TransferLedger.TryApply(
+                        entry.TransferId,
+                        () => remainder = route.Chest.addItem(entry.Item));
+                    if (!applied)
                     {
                         contract.Cargo.RemoveAt(0);
                     }
                     else
                     {
-                        entry.Item = remainder;
-                        entry.TransferId = Guid.NewGuid().ToString("N");
-                        contract.GetAttemptedChests(entry.TransferId).Add(route.ChestTile);
+                        int remaining = remainder?.Stack ?? 0;
+                        int delivered = HarvestTransferMath.GetDeliveredCount(requested, remaining);
+                        contract.ChestDeliveredItems += delivered;
+                        this.Monitor.Log(
+                            $"Placed harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{delivered} "
+                            + $"in chest {route.ChestTile}; remainder={remaining}.",
+                            LogLevel.Debug);
+                        if (remainder is null)
+                        {
+                            contract.Cargo.RemoveAt(0);
+                        }
+                        else
+                        {
+                            entry.Item = remainder;
+                            entry.TransferId = Guid.NewGuid().ToString("N");
+                            contract.GetAttemptedChests(entry.TransferId).Add(route.ChestTile);
+                            storageBecameUnavailable = true;
+                        }
                     }
                 }
             }
@@ -970,54 +976,10 @@ internal sealed class HarvestingContractExecutionController
             this.ReleaseCurrentChestLock(contract);
         }
 
-        this.BeginDeliveryOrReturn(contract);
-    }
-
-    private bool TryDeliverCargoToRequester(ActiveHarvestContract contract)
-    {
-        if (contract.Cargo.Count == 0)
-            return false;
-
-        Farmer? requester = Game1.GetPlayer(contract.Requester.UniqueMultiplayerID, onlyOnline: true);
-        HarvestCargoEntry entry = contract.Cargo[0];
-        if (requester is null
-            || !ReferenceEquals(requester, contract.Requester)
-            || !ReferenceEquals(requester.currentLocation, contract.Farm)
-            || !requester.couldInventoryAcceptThisItem(entry.Item))
-            return false;
-
-        int requested = entry.Item.Stack;
-        string qualifiedItemId = entry.Item.QualifiedItemId;
-        int quality = entry.Item.Quality;
-        Item? remainder = entry.Item;
-        bool applied = contract.TransferLedger.TryApply(
-            entry.TransferId,
-            () => remainder = requester.addItemToInventory(entry.Item));
-        if (!applied)
-        {
-            contract.Cargo.RemoveAt(0);
-            return true;
-        }
-
-        int remaining = remainder?.Stack ?? 0;
-        int delivered = HarvestTransferMath.GetDeliveredCount(requested, remaining);
-        contract.PlayerInventoryItems += delivered;
-        this.Monitor.Log(
-            $"Gave harvest cargo '{qualifiedItemId}' q{quality} x{delivered} directly to on-farm "
-            + $"requester '{requester.Name}'; remainder={remaining}.",
-            LogLevel.Debug);
-
-        if (remainder is null)
-        {
-            contract.Cargo.RemoveAt(0);
-        }
+        if (storageBecameUnavailable)
+            this.StopForUnavailableStorage(contract, "a locked chest stopped accepting the full stack");
         else
-        {
-            entry.Item = remainder;
-            entry.TransferId = Guid.NewGuid().ToString("N");
-        }
-
-        return delivered > 0;
+            this.BeginDeliveryOrReturn(contract);
     }
 
     private void OnChestLockFailed(Guid contractId, HarvestChestRoute route)
@@ -1037,6 +999,15 @@ internal sealed class HarvestingContractExecutionController
     {
         if (!ReferenceEquals(this.ActiveContract, contract))
             return;
+
+        if (contract.StorageUnavailable)
+        {
+            if (contract.Cargo.Count > 0)
+                this.BeginOverflowDeposit(contract);
+            else
+                this.BeginReturn(contract, depositOverflowOnReturn: false);
+            return;
+        }
 
         if (contract.Cargo.Count > 0)
         {
@@ -1482,12 +1453,12 @@ internal sealed class HarvestingContractExecutionController
         try
         {
             this.StoreCargoInOverflow(contract);
-            this.BeginNextOrReturn(contract);
+            this.ContinueAfterCargoStorage(contract);
         }
         catch (Exception ex)
         {
             this.DropCargoVisibly(contract, $"persistent harvest overflow failed after locking: {ex}");
-            this.BeginNextOrReturn(contract);
+            this.ContinueAfterCargoStorage(contract);
         }
         finally
         {
@@ -1506,6 +1477,38 @@ internal sealed class HarvestingContractExecutionController
             return;
 
         contract.OverflowLockRequested = false;
+    }
+
+    private void StopForUnavailableStorage(ActiveHarvestContract contract, string detail)
+    {
+        if (!ReferenceEquals(this.ActiveContract, contract))
+            return;
+
+        if (!contract.StorageUnavailable)
+        {
+            contract.StorageUnavailable = true;
+            contract.RemainingTargets = HarvestTargetPlanner.CountRemainingMatureCrops(
+                contract.Farm,
+                contract.CompletedTargets);
+            this.Monitor.Log(
+                $"Stopping harvest contract {contract.Id:N}: {detail}. "
+                + $"Remaining mature crops={contract.RemainingTargets}; existing cargo will be preserved "
+                + "through emergency storage before the worker returns.",
+                LogLevel.Warn);
+        }
+
+        if (contract.Cargo.Count > 0)
+            this.BeginOverflowDeposit(contract);
+        else
+            this.BeginReturn(contract, depositOverflowOnReturn: false);
+    }
+
+    private void ContinueAfterCargoStorage(ActiveHarvestContract contract)
+    {
+        if (contract.StorageUnavailable)
+            this.BeginReturn(contract, depositOverflowOnReturn: false);
+        else
+            this.BeginNextOrReturn(contract);
     }
 
     private void StoreCargoInOverflow(ActiveHarvestContract contract)
@@ -2239,6 +2242,7 @@ internal sealed class HarvestingContractExecutionController
         public int PhaseTicks { get; set; }
         public bool Dispatched { get; set; }
         public bool ActionApplied { get; set; }
+        public bool StorageUnavailable { get; set; }
         public bool DepositOverflowOnReturn { get; set; }
         public bool OverflowLockRequested { get; set; }
         public int HarvestedTargets { get; set; }
