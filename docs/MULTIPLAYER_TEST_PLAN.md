@@ -60,7 +60,7 @@ The host diagnostic must also report `recoveryHealthy=True`. The host persists a
 2. Quit and restart the host process, reconnect the same farmhand, and verify `efo_netstatus` shows a new host session with `recoveryHealthy=True` and a nonzero processed count.
 3. Resend the exact saved request ID from the farmhand test harness. Verify the host returns the prior accepted response/result rebound to the new session, with no new lease, crop mutation, item transfer, charge, or refund.
 4. Repeat with a previously rejected request and verify it remains rejected without reevaluating into a new contract.
-5. In a disposable copy, corrupt or schema-mismatch the persisted recovery record. Verify the host reports `recoveryHealthy=False` and rejects all new contracts without mutating money or world state.
+5. In a disposable copy, corrupt or schema-mismatch the persisted recovery record. Include a duplicate transfer ID and a produced-item total which does not equal requester inventory plus chest, overflow, and visible-drop totals. Verify the host reports `recoveryHealthy=False` and rejects all new contracts without mutating money or world state.
 
 ### 6. Rejection safety
 

@@ -717,6 +717,57 @@ static void TestMultiplayerRestartRecoveryState()
 
     state.ModVersion = "0.1.1";
     Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
+
+    string transferId = Guid.NewGuid().ToString("N");
+    string partialTransferId = Guid.NewGuid().ToString("N");
+    ContractResultMessage recoveredResult = state.RecentResults[0];
+    recoveredResult.ProducedItems = new[]
+    {
+        new ContractCargoSnapshotMessage
+        {
+            TransferId = transferId,
+            QualifiedItemId = "(O)24",
+            DisplayName = "Parsnip",
+            Stack = 2
+        }
+    };
+    recoveredResult.CompletedTransferIds = new[] { transferId, partialTransferId };
+    recoveredResult.CompletedWork = 1;
+    recoveredResult.ChestItems = 2;
+    Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
+
+    recoveredResult.CompletedTransferIds = new[] { transferId, transferId };
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.CompletedTransferIds = new[] { transferId, partialTransferId };
+
+    recoveredResult.ProducedItems = new[]
+    {
+        recoveredResult.ProducedItems[0],
+        recoveredResult.ProducedItems[0]
+    };
+    recoveredResult.ChestItems = 4;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.ProducedItems = new[] { recoveredResult.ProducedItems[0] };
+    recoveredResult.ChestItems = 1;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+
+    recoveredResult.ChestItems = 2;
+    recoveredResult.ReasonKey = "contract.failure.unknown";
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.ReasonKey = "";
+
+    recoveredResult.Succeeded = false;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.ReasonKey = "contract.failure.unknown";
+    Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.Succeeded = true;
+    recoveredResult.ReasonKey = "";
+    recoveredResult.CompletedWork = 0;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.CompletedWork = 1;
+
+    recoveredResult.BillableHours = ContractPreviewService.RegularShiftHours + 1;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
 }
 
 static void TestMultiplayerStaleSnapshotRejection()

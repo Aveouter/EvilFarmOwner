@@ -135,33 +135,64 @@ internal static class MultiplayerRecoveryState
 
     private static bool IsValidResult(ContractResultMessage? result, ulong expectedSaveId)
     {
-        return result is not null
-            && result.SchemaVersion == MultiplayerContractProtocol.SchemaVersion
-            && result.SaveId == expectedSaveId
-            && !string.IsNullOrWhiteSpace(result.HostSessionId)
-            && Guid.TryParseExact(result.ContractId, "N", out _)
-            && result.Sequence > 0
-            && result.StateVersion > 0
-            && Guid.TryParseExact(result.RequestId, "N", out _)
-            && result.RequestingPlayerId > 0
-            && !string.IsNullOrWhiteSpace(result.WorkerName)
-            && Enum.IsDefined(result.Task)
-            && result.CompletedWork >= 0
-            && result.PlayerItems >= 0
-            && result.ChestItems >= 0
-            && result.OverflowItems >= 0
-            && result.DroppedItems >= 0
-            && result.BillableHours >= 0
-            && result.ChargedGold >= 0
-            && result.RefundedGold >= 0
-            && result.ProducedItems is not null
-            && result.CompletedTransferIds is not null
-            && result.ProducedItems.All(item => item is not null
-                && Guid.TryParseExact(item.TransferId, "N", out _)
-                && !string.IsNullOrWhiteSpace(item.QualifiedItemId)
-                && !string.IsNullOrWhiteSpace(item.DisplayName)
-                && item.Quality >= 0
-                && item.Stack > 0)
-            && result.CompletedTransferIds.All(id => Guid.TryParseExact(id, "N", out _));
+        if (result is null
+            || result.SchemaVersion != MultiplayerContractProtocol.SchemaVersion
+            || result.SaveId != expectedSaveId
+            || string.IsNullOrWhiteSpace(result.HostSessionId)
+            || !Guid.TryParseExact(result.ContractId, "N", out _)
+            || result.Sequence <= 0
+            || result.StateVersion <= 0
+            || !Guid.TryParseExact(result.RequestId, "N", out _)
+            || result.RequestingPlayerId <= 0
+            || string.IsNullOrWhiteSpace(result.WorkerName)
+            || result.WorkerName.Length > 100
+            || !Enum.IsDefined(result.Task)
+            || result.CompletedWork < 0
+            || (result.Succeeded && result.CompletedWork == 0)
+            || result.PlayerItems < 0
+            || result.ChestItems < 0
+            || result.OverflowItems < 0
+            || result.DroppedItems < 0
+            || result.BillableHours < 0
+            || result.BillableHours > ContractPreviewService.RegularShiftHours
+            || (result.Succeeded && result.BillableHours == 0)
+            || result.ChargedGold < 0
+            || result.RefundedGold < 0
+            || (result.Succeeded
+                ? !string.IsNullOrWhiteSpace(result.ReasonKey)
+                : string.IsNullOrWhiteSpace(result.ReasonKey))
+            || result.ProducedItems is null
+            || result.CompletedTransferIds is null)
+            return false;
+
+        HashSet<string> producedTransferIds = new(StringComparer.Ordinal);
+        long producedItems = 0;
+        foreach (ContractCargoSnapshotMessage item in result.ProducedItems)
+        {
+            if (item is null
+                || !Guid.TryParseExact(item.TransferId, "N", out _)
+                || !producedTransferIds.Add(item.TransferId)
+                || string.IsNullOrWhiteSpace(item.QualifiedItemId)
+                || string.IsNullOrWhiteSpace(item.DisplayName)
+                || item.Quality < 0
+                || item.Stack <= 0)
+                return false;
+
+            producedItems += item.Stack;
+        }
+
+        HashSet<string> completedTransferIds = new(StringComparer.Ordinal);
+        foreach (string transferId in result.CompletedTransferIds)
+        {
+            if (!Guid.TryParseExact(transferId, "N", out _)
+                || !completedTransferIds.Add(transferId))
+                return false;
+        }
+
+        long placedItems = (long)result.PlayerItems
+            + result.ChestItems
+            + result.OverflowItems
+            + result.DroppedItems;
+        return producedItems == placedItems;
     }
 }

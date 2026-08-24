@@ -23,6 +23,7 @@
 - Added `efo_overflow` to retrieve harvest results which could not fit in an eligible farm chest.
 - Added host-authoritative multiplayer contract requests, bounded request replay protection, phase/cargo/transfer snapshots, reconnect synchronization, and host-only visual action messages.
 - Persisted the bounded processed-request ledger and latest per-player results so host restarts rebind prior transactions to the new network session without repeating work or charges.
+- Rejected internally inconsistent multiplayer recovery results with duplicate transfer IDs, unbalanced item destinations, impossible hours, or contradictory success reasons.
 - Bound wage reservation and refund to the requesting farmer instead of the host's local player.
 - Added mutex-aware persistent overflow delivery and save-time lease/cargo cleanup.
 - Expanded the deterministic logic harness to 39 wage, routing, storage, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
