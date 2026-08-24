@@ -22,3 +22,14 @@ internal sealed class ContractHarvestCollector : JunimoHarvester
         this.CapturedItems.Add(item);
     }
 }
+
+internal static class ContractHarvestSemantics
+{
+    public static bool HasCapturedOutput(bool vanillaRequestsCropRemoval, int capturedItemCount)
+    {
+        // Crop.harvest returns whether the containing HoeDirt should remove the crop.
+        // Regrowing crops return false after successfully handing items to the Junimo collector.
+        _ = vanillaRequestsCropRemoval;
+        return capturedItemCount > 0;
+    }
+}

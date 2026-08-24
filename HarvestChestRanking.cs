@@ -26,8 +26,8 @@ internal static class HarvestChestRanking
         return options
             .OrderBy(option => option.MatchKind)
             .ThenByDescending(option => option.CanFullyAccept)
-            .ThenByDescending(option => option.AcceptableCapacity)
             .ThenBy(option => option.TravelDistance)
+            .ThenByDescending(option => option.AcceptableCapacity)
             .ThenBy(option => option.ChestTile.Y)
             .ThenBy(option => option.ChestTile.X)
             .ThenBy(option => option.InteractionTile.Y)
@@ -64,9 +64,33 @@ internal static class HarvestTransferMath
     }
 }
 
+internal static class HarvestPlacementAudit
+{
+    public static bool IsBalanced(
+        int harvested,
+        int playerInventory,
+        int chest,
+        int overflow,
+        int quarantine,
+        int dropped,
+        int unresolved)
+    {
+        if (harvested < 0
+            || playerInventory < 0
+            || chest < 0
+            || overflow < 0
+            || quarantine < 0
+            || dropped < 0
+            || unresolved < 0)
+            return false;
+        return harvested == (long)playerInventory + chest + overflow + quarantine + dropped + unresolved;
+    }
+}
+
 internal enum HarvestFallbackDestination
 {
     Chest,
+    PlayerInventory,
     PersistentOverflow,
     VisibleGroundDrop
 }
@@ -75,10 +99,14 @@ internal static class HarvestDeliveryFallback
 {
     public static HarvestFallbackDestination Select(
         bool hasEligibleChest,
+        bool requesterOnFarm,
+        bool playerInventoryCanAccept,
         bool persistentOverflowAvailable)
     {
         if (hasEligibleChest)
             return HarvestFallbackDestination.Chest;
+        if (requesterOnFarm && playerInventoryCanAccept)
+            return HarvestFallbackDestination.PlayerInventory;
         return persistentOverflowAvailable
             ? HarvestFallbackDestination.PersistentOverflow
             : HarvestFallbackDestination.VisibleGroundDrop;

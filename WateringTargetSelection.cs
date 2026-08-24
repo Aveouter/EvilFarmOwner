@@ -2,27 +2,26 @@ namespace EvilFarmOwner;
 
 internal readonly record struct GridPoint(int X, int Y);
 
-internal readonly record struct WateringTargetOption(
+internal readonly record struct FarmTaskRouteEdge(
     GridPoint Target,
     GridPoint Interaction);
 
-internal static class WateringTargetSelection
+internal readonly record struct FarmTaskRouteOption(
+    GridPoint Target,
+    GridPoint Interaction,
+    int PathCost);
+
+internal static class FarmTaskRouteSelection
 {
-    public static IReadOnlyList<WateringTargetOption> Order(
-        GridPoint start,
-        IEnumerable<WateringTargetOption> options)
+    public static IReadOnlyList<FarmTaskRouteOption> Order(
+        IEnumerable<FarmTaskRouteOption> options)
     {
         return options
-            .OrderBy(option => ManhattanDistance(start, option.Interaction))
+            .OrderBy(option => option.PathCost)
             .ThenBy(option => option.Target.Y)
             .ThenBy(option => option.Target.X)
             .ThenBy(option => option.Interaction.Y)
             .ThenBy(option => option.Interaction.X)
             .ToArray();
-    }
-
-    private static int ManhattanDistance(GridPoint first, GridPoint second)
-    {
-        return Math.Abs(first.X - second.X) + Math.Abs(first.Y - second.Y);
     }
 }
