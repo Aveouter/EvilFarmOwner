@@ -59,6 +59,7 @@ List<(string Name, Action Test)> tests = new()
     ("storage sort interaction ordering", TestStorageSortInteractionOrdering),
     ("storage sort report accounting", TestStorageSortReportAccounting),
     ("harvest partial remainder", TestHarvestPartialRemainder),
+    ("harvest chest release deferral", TestHarvestChestReleaseDeferral),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
@@ -1354,6 +1355,26 @@ static void TestHarvestPartialRemainder()
     Equal(6, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 4));
     Equal(0, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 10));
     Equal(10, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 0));
+}
+
+static void TestHarvestChestReleaseDeferral()
+{
+    int remainingCargoStacks = 2;
+    int deliveredStacks = 0;
+
+    remainingCargoStacks--;
+    deliveredStacks++;
+
+    Equal(false, HarvestChestReleaseDelay.CanContinue(elapsedTicks: 0));
+    Equal(1, remainingCargoStacks);
+    Equal(1, deliveredStacks);
+
+    Equal(true, HarvestChestReleaseDelay.CanContinue(elapsedTicks: 1));
+    remainingCargoStacks--;
+    deliveredStacks++;
+
+    Equal(0, remainingCargoStacks);
+    Equal(2, deliveredStacks);
 }
 
 static void TestRegrowingHarvestCaptureSemantics()
