@@ -1,5 +1,13 @@
 namespace EvilFarmOwner;
 
+internal enum FarmBoundarySide
+{
+    North,
+    East,
+    South,
+    West
+}
+
 internal static class FarmEntranceSelection
 {
     private const int DefaultSearchRadius = 8;
@@ -48,6 +56,31 @@ internal static class FarmEntranceSelection
         }
 
         return ordered;
+    }
+
+    public static FarmBoundarySide GetNearestBoundarySide(
+        int mapWidth,
+        int mapHeight,
+        GridPoint tile)
+    {
+        if (mapWidth <= 0)
+            throw new ArgumentOutOfRangeException(nameof(mapWidth), "Map width must be positive.");
+        if (mapHeight <= 0)
+            throw new ArgumentOutOfRangeException(nameof(mapHeight), "Map height must be positive.");
+
+        (FarmBoundarySide Side, int Distance)[] options =
+        {
+            (FarmBoundarySide.North, Math.Max(0, tile.Y)),
+            (FarmBoundarySide.East, Math.Max(0, mapWidth - 1 - tile.X)),
+            (FarmBoundarySide.South, Math.Max(0, mapHeight - 1 - tile.Y)),
+            (FarmBoundarySide.West, Math.Max(0, tile.X))
+        };
+
+        return options
+            .OrderBy(option => option.Distance)
+            .ThenBy(option => option.Side)
+            .First()
+            .Side;
     }
 
     private static bool IsBoundaryWarp(GridPoint tile, int mapWidth, int mapHeight)

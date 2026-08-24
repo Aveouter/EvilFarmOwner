@@ -9,6 +9,8 @@ The arrival planner reads the farm map's boundary warps, clamps their off-map so
 - Kegs, chests, machines, fence segments, crops, terrain features, and other occupied tiles are obstacles. A gate is the only placed-object exception: it may be opened for passage, but it is never removed.
 - The work lease disables `willDestroyObjectsUnderfoot`, charging, and accumulated blocked movement for the full contract, then restores the original values.
 - Every attached path controller must use `nonDestructivePathing`; the lease rejects any controller which does not.
+- Contract travel completes as soon as the worker enters the planned interaction tile. This avoids the vanilla controller's final pixel-centering step getting pinned against an adjacent mature crop or trellis.
+- The dispatch HUD identifies the selected boundary entrance so an off-screen arrival is explicit instead of looking like a missing worker.
 - A target tile and its interaction tile are separate. A trellis crop can be acted on from a reachable cardinal neighbor without treating the crop tile as walkable.
 - A route which becomes blocked is recorded as a failed target/interaction edge. The planner may try another side of the same crop, but it cannot retry the same failed edge indefinitely.
 

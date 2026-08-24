@@ -16,6 +16,7 @@ List<(string Name, Action Test)> tests = new()
     ("controller path skips current tile", TestControllerPathSkipsCurrentTile),
     ("travel progress watchdog", TestTravelProgressWatchdog),
     ("external boundary arrival ordering", TestExternalBoundaryArrivalOrdering),
+    ("nearest arrival boundary side", TestNearestArrivalBoundarySide),
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
@@ -213,6 +214,22 @@ static void TestExternalBoundaryArrivalOrdering()
     Equal(new GridPoint(40, 64), candidates[1]);
     Equal(new GridPoint(41, 0), candidates[2]);
     Equal(false, candidates.Contains(new GridPoint(34, 7)));
+}
+
+static void TestNearestArrivalBoundarySide()
+{
+    Equal(FarmBoundarySide.East, FarmEntranceSelection.GetNearestBoundarySide(
+        mapWidth: 80,
+        mapHeight: 65,
+        new GridPoint(78, 15)));
+    Equal(FarmBoundarySide.South, FarmEntranceSelection.GetNearestBoundarySide(
+        mapWidth: 80,
+        mapHeight: 65,
+        new GridPoint(40, 61)));
+    Equal(FarmBoundarySide.North, FarmEntranceSelection.GetNearestBoundarySide(
+        mapWidth: 80,
+        mapHeight: 65,
+        new GridPoint(41, 1)));
 }
 
 static void TestSixHourWageCap()

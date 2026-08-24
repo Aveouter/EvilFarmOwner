@@ -137,7 +137,8 @@ internal sealed class WateringContractExecutionController
                     this.Translation.Get("contract.hud.dispatched", new
                     {
                         worker = worker.displayName,
-                        gold = preview.MaximumAuthorizedWage
+                        gold = preview.MaximumAuthorizedWage,
+                        entrance = this.GetArrivalDescription(mainFarm, planResult.Plan.ArrivalTile)
                     }),
                     HUDMessage.newQuest_type));
                 return true;
@@ -158,7 +159,8 @@ internal sealed class WateringContractExecutionController
                 this.Translation.Get("contract.hud.dispatched", new
                 {
                     worker = worker.displayName,
-                    gold = preview.MaximumAuthorizedWage
+                    gold = preview.MaximumAuthorizedWage,
+                    entrance = this.GetArrivalDescription(mainFarm, planResult.Plan.ArrivalTile)
                 }),
                 HUDMessage.newQuest_type));
             return true;
@@ -189,6 +191,12 @@ internal sealed class WateringContractExecutionController
         switch (contract.Phase)
         {
             case WateringContractPhase.TravelingToTarget:
+                if (this.TryCompleteTravelAtDestination(
+                        contract,
+                        contract.CurrentTarget.InteractionTile,
+                        this.OnArrivedAtTarget))
+                    return;
+
                 if (contract.PhaseTicks > MaximumTravelTicks)
                 {
                     this.HandleInterruptedTargetTravel(contract);
@@ -241,6 +249,12 @@ internal sealed class WateringContractExecutionController
                 break;
 
             case WateringContractPhase.Returning:
+                if (this.TryCompleteTravelAtDestination(
+                        contract,
+                        contract.Plan.ArrivalTile,
+                        this.OnReturnedToArrival))
+                    return;
+
                 if (contract.PhaseTicks > MaximumTravelTicks)
                 {
                     this.HandleInterruptedReturnTravel(contract);
@@ -353,6 +367,33 @@ internal sealed class WateringContractExecutionController
         contract.Phase = WateringContractPhase.Returned;
         contract.PhaseTicks = 0;
         contract.Lease.Worker.Halt();
+    }
+
+    private bool TryCompleteTravelAtDestination(
+        ActiveWateringContract contract,
+        Point destination,
+        PathFindController.endBehavior onArrived)
+    {
+        NPC worker = contract.Lease.Worker;
+        if (!ReferenceEquals(worker.currentLocation, contract.Farm)
+            || worker.TilePoint != destination)
+            return false;
+
+        if (worker.controller is not null && !ReferenceEquals(worker.controller, contract.Controller))
+        {
+            this.FinishContract(contract, succeeded: false, "contract.failure.controller-conflict");
+            return true;
+        }
+
+        if (ReferenceEquals(worker.controller, contract.Controller))
+            worker.controller = null;
+        contract.Controller = null;
+        worker.Halt();
+        this.Monitor.Log(
+            $"Watering worker '{worker.Name}' entered destination tile {destination}; completing travel before vanilla pixel centering.",
+            LogLevel.Debug);
+        onArrived(worker, contract.Farm);
+        return true;
     }
 
     private bool TryApplyWatering(ActiveWateringContract contract)
@@ -719,6 +760,15 @@ internal sealed class WateringContractExecutionController
             WateringPlanFailure.NoDryCrop => "contract.start.no-dry-crop",
             _ => "contract.start.no-reachable-crop"
         };
+    }
+
+    private string GetArrivalDescription(Farm farm, Point arrivalTile)
+    {
+        FarmBoundarySide side = FarmEntranceSelection.GetNearestBoundarySide(
+            farm.Map.Layers[0].LayerWidth,
+            farm.Map.Layers[0].LayerHeight,
+            new GridPoint(arrivalTile.X, arrivalTile.Y));
+        return this.Translation.Get($"contract.entrance.{side.ToString().ToLowerInvariant()}");
     }
 
     private enum WateringContractPhase

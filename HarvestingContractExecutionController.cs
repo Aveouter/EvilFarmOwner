@@ -146,7 +146,8 @@ internal sealed class HarvestingContractExecutionController
                     this.Translation.Get("harvest.hud.dispatched", new
                     {
                         worker = worker.displayName,
-                        gold = preview.MaximumAuthorizedWage
+                        gold = preview.MaximumAuthorizedWage,
+                        entrance = this.GetArrivalDescription(mainFarm, planResult.Plan.ArrivalTile)
                     }),
                     HUDMessage.newQuest_type));
                 return true;
@@ -167,7 +168,8 @@ internal sealed class HarvestingContractExecutionController
                 this.Translation.Get("harvest.hud.dispatched", new
                 {
                     worker = worker.displayName,
-                    gold = preview.MaximumAuthorizedWage
+                    gold = preview.MaximumAuthorizedWage,
+                    entrance = this.GetArrivalDescription(mainFarm, planResult.Plan.ArrivalTile)
                 }),
                 HUDMessage.newQuest_type));
             return true;
@@ -304,6 +306,9 @@ internal sealed class HarvestingContractExecutionController
 
     private void UpdateTravel(ActiveHarvestContract contract)
     {
+        if (this.TryCompleteTravelAtDestination(contract))
+            return;
+
         if (contract.PhaseTicks > MaximumTravelTicks)
         {
             this.HandleInterruptedTravel(contract, timedOut: true);
@@ -333,6 +338,51 @@ internal sealed class HarvestingContractExecutionController
 
         if (contract.PhaseTicks > 1 && contract.Lease.Worker.controller is null)
             this.HandleInterruptedTravel(contract, timedOut: false);
+    }
+
+    private bool TryCompleteTravelAtDestination(ActiveHarvestContract contract)
+    {
+        Point? destination = contract.Phase switch
+        {
+            HarvestContractPhase.TravelingToTarget => contract.CurrentTarget.InteractionTile,
+            HarvestContractPhase.TravelingToChest => contract.CurrentChestRoute?.InteractionTile,
+            HarvestContractPhase.Returning => contract.Plan.ArrivalTile,
+            _ => null
+        };
+        NPC worker = contract.Lease.Worker;
+        if (destination is null
+            || !ReferenceEquals(worker.currentLocation, contract.Farm)
+            || worker.TilePoint != destination.Value)
+            return false;
+
+        if (worker.controller is not null && !ReferenceEquals(worker.controller, contract.Controller))
+        {
+            this.FinishContract(contract, succeeded: false, "contract.failure.controller-conflict");
+            return true;
+        }
+
+        if (ReferenceEquals(worker.controller, contract.Controller))
+            worker.controller = null;
+        contract.Controller = null;
+        worker.Halt();
+        this.Monitor.Log(
+            $"Harvest worker '{worker.Name}' entered destination tile {destination.Value} during {contract.Phase}; completing travel before vanilla pixel centering.",
+            LogLevel.Debug);
+
+        switch (contract.Phase)
+        {
+            case HarvestContractPhase.TravelingToTarget:
+                this.OnArrivedAtTarget(worker, contract.Farm);
+                break;
+            case HarvestContractPhase.TravelingToChest:
+                this.OnArrivedAtChest(worker, contract.Farm);
+                break;
+            case HarvestContractPhase.Returning:
+                this.OnReturnedToArrival(worker, contract.Farm);
+                break;
+        }
+
+        return true;
     }
 
     private void HandleInterruptedTravel(ActiveHarvestContract contract, bool timedOut)
@@ -1085,6 +1135,15 @@ internal sealed class HarvestingContractExecutionController
             HarvestPlanFailure.NoMatureCrop => "harvest.start.no-mature-crop",
             _ => "harvest.start.no-reachable-crop"
         };
+    }
+
+    private string GetArrivalDescription(Farm farm, Point arrivalTile)
+    {
+        FarmBoundarySide side = FarmEntranceSelection.GetNearestBoundarySide(
+            farm.Map.Layers[0].LayerWidth,
+            farm.Map.Layers[0].LayerHeight,
+            new GridPoint(arrivalTile.X, arrivalTile.Y));
+        return this.Translation.Get($"contract.entrance.{side.ToString().ToLowerInvariant()}");
     }
 
     private static int GetFacingDirection(Point interaction, Point target)
