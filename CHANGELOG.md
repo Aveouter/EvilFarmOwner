@@ -17,6 +17,7 @@
 - Changed worker arrival to prefer the right/east farm entrance and use other genuine boundary entrances only as safe fallbacks.
 - Added runtime entrance failover so a worker stalled on the first live step excludes that side instead of retrying every crop edge.
 - Protected active vanilla route animations, square-walk activities, sprite animations, and movement pauses from hiring without treating persisted route-end metadata as an active activity; unavailable NPCs are omitted from the roster.
+- Reworked the worker roster into compact rows that show friendship, today's hourly wage, and the six-hour maximum without redundant availability explanations or disabled footer controls.
 - Added an NPC-bounds first-pixel entrance probe so false-positive arrival tiles are rejected before wages or NPC state change.
 - Added bounded lease recovery: controller conflicts wait briefly, then release only this mod's lease and safety flags without overriding the other activity.
 - Moved emergency harvest drops to the on-farm requester or a deterministic collision-free delivery tile before falling back to the worker position.

@@ -58,7 +58,11 @@ internal sealed class WorkerRosterService
 
                 try
                 {
-                    entries.Add(this.CreateEntry(npc));
+                    WorkerAvailabilityResult availability = this.Evaluate(npc);
+                    if (!WorkerRosterPolicy.ShouldDisplay(availability.State))
+                        continue;
+
+                    entries.Add(this.CreateEntry(npc, availability));
                 }
                 catch (Exception ex)
                 {
@@ -72,7 +76,6 @@ internal sealed class WorkerRosterService
         }
 
         return entries
-            .Where(entry => WorkerRosterPolicy.ShouldDisplay(entry.Availability.State))
             .OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
     }
@@ -125,16 +128,19 @@ internal sealed class WorkerRosterService
         }
     }
 
-    private WorkerRosterEntry CreateEntry(NPC npc)
+    private WorkerRosterEntry CreateEntry(NPC npc, WorkerAvailabilityResult availability)
     {
         string displayName = string.IsNullOrWhiteSpace(npc.displayName) ? npc.Name : npc.displayName;
         Texture2D portrait = npc.Portrait;
+        int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(npc.Name);
+        WorkContractPreview wagePreview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
 
         return new WorkerRosterEntry(
             npc.Name,
             displayName,
             portrait,
-            this.Evaluate(npc));
+            availability,
+            wagePreview);
     }
 
     public WorkerAvailabilityResult Evaluate(NPC npc)

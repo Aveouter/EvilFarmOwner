@@ -33,7 +33,7 @@ Press one key to review only the named adult NPCs who are currently available fo
 
 ### Current Features
 
-- Open the currently available named-worker roster with the `K` key.
+- Open the currently available named-worker roster with the `K` key; each compact row shows friendship, today's hourly wage, and the six-hour maximum.
 - Omit NPCs who cannot be hired safely at that moment; their availability is reevaluated each time the roster opens.
 - Choose watering or harvesting, then confirm a named contract after reviewing the itemized wage.
 - Watch the selected NPC prefer the right/east farm entrance, safely fall back to another genuine boundary entrance when needed, walk between reachable crops, return to the selected entrance, and resume their prior state.
@@ -112,7 +112,7 @@ Mods/EvilFarmOwner/config.json
 
 ### 当前功能
 
-- 按 `K` 打开当前可雇佣工人名单。
+- 按 `K` 打开当前可雇佣工人名单；紧凑列表直接显示好感度、今日时薪和六小时最高工钱。
 - 不显示此刻不能安全雇佣的 NPC；每次打开名单都会重新判断可用性。
 - 选择浇水或收获，查看逐项工资后确认具名合同。
 - 观看所选 NPC 优先从农场右侧入口进入；右侧没有安全往返路线时使用其他真实边界入口，逐格完成可到达的农活，再从所选入口返回并恢复原状态。

@@ -38,7 +38,8 @@ internal sealed record WorkerRosterEntry(
     string InternalName,
     string DisplayName,
     Texture2D Portrait,
-    WorkerAvailabilityResult Availability);
+    WorkerAvailabilityResult Availability,
+    WorkContractPreview WagePreview);
 
 internal static class WorkerRosterPolicy
 {
