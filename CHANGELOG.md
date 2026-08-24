@@ -11,6 +11,7 @@
 - Delivered each complete harvest stack to the original requesting player first when they are online, on the same main farm, and have enough inventory capacity; otherwise retained deterministic classified-chest routing.
 - Added an acceptance-only ordinary-storage rejection fault so overflow, visible-drop, quarantine, and recovery-record safety can be tested without manually filling every chest and player slot.
 - Added an acceptance-only five-chest sorting fixture which proves exact-stack, same-item, same-category, empty fallback, conservation, and second-run idempotence on a disposable save.
+- Added a compile-gated multiplayer acceptance command that replays the farmhand's last exact request ID through the ordinary host-authoritative message path after host restart.
 - Kept recurring automatic chest sorting disabled until the manual contract passes live acceptance.
 
 ## 0.1.0-beta.1 - 2026-08-24

@@ -27,6 +27,9 @@ internal sealed class MultiplayerContractCoordinator
     private readonly Queue<string> HostSequenceOrder = new();
     private readonly HashSet<string> SeenClientResponses = new(StringComparer.Ordinal);
     private readonly Queue<string> ClientResponseOrder = new();
+#if EFO_MULTIPLAYER_ACCEPTANCE
+    private readonly MultiplayerAcceptanceReplayBuffer AcceptanceReplay = new();
+#endif
 
     private string HostSessionId = "";
     private long HostOrder;
@@ -116,6 +119,9 @@ internal sealed class MultiplayerContractCoordinator
             WorkerName = workerInternalName,
             Task = task
         };
+#if EFO_MULTIPLAYER_ACCEPTANCE
+        this.AcceptanceReplay.Capture(request);
+#endif
 
         if (Context.IsMainPlayer)
         {
@@ -144,6 +150,49 @@ internal sealed class MultiplayerContractCoordinator
             HUDMessage.newQuest_type));
         return true;
     }
+
+#if EFO_MULTIPLAYER_ACCEPTANCE
+    public string GetAcceptanceReplayStatus()
+    {
+        return $"Multiplayer acceptance replay: available={this.AcceptanceReplay.HasRequest}, "
+            + $"requestId={this.AcceptanceReplay.RequestId}.";
+    }
+
+    public bool TryReplayLastAcceptanceRequest()
+    {
+        if (!Context.IsWorldReady
+            || Context.IsMainPlayer
+            || !Context.IsMultiplayer
+            || this.PendingRequest is not null
+            || !this.AcceptanceReplay.TryCreateReplay(
+                Game1.player.UniqueMultiplayerID,
+                out ContractStartRequestMessage? request)
+            || request is null)
+        {
+            return false;
+        }
+
+        this.PendingRequest = request;
+        this.PendingTicks = 0;
+        if (this.ClientHostSession.HasSession)
+        {
+            this.SendMessage(
+                request,
+                MultiplayerContractProtocol.StartRequestType,
+                Game1.MasterPlayer.UniqueMultiplayerID);
+        }
+        else
+        {
+            this.SendSyncRequest();
+        }
+
+        this.Monitor.Log(
+            $"Acceptance replay sent exact request {request.RequestId} for "
+            + $"worker '{request.WorkerName}' and task {request.Task}.",
+            LogLevel.Alert);
+        return true;
+    }
+#endif
 
     public void OnSaveLoaded()
     {

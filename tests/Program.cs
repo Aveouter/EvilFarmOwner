@@ -73,6 +73,7 @@ List<(string Name, Action Test)> tests = new()
     ("emergency drop tile ordering", TestEmergencyDropTileOrdering),
     ("multiplayer request authorization", TestMultiplayerRequestAuthorization),
     ("multiplayer request replay", TestMultiplayerRequestReplay),
+    ("multiplayer acceptance replay buffer", TestMultiplayerAcceptanceReplayBuffer),
     ("multiplayer deterministic order", TestMultiplayerDeterministicOrder),
     ("multiplayer reconnect ledger", TestMultiplayerReconnectLedger),
     ("multiplayer restart recovery state", TestMultiplayerRestartRecoveryState),
@@ -1819,6 +1820,40 @@ static void TestMultiplayerRequestReplay()
     Equal(1, ledger.Count);
     Equal(true, ledger.TryGet(1, "request-a", out ContractStartResponseMessage? stored));
     Equal(1L, stored!.HostOrder);
+}
+
+static void TestMultiplayerAcceptanceReplayBuffer()
+{
+    ContractStartRequestMessage original = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        ModVersion = "0.1.0-beta.1",
+        SaveId = 445566,
+        TotalDays = 17,
+        RequestId = Guid.NewGuid().ToString("N"),
+        RequestingPlayerId = 27,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.Harvesting
+    };
+    MultiplayerAcceptanceReplayBuffer buffer = new();
+    Equal(false, buffer.HasRequest);
+    Equal(false, buffer.TryCreateReplay(27, out _));
+
+    buffer.Capture(original);
+    original.WorkerName = "ChangedAfterCapture";
+    Equal(true, buffer.HasRequest);
+    Equal(false, buffer.TryCreateReplay(99, out _));
+    Equal(true, buffer.TryCreateReplay(27, out ContractStartRequestMessage? replay));
+    Equal(false, ReferenceEquals(original, replay));
+    Equal("Leah", replay!.WorkerName);
+    Equal(original.RequestId, replay.RequestId);
+    Equal(original.SaveId, replay.SaveId);
+    Equal(original.TotalDays, replay.TotalDays);
+    Equal(original.Task, replay.Task);
+
+    replay.WorkerName = "ChangedReplay";
+    Equal(true, buffer.TryCreateReplay(27, out ContractStartRequestMessage? secondReplay));
+    Equal("Leah", secondReplay!.WorkerName);
 }
 
 static void TestMultiplayerDeterministicOrder()

@@ -36,6 +36,7 @@ dotnet run \
   --project tests/EvilFarmOwner.LogicTests.csproj \
   -p:EnableAcceptanceFaults=false \
   -p:EnableStorageSortAcceptance=false \
+  -p:EnableMultiplayerAcceptance=false \
   -p:EnableModDeploy=false \
   -p:EnableModZip=false
 
@@ -44,6 +45,7 @@ dotnet build EvilFarmOwner.csproj \
   -c Release \
   -p:EnableAcceptanceFaults=false \
   -p:EnableStorageSortAcceptance=false \
+  -p:EnableMultiplayerAcceptance=false \
   -p:EnableModDeploy=false \
   -p:EnableModZip=true
 
@@ -76,7 +78,7 @@ if ! cmp -s LICENSE <(unzip -p "$package_path" EvilFarmOwner/LICENSE); then
 fi
 
 dll_search_text="$(LC_ALL=C tr -d '\000' < "$project_root/bin/Release/net6.0/EvilFarmOwner.dll")"
-if [[ "$dll_search_text" =~ efo_work|efo_toggle|efo_status|efo_acceptance_faults|efo_storage_sort_fixture|WorkRadius|DailyWage|ClearDebris|PlantSeedsFromInventory|FertilizeEmptyDirt ]]; then
+if [[ "$dll_search_text" =~ efo_work|efo_toggle|efo_status|efo_acceptance_faults|efo_storage_sort_fixture|efo_multiplayer_acceptance|WorkRadius|DailyWage|ClearDebris|PlantSeedsFromInventory|FertilizeEmptyDirt ]]; then
   echo "Release DLL still exposes a legacy prototype or acceptance-test command/setting." >&2
   exit 1
 fi

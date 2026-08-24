@@ -7,9 +7,25 @@ This is the release-gate procedure for Issue #33. Split-screen alone is not acce
 - Use two independent Stardew Valley processes connected as a real host and farmhand, preferably on two computers.
 - Install the exact same Evil Farm Owner build on both peers and compare the SHA-256 hash of `EvilFarmOwner.dll`.
 - Use Stardew Valley 1.6.15 or later in the supported 1.6 line and SMAPI 4.0 or later.
-- Use a disposable co-op save with both players on the main farm, at least one currently available adult NPC, several dry crops, several mature crops including a trellis crop when possible, placed machines that force a detour, and enough money on each player for the displayed six-hour reservation.
+- Use a disposable co-op save with one unclaimed cabin and two distinct player IDs. Put both players on the main farm with at least one currently available adult NPC, several dry crops, several mature crops including a trellis crop when possible, placed machines that force a detour, and enough money on each player for the displayed six-hour reservation.
 - Place ordinary player chests on the main farm: one with a compatible partial stack, one with the same item at another quality, one with the same category, and one nearly full fallback chest.
 - Keep both SMAPI consoles visible and retain both logs.
+
+Build the temporary acceptance-only DLL on the exact reviewed source tree, then
+install that same DLL on both peers:
+
+```sh
+dotnet build EvilFarmOwner.csproj -t:Rebuild -c Release \
+  -p:EnableAcceptanceFaults=true \
+  -p:EnableMultiplayerAcceptance=true \
+  -p:EnableModDeploy=true \
+  -p:EnableModZip=false
+```
+
+Both consoles must print the two `ACCEPTANCE TEST BUILD` alerts. The temporary
+`efo_multiplayer_acceptance` command stores the last request created by that
+farmhand process and can resend an exact copy through the ordinary SMAPI message
+path. It does not bypass host validation or invoke a controller locally.
 
 Run `efo_netstatus` on each peer before every scenario. The host must report `role=host`; the farmhand must report `role=farmhand`; both must converge on the same non-empty session and active contract ID after acceptance.
 
@@ -67,8 +83,8 @@ The host diagnostic must also report `recoveryHealthy=True` and `quarantineHealt
 ### 6. Host save and restart replay safety
 
 1. Complete a farmhand watering, harvest, or chest-sorting contract, record its request/contract result, then let the host save normally.
-2. Quit and restart the host process, reconnect the same farmhand, and verify `efo_netstatus` shows a new host session with `recoveryHealthy=True` and a nonzero processed count.
-3. Resend the exact saved request ID from the farmhand test harness. Verify the host returns the prior accepted response/result rebound to the new session, with no new lease, crop mutation, item transfer, charge, or refund.
+2. Quit and restart only the host process. Keep the farmhand game process open, reconnect that same farmhand, and verify `efo_netstatus` shows a new host session with `recoveryHealthy=True` and a nonzero processed count.
+3. On the farmhand, run `efo_multiplayer_acceptance status`, record the request ID, then run `efo_multiplayer_acceptance replay`. Verify the host returns the prior accepted response/result rebound to the new session, with no new lease, crop mutation, item transfer, charge, or refund.
 4. Repeat with a previously rejected request and verify it remains rejected without reevaluating into a new contract.
 5. In a disposable copy, corrupt or schema-mismatch the persisted recovery record. Include a duplicate transfer ID and a produced-item total which does not equal requester inventory plus chest, overflow, and visible-drop totals. Verify the host reports `recoveryHealthy=False` and rejects all new contracts without mutating money or world state.
 6. In disposable copies created by the protocol-3 through protocol-6 development builds, retain a clean recovery ledger and load it with protocol 7. Verify the host validates and rebinds each prior response/result to the new session, reports `recoveryHealthy=True`, and an exact request replay causes no second contract, mutation, transfer, charge, or refund. A mixed or older-than-3 schema must still fail closed.
@@ -95,3 +111,8 @@ The multiplayer gate passes only when:
 - disconnect/reconnect produces one contract, one mutation, and one settlement;
 - host save/restart plus exact request replay produces no second contract, mutation, transfer, charge, or refund;
 - the tested DLL SHA-256 and mod version are recorded in the Issue #33 or PR comment.
+
+After the matrix, rebuild and deploy the ordinary production DLL with both
+acceptance switches explicitly disabled, run `./scripts/verify-release.sh`, and
+scan the deployed DLL to confirm neither `efo_acceptance_faults` nor
+`efo_multiplayer_acceptance` is present before packaging or release smoke tests.

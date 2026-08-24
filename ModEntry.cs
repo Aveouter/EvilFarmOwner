@@ -96,6 +96,15 @@ public sealed class ModEntry : Mod
             "ACCEPTANCE TEST BUILD: chest-sorting fixture setup is enabled. Use only on a disposable save.",
             LogLevel.Alert);
 #endif
+#if EFO_MULTIPLAYER_ACCEPTANCE
+        helper.ConsoleCommands.Add(
+            "efo_multiplayer_acceptance",
+            "Inspect or replay the last exact farmhand contract request. Excluded from production builds.",
+            this.HandleMultiplayerAcceptanceCommand);
+        this.Monitor.Log(
+            "ACCEPTANCE TEST BUILD: multiplayer request replay is enabled. Do not distribute this DLL.",
+            LogLevel.Alert);
+#endif
     }
 
 #if EFO_STORAGE_SORT_ACCEPTANCE
@@ -200,6 +209,35 @@ public sealed class ModEntry : Mod
             this.AcceptanceFaults.Arm(fault);
 
         this.Monitor.Log($"Acceptance faults armed: {this.AcceptanceFaults.Describe()}.", LogLevel.Alert);
+    }
+#endif
+
+#if EFO_MULTIPLAYER_ACCEPTANCE
+    private void HandleMultiplayerAcceptanceCommand(string command, string[] args)
+    {
+        if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+        {
+            this.Monitor.Log(
+                this.MultiplayerContracts?.GetAcceptanceReplayStatus()
+                    ?? "Multiplayer acceptance coordinator is unavailable.",
+                LogLevel.Info);
+            return;
+        }
+
+        if (string.Equals(args[0], "replay", StringComparison.OrdinalIgnoreCase))
+        {
+            if (this.MultiplayerContracts?.TryReplayLastAcceptanceRequest() == true)
+                return;
+
+            this.Monitor.Log(
+                "Replay requires a connected farmhand, no pending request, and one prior request from this player.",
+                LogLevel.Warn);
+            return;
+        }
+
+        this.Monitor.Log(
+            "Usage: efo_multiplayer_acceptance <status|replay>",
+            LogLevel.Info);
     }
 #endif
 

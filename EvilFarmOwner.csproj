@@ -9,6 +9,7 @@
     <Nullable>enable</Nullable>
     <EnableAcceptanceFaults Condition="'$(EnableAcceptanceFaults)' == ''">false</EnableAcceptanceFaults>
     <EnableStorageSortAcceptance Condition="'$(EnableStorageSortAcceptance)' == ''">false</EnableStorageSortAcceptance>
+    <EnableMultiplayerAcceptance Condition="'$(EnableMultiplayerAcceptance)' == ''">false</EnableMultiplayerAcceptance>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(EnableAcceptanceFaults)' == 'true'">
@@ -17,6 +18,10 @@
 
   <PropertyGroup Condition="'$(EnableStorageSortAcceptance)' == 'true'">
     <DefineConstants>$(DefineConstants);EFO_STORAGE_SORT_ACCEPTANCE</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(EnableMultiplayerAcceptance)' == 'true'">
+    <DefineConstants>$(DefineConstants);EFO_MULTIPLAYER_ACCEPTANCE</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
