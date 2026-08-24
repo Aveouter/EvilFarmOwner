@@ -7,9 +7,36 @@ internal static class ContractPreviewService
     internal const int MaximumOvertimeHours = 2;
     internal const decimal RestDayMultiplier = 3.00m;
     internal const decimal OvertimeMultiplier = 1.50m;
-    internal const decimal BaselineEfficiencyMultiplier = 1.00m;
+    internal const decimal BaselineEfficiencyMultiplier = WorkerEfficiencyProfiles.BaselineMultiplier;
 
     public static WorkContractPreview Create(int friendshipHearts, int dayOfMonth)
+    {
+        return Create(
+            friendshipHearts,
+            dayOfMonth,
+            BaselineEfficiencyMultiplier,
+            WorkerEfficiencyBackground.Baseline);
+    }
+
+    public static WorkContractPreview Create(
+        int friendshipHearts,
+        int dayOfMonth,
+        string workerName,
+        NamedFarmTask task)
+    {
+        WorkerEfficiencyProfile profile = WorkerEfficiencyProfiles.GetProfile(workerName);
+        return Create(
+            friendshipHearts,
+            dayOfMonth,
+            profile.GetMultiplier(task),
+            profile.Background);
+    }
+
+    private static WorkContractPreview Create(
+        int friendshipHearts,
+        int dayOfMonth,
+        decimal efficiencyMultiplier,
+        WorkerEfficiencyBackground efficiencyBackground)
     {
         int normalizedHearts = Math.Max(0, friendshipHearts);
         (FriendshipWageBand band, decimal friendshipMultiplier) = GetFriendshipBand(normalizedHearts);
@@ -33,7 +60,8 @@ internal static class ContractPreviewService
             dayMultiplier,
             BaseHourlyWage,
             RegularShiftHours,
-            BaselineEfficiencyMultiplier,
+            efficiencyMultiplier,
+            efficiencyBackground,
             OvertimeEnabled: false,
             OvertimeMultiplier,
             MaximumOvertimeHours,

@@ -232,7 +232,11 @@ public sealed class ModEntry : Mod
             return;
 
         int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(worker.InternalName);
-        WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
+        WorkContractPreview preview = ContractPreviewService.Create(
+            friendshipHearts,
+            Game1.dayOfMonth,
+            worker.InternalName,
+            task);
 
         Game1.activeClickableMenu = new WorkContractPreviewMenu(
             worker,

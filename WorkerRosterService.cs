@@ -6,14 +6,6 @@ namespace EvilFarmOwner;
 
 internal sealed class WorkerRosterService
 {
-    private static readonly HashSet<string> SupportedWorkerNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Abigail", "Alex", "Caroline", "Clint", "Demetrius", "Elliott", "Emily",
-        "Evelyn", "George", "Gus", "Haley", "Harvey", "Jodi", "Kent", "Leah",
-        "Lewis", "Linus", "Marnie", "Maru", "Pam", "Penny", "Pierre", "Robin",
-        "Sam", "Sebastian", "Shane", "Willy"
-    };
-
     private static readonly HashSet<string> KnownUnsupportedNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "Dwarf", "Krobus", "Sandy", "Wizard"
@@ -153,7 +145,7 @@ internal sealed class WorkerRosterService
             if (KnownUnsupportedNames.Contains(npc.Name))
                 return Ineligible(WorkerAvailabilityReason.UnsupportedCharacter);
 
-            if (!SupportedWorkerNames.Contains(npc.Name))
+            if (!WorkerEfficiencyProfiles.HasExplicitProfile(npc.Name))
                 return Unknown(WorkerAvailabilityReason.UnsupportedCustomNpc);
 
             if (Game1.isFestival())

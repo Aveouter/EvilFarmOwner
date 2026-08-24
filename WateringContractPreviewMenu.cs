@@ -180,7 +180,7 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
 
         this.DrawDetailRow(batch, rightColumnX, detailsY, columnWidth, "contract.friendship-multiplier", FormatMultiplier(this.Preview.FriendshipMultiplier));
         this.DrawDetailRow(batch, rightColumnX, detailsY + 42, columnWidth, "contract.day-multiplier", FormatMultiplier(this.Preview.DayMultiplier));
-        this.DrawDetailRow(batch, rightColumnX, detailsY + 84, columnWidth, "contract.efficiency", FormatMultiplier(this.Preview.EfficiencyMultiplier));
+        this.DrawDetailRow(batch, rightColumnX, detailsY + 84, columnWidth, "contract.efficiency", this.GetEfficiencyText());
         this.DrawDetailRow(batch, rightColumnX, detailsY + 126, columnWidth, "contract.callout", this.Translation.Get("contract.gold", new { gold = this.Preview.MinimumCalloutWage }), highlight: true);
         this.DrawDetailRow(batch, rightColumnX, detailsY + 168, columnWidth, "contract.overtime", this.Translation.Get("contract.overtime.disabled", new
         {
@@ -309,6 +309,25 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         };
 
         return this.Translation.Get(key);
+    }
+
+    private string GetEfficiencyText()
+    {
+        string reasonKey = this.Preview.EfficiencyBackground switch
+        {
+            WorkerEfficiencyBackground.Gardening => "contract.efficiency-reason.gardening",
+            WorkerEfficiencyBackground.Ranching => "contract.efficiency-reason.ranching",
+            WorkerEfficiencyBackground.OutdoorGathering => "contract.efficiency-reason.outdoors",
+            WorkerEfficiencyBackground.ManualFieldwork => "contract.efficiency-reason.manual",
+            WorkerEfficiencyBackground.FieldScience => "contract.efficiency-reason.science",
+            _ => "contract.efficiency-reason.baseline"
+        };
+
+        return this.Translation.Get("contract.efficiency.value", new
+        {
+            multiplier = FormatMultiplier(this.Preview.EfficiencyMultiplier),
+            reason = this.Translation.Get(reasonKey)
+        });
     }
 
     private static string FormatMultiplier(decimal multiplier)

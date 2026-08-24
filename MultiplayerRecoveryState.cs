@@ -19,6 +19,7 @@ internal static class MultiplayerRecoveryState
     public const string SaveDataKey = "multiplayer-recovery";
     private const int LegacyHandshakeProtocolSchemaVersion = 3;
     private const int LegacyQuarantineProtocolSchemaVersion = 4;
+    private const int LegacyPlacementProtocolSchemaVersion = 5;
 
     public static MultiplayerRecoverySaveData Create(
         string modVersion,
@@ -122,10 +123,12 @@ internal static class MultiplayerRecoveryState
     private static bool IsSupportedProtocolSchemaVersion(int protocolSchemaVersion)
     {
         // Protocol 4 only adds the reconnect sync nonce. Protocol 5 adds a nonnegative
-        // quarantine destination count which defaults to zero in older result payloads.
-        // Their persisted transaction identities remain compatible after full validation.
+        // quarantine destination count. Protocol 6 adds efficiency only to live snapshots,
+        // which are never persisted here. Persisted transaction identities remain compatible
+        // after full validation.
         return protocolSchemaVersion is LegacyHandshakeProtocolSchemaVersion
             or LegacyQuarantineProtocolSchemaVersion
+            or LegacyPlacementProtocolSchemaVersion
             or MultiplayerContractProtocol.SchemaVersion;
     }
 

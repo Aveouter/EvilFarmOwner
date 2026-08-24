@@ -117,7 +117,11 @@ internal sealed class HarvestingContractExecutionController
         }
 
         int friendshipHearts = requester.getFriendshipHeartLevelForNPC(worker.Name);
-        WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
+        WorkContractPreview preview = ContractPreviewService.Create(
+            friendshipHearts,
+            Game1.dayOfMonth,
+            worker.Name,
+            NamedFarmTask.Harvesting);
         if (requester.Money < preview.MaximumAuthorizedWage)
         {
             this.LastStartFailureKey = "contract.start.insufficient-funds";
@@ -279,7 +283,7 @@ internal sealed class HarvestingContractExecutionController
                     contract.CompletedTargets.Add(contract.CurrentTarget.TargetTile);
                 }
 
-                if (contract.PhaseTicks >= ActionDurationTicks)
+                if (contract.PhaseTicks >= contract.ActionDurationTicks)
                 {
                     contract.Lease.Worker.Sprite?.ClearAnimation();
                     this.BeginDeliveryOrReturn(contract);
@@ -397,6 +401,7 @@ internal sealed class HarvestingContractExecutionController
             contract.Requester.UniqueMultiplayerID,
             contract.Lease.Worker.Name,
             NamedFarmTask.Harvesting,
+            contract.Preview.EfficiencyMultiplier,
             contract.Phase.ToString(),
             contract.Plan.ArrivalTile.X,
             contract.Plan.ArrivalTile.Y,
@@ -2214,6 +2219,10 @@ internal sealed class HarvestingContractExecutionController
             this.Requester = requester;
             this.Lease = lease;
             this.Preview = preview;
+            this.ActionDurationTicks = WorkerEfficiencyTiming.GetActionDurationTicks(
+                HarvestingContractExecutionController.ActionDurationTicks,
+                HarvestingContractExecutionController.ActionStartTicks,
+                preview.EfficiencyMultiplier);
             this.Farm = farm;
             this.Plan = plan;
             this.CurrentTarget = plan.FirstTarget;
@@ -2224,6 +2233,7 @@ internal sealed class HarvestingContractExecutionController
         public Farmer Requester { get; }
         public NpcWorkLease Lease { get; }
         public WorkContractPreview Preview { get; }
+        public int ActionDurationTicks { get; }
         public Farm Farm { get; }
         public HarvestWorkPlan Plan { get; set; }
         public HarvestTargetPlan CurrentTarget { get; set; }
