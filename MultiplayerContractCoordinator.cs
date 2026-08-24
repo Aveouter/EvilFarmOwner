@@ -274,18 +274,18 @@ internal sealed class MultiplayerContractCoordinator
             switch (e.Type)
             {
                 case MultiplayerContractProtocol.StartRequestType when Context.IsMainPlayer:
-                {
-                    ContractStartRequestMessage request = e.ReadAs<ContractStartRequestMessage>();
-                    ContractStartResponseMessage response = this.ProcessHostRequest(request, e.FromPlayerID);
-                    if (e.FromPlayerID != Game1.player.UniqueMultiplayerID)
                     {
-                        this.SendMessage(
-                            response,
-                            MultiplayerContractProtocol.StartResponseType,
-                            e.FromPlayerID);
+                        ContractStartRequestMessage request = e.ReadAs<ContractStartRequestMessage>();
+                        ContractStartResponseMessage response = this.ProcessHostRequest(request, e.FromPlayerID);
+                        if (e.FromPlayerID != Game1.player.UniqueMultiplayerID)
+                        {
+                            this.SendMessage(
+                                response,
+                                MultiplayerContractProtocol.StartResponseType,
+                                e.FromPlayerID);
+                        }
+                        break;
                     }
-                    break;
-                }
 
                 case MultiplayerContractProtocol.StartResponseType when !Context.IsMainPlayer
                     && e.FromPlayerID == Game1.MasterPlayer.UniqueMultiplayerID:
