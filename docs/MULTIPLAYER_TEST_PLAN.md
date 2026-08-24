@@ -7,7 +7,7 @@ This is the release-gate procedure for Issue #33. Split-screen alone is not acce
 - Use two independent Stardew Valley processes connected as a real host and farmhand, preferably on two computers.
 - Install the exact same Evil Farm Owner build on both peers and compare the SHA-256 hash of `EvilFarmOwner.dll`.
 - Use Stardew Valley 1.6.15 or later in the supported 1.6 line and SMAPI 4.0 or later.
-- Use a disposable co-op save with both players on the main farm, at least one currently available adult NPC, several dry crops, one mature normal crop, and enough money on each player for the displayed six-hour reservation.
+- Use a disposable co-op save with both players on the main farm, at least one currently available adult NPC, several dry crops, several mature crops including a trellis crop when possible, placed machines that force a detour, and enough money on each player for the displayed six-hour reservation.
 - Place ordinary player chests on the main farm: one with a compatible partial stack, one with the same item at another quality, one with the same category, and one nearly full fallback chest.
 - Keep both SMAPI consoles visible and retain both logs.
 
@@ -29,11 +29,12 @@ Run `efo_netstatus` on each peer before every scenario. The host must report `ro
 
 1. Record both inventories, all eligible chest contents, overflow contents, money, mature crop state, and network status.
 2. On the farmhand, request one harvest contract.
-3. Verify both peers observe the same NPC, mature target, harvest action, delivery path, and return.
-4. Verify vanilla crop state is correct for the tested crop: a single-harvest crop is removed or a regrowing crop enters its regrowth state.
-5. Verify every exact output, quality, stack, and by-product appears once in the ranked chest route. The player inventory and shipping bin must remain unchanged.
-6. If ordinary chests cannot accept the remainder, verify it appears once in `efo_overflow`; if emergency dropping is forced, verify an explicit warning and visible exact drop.
-7. Verify only the requesting farmhand pays the reported wage once.
+3. Verify both peers observe the same NPC, deterministic mature-target sequence, harvest actions, delivery paths, and return.
+4. Verify every reachable mature crop is handled before completion. A single-harvest crop is removed and a regrowing crop enters its regrowth state.
+5. Verify the NPC routes around trellises, kegs, chests, machines, and fences; no placed object is removed, moved, replaced, or loses state.
+6. Verify every exact output, quality, stack, and by-product appears once in the ranked chest route. The player inventory and shipping bin must remain unchanged.
+7. If ordinary chests cannot accept the remainder, verify it appears once in `efo_overflow`; if emergency dropping is forced, verify an explicit warning and visible exact drop.
+8. Verify only the requesting farmhand pays the reported wage once.
 
 ### 3. Host request and simultaneous request ordering
 

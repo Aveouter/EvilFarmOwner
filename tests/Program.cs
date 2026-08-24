@@ -10,6 +10,9 @@ List<(string Name, Action Test)> tests = new()
     ("dispatched one-hour settlement", TestDispatchedSettlement),
     ("elapsed multi-hour settlement", TestElapsedMultiHourSettlement),
     ("target ordering", TestTargetOrdering),
+    ("actual path cost ordering", TestActualPathCostOrdering),
+    ("trellis detour route", TestTrellisDetourRoute),
+    ("failed interaction edge isolation", TestFailedInteractionEdgeIsolation),
     ("left entrance selection", TestLeftEntranceSelection),
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
@@ -100,20 +103,71 @@ static void TestElapsedMultiHourSettlement()
 
 static void TestTargetOrdering()
 {
-    GridPoint start = new(5, 5);
-    WateringTargetOption[] unordered =
+    FarmTaskRouteOption[] unordered =
     {
-        new(new GridPoint(9, 5), new GridPoint(8, 5)),
-        new(new GridPoint(5, 7), new GridPoint(5, 6)),
-        new(new GridPoint(4, 6), new GridPoint(5, 6)),
-        new(new GridPoint(2, 5), new GridPoint(3, 5))
+        new(new GridPoint(9, 5), new GridPoint(8, 5), PathCost: 3),
+        new(new GridPoint(5, 7), new GridPoint(5, 6), PathCost: 2),
+        new(new GridPoint(4, 6), new GridPoint(5, 6), PathCost: 2),
+        new(new GridPoint(2, 5), new GridPoint(3, 5), PathCost: 3)
     };
 
-    IReadOnlyList<WateringTargetOption> ordered = WateringTargetSelection.Order(start, unordered);
+    IReadOnlyList<FarmTaskRouteOption> ordered = FarmTaskRouteSelection.Order(unordered);
     Equal(new GridPoint(4, 6), ordered[0].Target);
     Equal(new GridPoint(5, 7), ordered[1].Target);
     Equal(new GridPoint(2, 5), ordered[2].Target);
     Equal(new GridPoint(9, 5), ordered[3].Target);
+}
+
+static void TestActualPathCostOrdering()
+{
+    FarmTaskRouteOption[] options =
+    {
+        new(new GridPoint(2, 0), new GridPoint(1, 0), PathCost: 10),
+        new(new GridPoint(6, 0), new GridPoint(5, 0), PathCost: 5),
+        new(new GridPoint(5, 1), new GridPoint(5, 0), PathCost: 5)
+    };
+
+    IReadOnlyList<FarmTaskRouteOption> ordered = FarmTaskRouteSelection.Order(options);
+    Equal(new GridPoint(6, 0), ordered[0].Target);
+    Equal(new GridPoint(5, 1), ordered[1].Target);
+    Equal(new GridPoint(2, 0), ordered[2].Target);
+}
+
+static void TestTrellisDetourRoute()
+{
+    HashSet<GridPoint> blocked = new()
+    {
+        new(3, 0),
+        new(3, 1),
+        new(3, 2),
+        new(3, 3)
+    };
+    GridRouteMap routes = GridRouteMap.Build(
+        width: 7,
+        height: 5,
+        start: new GridPoint(0, 2),
+        isPassable: tile => !blocked.Contains(tile));
+
+    Equal(false, routes.IsReachable(new GridPoint(3, 2)));
+    Equal(true, routes.TryGetDistance(new GridPoint(4, 2), out int distance));
+    Equal(8, distance);
+    Equal(true, routes.TryGetPath(new GridPoint(4, 2), out IReadOnlyList<GridPoint> path));
+    Equal(new GridPoint(0, 2), path[0]);
+    Equal(new GridPoint(4, 2), path[^1]);
+    Equal(9, path.Count);
+}
+
+static void TestFailedInteractionEdgeIsolation()
+{
+    FarmTaskRouteEdge blocked = new(
+        new GridPoint(8, 8),
+        new GridPoint(8, 9));
+    HashSet<FarmTaskRouteEdge> failed = new() { blocked };
+
+    Equal(true, failed.Contains(blocked));
+    Equal(false, failed.Contains(new FarmTaskRouteEdge(
+        new GridPoint(8, 8),
+        new GridPoint(7, 8))));
 }
 
 static void TestLeftEntranceSelection()

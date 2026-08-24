@@ -25,6 +25,7 @@ internal sealed class NpcWorkLease
     private readonly float OriginalAddedSpeed;
     private readonly int OriginalBlockedInterval;
     private readonly bool OriginalIsCharging;
+    private readonly bool OriginalWillDestroyObjectsUnderfoot;
     private readonly string Token;
     private bool Released;
 
@@ -40,11 +41,15 @@ internal sealed class NpcWorkLease
         this.OriginalAddedSpeed = worker.addedSpeed;
         this.OriginalBlockedInterval = worker.blockedInterval;
         this.OriginalIsCharging = worker.isCharging;
+        this.OriginalWillDestroyObjectsUnderfoot = worker.willDestroyObjectsUnderfoot;
         this.StartTime = Game1.timeOfDay;
         this.StartTotalDays = Game1.Date.TotalDays;
         this.Token = Guid.NewGuid().ToString("N");
 
         worker.modData[LeaseDataKey] = this.Token;
+        worker.willDestroyObjectsUnderfoot = false;
+        worker.isCharging = false;
+        worker.blockedInterval = 0;
     }
 
     public NPC Worker { get; }
@@ -77,6 +82,9 @@ internal sealed class NpcWorkLease
 
     public void AttachController(PathFindController controller)
     {
+        if (!controller.nonDestructivePathing)
+            throw new InvalidOperationException("Work-lease controllers must use non-destructive pathing.");
+
         this.OwnedControllers.Add(controller);
         this.Worker.controller = controller;
     }
@@ -127,6 +135,7 @@ internal sealed class NpcWorkLease
         this.Worker.addedSpeed = this.OriginalAddedSpeed;
         this.Worker.blockedInterval = this.OriginalBlockedInterval;
         this.Worker.isCharging = this.OriginalIsCharging;
+        this.Worker.willDestroyObjectsUnderfoot = this.OriginalWillDestroyObjectsUnderfoot;
         this.Worker.modData.Remove(LeaseDataKey);
         this.Released = true;
 

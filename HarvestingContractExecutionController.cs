@@ -15,6 +15,7 @@ internal sealed class HarvestingContractExecutionController
     internal const string OverflowInventoryId = "Aveouter.EvilFarmOwner/ContractOverflow";
 
     private const int LatestStartTime = 1600;
+    private const int StopAcquiringTime = 2100;
     private const int HardStopTime = 2200;
     private const int ActionStartTicks = 8;
     private const int ActionDurationTicks = 40;
@@ -124,7 +125,7 @@ internal sealed class HarvestingContractExecutionController
             worker.Halt();
             worker.Sprite?.ClearAnimation();
 
-            if (worker.TilePoint == planResult.Plan.Target.InteractionTile)
+            if (worker.TilePoint == planResult.Plan.FirstTarget.InteractionTile)
             {
                 this.OnArrivedAtTarget(worker, mainFarm);
                 contract.Dispatched = true;
@@ -140,8 +141,9 @@ internal sealed class HarvestingContractExecutionController
 
             PathFindController outbound = this.CreatePathController(
                 contract,
-                planResult.Plan.Target.InteractionTile,
-                planResult.Plan.Target.FacingDirection,
+                planResult.Plan.FirstTarget.Path,
+                planResult.Plan.FirstTarget.InteractionTile,
+                planResult.Plan.FirstTarget.FacingDirection,
                 this.OnArrivedAtTarget);
             contract.Controller = outbound;
             lease.AttachController(outbound);
@@ -192,9 +194,10 @@ internal sealed class HarvestingContractExecutionController
                 {
                     contract.ActionApplied = true;
                     if (this.TryApplyHarvest(contract))
-                        contract.HarvestedTargets = 1;
+                        contract.HarvestedTargets++;
                     else
-                        contract.SkippedTargets = 1;
+                        contract.SkippedTargets++;
+                    contract.CompletedTargets.Add(contract.CurrentTarget.TargetTile);
                 }
 
                 if (contract.PhaseTicks >= ActionDurationTicks)
@@ -217,8 +220,7 @@ internal sealed class HarvestingContractExecutionController
                 if (contract.PhaseTicks >= MaximumOverflowWaitTicks)
                 {
                     this.DropCargoVisibly(contract, "persistent overflow stayed locked until timeout");
-                    contract.Phase = HarvestContractPhase.Returned;
-                    contract.PhaseTicks = 0;
+                    this.BeginNextOrReturn(contract);
                 }
                 else if (!contract.OverflowLockRequested
                     && contract.PhaseTicks % OverflowRetryIntervalTicks == 0)
@@ -230,8 +232,8 @@ internal sealed class HarvestingContractExecutionController
             case HarvestContractPhase.Returned:
                 this.FinishContract(
                     contract,
-                    contract.HarvestedTargets == 1 && contract.Cargo.Count == 0,
-                    contract.HarvestedTargets == 1
+                    contract.HarvestedTargets > 0 && contract.Cargo.Count == 0,
+                    contract.HarvestedTargets > 0
                         ? null
                         : "harvest.failure.target-invalidated");
                 break;
@@ -265,8 +267,8 @@ internal sealed class HarvestingContractExecutionController
             contract.Lease.Worker.Name,
             NamedFarmTask.Harvesting,
             contract.Phase.ToString(),
-            contract.Plan.Target.TargetTile.X,
-            contract.Plan.Target.TargetTile.Y,
+            contract.CurrentTarget.TargetTile.X,
+            contract.CurrentTarget.TargetTile.Y,
             contract.Preview.MaximumAuthorizedWage,
             contract.Lease.StartTime,
             contract.HarvestedTargets,
@@ -290,12 +292,7 @@ internal sealed class HarvestingContractExecutionController
     {
         if (contract.PhaseTicks > MaximumTravelTicks)
         {
-            this.FinishContract(
-                contract,
-                succeeded: false,
-                contract.Phase == HarvestContractPhase.Returning
-                    ? "contract.failure.return-timeout"
-                    : "contract.failure.travel-timeout");
+            this.HandleInterruptedTravel(contract, timedOut: true);
             return;
         }
 
@@ -308,13 +305,38 @@ internal sealed class HarvestingContractExecutionController
         }
 
         if (contract.PhaseTicks > 1 && contract.Lease.Worker.controller is null)
+            this.HandleInterruptedTravel(contract, timedOut: false);
+    }
+
+    private void HandleInterruptedTravel(ActiveHarvestContract contract, bool timedOut)
+    {
+        if (contract.Lease.Worker.controller is not null
+            && ReferenceEquals(contract.Lease.Worker.controller, contract.Controller))
+            contract.Lease.Worker.controller = null;
+        contract.Lease.Worker.Halt();
+
+        switch (contract.Phase)
         {
-            this.FinishContract(
-                contract,
-                succeeded: false,
-                contract.Phase == HarvestContractPhase.Returning
-                    ? "contract.failure.return-interrupted"
-                    : "contract.failure.path-interrupted");
+            case HarvestContractPhase.TravelingToTarget:
+                contract.FailedEdges.Add(WateringTargetPlanner.ToEdge(
+                    contract.CurrentTarget.TargetTile,
+                    contract.CurrentTarget.InteractionTile));
+                this.BeginNextOrReturn(contract);
+                break;
+
+            case HarvestContractPhase.TravelingToChest:
+                this.MarkCurrentChestAttempted(contract);
+                this.BeginDeliveryOrReturn(contract);
+                break;
+
+            case HarvestContractPhase.Returning:
+                this.FinishContract(
+                    contract,
+                    succeeded: false,
+                    timedOut
+                        ? "contract.failure.return-timeout"
+                        : "contract.failure.return-interrupted");
+                break;
         }
     }
 
@@ -330,7 +352,7 @@ internal sealed class HarvestingContractExecutionController
         contract.Phase = HarvestContractPhase.Acting;
         contract.PhaseTicks = 0;
         contract.Lease.Worker.Halt();
-        contract.Lease.Worker.faceDirection(contract.Plan.Target.FacingDirection);
+        contract.Lease.Worker.faceDirection(contract.CurrentTarget.FacingDirection);
         this.StartHarvestAnimation(contract.Lease.Worker);
     }
 
@@ -376,10 +398,10 @@ internal sealed class HarvestingContractExecutionController
 
     private bool TryApplyHarvest(ActiveHarvestContract contract)
     {
-        Vector2 targetTile = new(contract.Plan.Target.TargetTile.X, contract.Plan.Target.TargetTile.Y);
+        Vector2 targetTile = new(contract.CurrentTarget.TargetTile.X, contract.CurrentTarget.TargetTile.Y);
         if (!HarvestTargetPlanner.IsMatureSupportedCrop(contract.Farm, targetTile)
             || contract.Lease.Worker.currentLocation != contract.Farm
-            || contract.Lease.Worker.TilePoint != contract.Plan.Target.InteractionTile
+            || contract.Lease.Worker.TilePoint != contract.CurrentTarget.InteractionTile
             || !contract.Farm.terrainFeatures.TryGetValue(targetTile, out TerrainFeature? feature)
             || feature is not HoeDirt dirt
             || dirt.crop is not { } crop)
@@ -388,8 +410,8 @@ internal sealed class HarvestingContractExecutionController
         bool destroyAfterHarvest = !crop.RegrowsAfterHarvest();
         ContractHarvestCollector collector = new(contract.Farm, contract.Lease.Worker.Position);
         bool harvested = crop.harvest(
-            contract.Plan.Target.TargetTile.X,
-            contract.Plan.Target.TargetTile.Y,
+            contract.CurrentTarget.TargetTile.X,
+            contract.CurrentTarget.TargetTile.Y,
             dirt,
             collector);
         if (!harvested || collector.Items.Count == 0)
@@ -421,7 +443,7 @@ internal sealed class HarvestingContractExecutionController
 
         if (contract.Cargo.Count == 0)
         {
-            this.BeginReturn(contract, depositOverflowOnReturn: false);
+            this.BeginNextOrReturn(contract);
             return;
         }
 
@@ -436,7 +458,7 @@ internal sealed class HarvestingContractExecutionController
             attempted);
         if (route is null)
         {
-            this.BeginReturn(contract, depositOverflowOnReturn: true);
+            this.BeginOverflowDeposit(contract);
             return;
         }
 
@@ -453,6 +475,7 @@ internal sealed class HarvestingContractExecutionController
 
             PathFindController controller = this.CreatePathController(
                 contract,
+                route.Path,
                 route.InteractionTile,
                 GetFacingDirection(route.InteractionTile, route.ChestTile),
                 this.OnArrivedAtChest);
@@ -550,6 +573,74 @@ internal sealed class HarvestingContractExecutionController
         this.BeginDeliveryOrReturn(contract);
     }
 
+    private void BeginNextOrReturn(ActiveHarvestContract contract)
+    {
+        if (!ReferenceEquals(this.ActiveContract, contract))
+            return;
+
+        if (contract.Cargo.Count > 0)
+        {
+            this.BeginDeliveryOrReturn(contract);
+            return;
+        }
+
+        if (Game1.timeOfDay >= StopAcquiringTime)
+        {
+            contract.RemainingTargets = HarvestTargetPlanner.CountRemainingMatureCrops(
+                contract.Farm,
+                contract.CompletedTargets);
+            this.BeginReturn(contract, depositOverflowOnReturn: false);
+            return;
+        }
+
+        HarvestTargetSearchResult next = this.TargetPlanner.TryFindNext(
+            contract.Farm,
+            contract.Lease.Worker,
+            contract.Lease.Worker.TilePoint,
+            contract.Plan.ArrivalTile,
+            contract.CompletedTargets,
+            contract.FailedEdges);
+        if (!next.IsSuccess || next.Target is null)
+        {
+            if (next.Failure == HarvestPlanFailure.NoReachableCrop)
+                contract.UnreachableTargets += next.CandidateTargetCount;
+            this.BeginReturn(contract, depositOverflowOnReturn: false);
+            return;
+        }
+
+        try
+        {
+            contract.CurrentTarget = next.Target;
+            contract.ActionApplied = false;
+            contract.Phase = HarvestContractPhase.TravelingToTarget;
+            contract.PhaseTicks = 0;
+            if (contract.Lease.Worker.TilePoint == next.Target.InteractionTile)
+            {
+                this.OnArrivedAtTarget(contract.Lease.Worker, contract.Farm);
+                return;
+            }
+
+            PathFindController controller = this.CreatePathController(
+                contract,
+                next.Target.Path,
+                next.Target.InteractionTile,
+                next.Target.FacingDirection,
+                this.OnArrivedAtTarget);
+            contract.Controller = controller;
+            contract.Lease.AttachController(controller);
+        }
+        catch (Exception ex)
+        {
+            contract.FailedEdges.Add(WateringTargetPlanner.ToEdge(
+                next.Target.TargetTile,
+                next.Target.InteractionTile));
+            this.Monitor.Log(
+                $"Worker '{contract.Lease.Worker.Name}' could not start the next harvest path: {ex.Message}",
+                LogLevel.Warn);
+            this.BeginNextOrReturn(contract);
+        }
+    }
+
     private void BeginReturn(ActiveHarvestContract contract, bool depositOverflowOnReturn)
     {
         if (!ReferenceEquals(this.ActiveContract, contract))
@@ -571,11 +662,24 @@ internal sealed class HarvestingContractExecutionController
 
         try
         {
+            if (!FarmNavigationMap.TryBuild(
+                    contract.Farm,
+                    contract.Lease.Worker,
+                    contract.Lease.Worker.TilePoint,
+                    this.Monitor,
+                    out GridRouteMap? routes)
+                || routes is null
+                || !routes.TryGetPath(
+                    new GridPoint(contract.Plan.ArrivalTile.X, contract.Plan.ArrivalTile.Y),
+                    out IReadOnlyList<GridPoint> gridPath))
+                throw new InvalidOperationException("No object-safe harvest return path to the farm entrance.");
+
             contract.CurrentChestRoute = null;
             contract.Phase = HarvestContractPhase.Returning;
             contract.PhaseTicks = 0;
             PathFindController returning = this.CreatePathController(
                 contract,
+                FarmNavigationMap.ToPath(gridPath),
                 contract.Plan.ArrivalTile,
                 finalFacingDirection: Game1.left,
                 this.OnReturnedToArrival);
@@ -591,21 +695,21 @@ internal sealed class HarvestingContractExecutionController
 
     private PathFindController CreatePathController(
         ActiveHarvestContract contract,
+        Stack<Point> path,
         Point destination,
         int finalFacingDirection,
         PathFindController.endBehavior onArrived)
     {
         PathFindController controller = new(
-            contract.Lease.Worker,
+            new Stack<Point>(path.Reverse()),
             contract.Farm,
-            PathFindController.isAtEndPoint,
-            finalFacingDirection,
-            onArrived,
-            10000,
-            destination,
-            clearMarriageDialogues: false)
+            contract.Lease.Worker,
+            destination)
         {
-            nonDestructivePathing = true
+            finalFacingDirection = finalFacingDirection,
+            endBehaviorFunction = onArrived,
+            nonDestructivePathing = true,
+            NPCSchedule = true
         };
 
         if (controller.pathToEndPoint is not { Count: > 0 })
@@ -679,6 +783,10 @@ internal sealed class HarvestingContractExecutionController
                 this.Translation.Get("harvest.hud.completed", new
                 {
                     worker = contract.Lease.Worker.displayName,
+                    harvested = contract.HarvestedTargets,
+                    skipped = contract.SkippedTargets,
+                    unreachable = contract.UnreachableTargets,
+                    remaining = contract.RemainingTargets,
                     items,
                     chest = contract.ChestDeliveredItems,
                     overflow = contract.OverflowItems,
@@ -699,6 +807,10 @@ internal sealed class HarvestingContractExecutionController
             {
                 worker = contract.Lease.Worker.displayName,
                 reason,
+                harvested = contract.HarvestedTargets,
+                skipped = contract.SkippedTargets,
+                unreachable = contract.UnreachableTargets,
+                remaining = contract.RemainingTargets,
                 items,
                 chest = contract.ChestDeliveredItems,
                 overflow = contract.OverflowItems,
@@ -779,14 +891,12 @@ internal sealed class HarvestingContractExecutionController
         try
         {
             this.StoreCargoInOverflow(contract);
-            contract.Phase = HarvestContractPhase.Returned;
-            contract.PhaseTicks = 0;
+            this.BeginNextOrReturn(contract);
         }
         catch (Exception ex)
         {
             this.DropCargoVisibly(contract, $"persistent harvest overflow failed after locking: {ex}");
-            contract.Phase = HarvestContractPhase.Returned;
-            contract.PhaseTicks = 0;
+            this.BeginNextOrReturn(contract);
         }
         finally
         {
@@ -984,6 +1094,7 @@ internal sealed class HarvestingContractExecutionController
             this.Preview = preview;
             this.Farm = farm;
             this.Plan = plan;
+            this.CurrentTarget = plan.FirstTarget;
         }
 
         public Guid Id { get; }
@@ -993,6 +1104,9 @@ internal sealed class HarvestingContractExecutionController
         public WorkContractPreview Preview { get; }
         public Farm Farm { get; }
         public HarvestWorkPlan Plan { get; }
+        public HarvestTargetPlan CurrentTarget { get; set; }
+        public HashSet<Point> CompletedTargets { get; } = new();
+        public HashSet<FarmTaskRouteEdge> FailedEdges { get; } = new();
         public HarvestTransferLedger TransferLedger { get; } = new();
         public List<HarvestCargoEntry> Cargo { get; } = new();
         public List<HarvestItemSnapshot> HarvestedItems { get; } = new();
@@ -1006,6 +1120,8 @@ internal sealed class HarvestingContractExecutionController
         public bool OverflowLockRequested { get; set; }
         public int HarvestedTargets { get; set; }
         public int SkippedTargets { get; set; }
+        public int UnreachableTargets { get; set; }
+        public int RemainingTargets { get; set; }
         public int ChestDeliveredItems { get; set; }
         public int OverflowItems { get; set; }
         public int DroppedItems { get; set; }
