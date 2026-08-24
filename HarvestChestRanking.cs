@@ -47,6 +47,23 @@ internal sealed record HarvestChestOption(
     public bool CanFullyAccept => this.AcceptableCapacity >= this.RequestedStack;
 }
 
+internal readonly record struct HarvestChestRouteKey(
+    GridPoint ChestTile,
+    GridPoint InteractionTile);
+
+internal static class HarvestChestRouteAttemptPolicy
+{
+    public static bool IsExcluded(
+        GridPoint chestTile,
+        GridPoint interactionTile,
+        IReadOnlySet<GridPoint> attemptedChestTiles,
+        IReadOnlySet<HarvestChestRouteKey> attemptedRoutes)
+    {
+        return attemptedChestTiles.Contains(chestTile)
+            || attemptedRoutes.Contains(new HarvestChestRouteKey(chestTile, interactionTile));
+    }
+}
+
 internal static class HarvestChestRanking
 {
     public static IReadOnlyList<HarvestChestOption> Order(IEnumerable<HarvestChestOption> options)

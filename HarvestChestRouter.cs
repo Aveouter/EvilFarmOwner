@@ -37,12 +37,16 @@ internal sealed class HarvestChestRouter
         NPC worker,
         Point startTile,
         Item item,
-        IReadOnlySet<Point> attemptedChestTiles)
+        IReadOnlySet<Point> attemptedChestTiles,
+        IReadOnlySet<HarvestChestRouteKey> attemptedRoutes)
     {
         if (!FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
             || routes is null)
             return null;
 
+        HashSet<GridPoint> attemptedChestGrids = attemptedChestTiles
+            .Select(tile => new GridPoint(tile.X, tile.Y))
+            .ToHashSet();
         List<(HarvestChestOption Option, Chest Chest, Stack<Point> Path)> candidates = new();
         foreach (KeyValuePair<Vector2, SObject> pair in farm.objects.Pairs)
         {
@@ -50,8 +54,7 @@ internal sealed class HarvestChestRouter
                 continue;
 
             Point chestTile = new((int)pair.Key.X, (int)pair.Key.Y);
-            if (attemptedChestTiles.Contains(chestTile))
-                continue;
+            GridPoint chestGrid = new(chestTile.X, chestTile.Y);
 
             int acceptableCapacity = GetAcceptableCapacity(chest, item);
             if (acceptableCapacity < item.Stack)
@@ -66,13 +69,18 @@ internal sealed class HarvestChestRouter
             {
                 Point interaction = new(chestTile.X + offset.X, chestTile.Y + offset.Y);
                 GridPoint interactionGrid = new(interaction.X, interaction.Y);
-                if (!routes.TryGetDistance(interactionGrid, out int distance)
+                if (HarvestChestRouteAttemptPolicy.IsExcluded(
+                        chestGrid,
+                        interactionGrid,
+                        attemptedChestGrids,
+                        attemptedRoutes)
+                    || !routes.TryGetDistance(interactionGrid, out int distance)
                     || !routes.TryGetPath(interactionGrid, out IReadOnlyList<GridPoint> gridPath))
                     continue;
 
                 candidates.Add((
                     new HarvestChestOption(
-                        new GridPoint(chestTile.X, chestTile.Y),
+                        chestGrid,
                         new GridPoint(interaction.X, interaction.Y),
                         matchKind.Value,
                         acceptableCapacity,

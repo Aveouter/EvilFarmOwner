@@ -43,6 +43,7 @@ List<(string Name, Action Test)> tests = new()
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
     ("harvest stable category destination", TestHarvestStableCategoryDestination),
     ("harvest empty chest capacity fallback", TestHarvestEmptyChestCapacityFallback),
+    ("harvest chest route attempt isolation", TestHarvestChestRouteAttemptIsolation),
     ("storage sort classification priority", TestStorageSortClassificationPriority),
     ("storage sort category purity", TestStorageSortCategoryPurity),
     ("storage sort stable tie", TestStorageSortStableTie),
@@ -775,6 +776,36 @@ static void TestHarvestEmptyChestCapacityFallback()
 
     IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
     Equal(new GridPoint(8, 8), ordered[0].ChestTile);
+}
+
+static void TestHarvestChestRouteAttemptIsolation()
+{
+    GridPoint chest = new(12, 8);
+    GridPoint south = new(12, 9);
+    GridPoint west = new(11, 8);
+    HashSet<GridPoint> attemptedChests = new();
+    HashSet<HarvestChestRouteKey> attemptedRoutes = new()
+    {
+        new(chest, south)
+    };
+
+    Equal(true, HarvestChestRouteAttemptPolicy.IsExcluded(
+        chest,
+        south,
+        attemptedChests,
+        attemptedRoutes));
+    Equal(false, HarvestChestRouteAttemptPolicy.IsExcluded(
+        chest,
+        west,
+        attemptedChests,
+        attemptedRoutes));
+
+    attemptedChests.Add(chest);
+    Equal(true, HarvestChestRouteAttemptPolicy.IsExcluded(
+        chest,
+        west,
+        attemptedChests,
+        attemptedRoutes));
 }
 
 static void TestStorageSortClassificationPriority()
