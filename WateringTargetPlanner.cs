@@ -23,6 +23,7 @@ internal sealed record WateringTargetPlan(
 
 internal sealed record WateringWorkPlan(
     Point ArrivalTile,
+    FarmBoundarySide ArrivalSide,
     WateringTargetPlan FirstTarget);
 
 internal sealed record WateringTargetSearchResult(
@@ -43,7 +44,7 @@ internal sealed record WateringPlanResult(
 internal sealed class WateringTargetPlanner
 {
     private const int MaximumSupportedMapDimension = 255;
-    private const int MaximumArrivalPathChecks = 32;
+    private const int MaximumArrivalPathChecksPerSide = 8;
     private static readonly Point[] InteractionOffsets =
     {
         new(0, 1),
@@ -67,14 +68,18 @@ internal sealed class WateringTargetPlanner
             return new WateringPlanResult(null, WateringPlanFailure.UnsupportedFarmMap);
 
         bool foundSafeArrival = false;
-        int checkedPaths = 0;
+        Dictionary<FarmBoundarySide, int> checkedPathsBySide = new();
         WateringPlanFailure lastFailure = WateringPlanFailure.NoReachableCrop;
         foreach (GridPoint candidate in FarmEntranceSelection.OrderBoundaryArrivalCandidates(
                      width,
                      height,
-                     farm.warps.Select(warp => new GridPoint(warp.X, warp.Y)),
-                     requiredSide: FarmEntranceSelection.FixedWorkerEntranceSide))
+                     farm.warps.Select(warp => new GridPoint(warp.X, warp.Y))))
         {
+            FarmBoundarySide arrivalSide = FarmEntranceSelection.GetNearestBoundarySide(width, height, candidate);
+            int checkedOnSide = checkedPathsBySide.GetValueOrDefault(arrivalSide);
+            if (checkedOnSide >= MaximumArrivalPathChecksPerSide)
+                continue;
+
             Vector2 candidateTile = new(candidate.X, candidate.Y);
             if (farm.warps.Any(warp => warp.X == candidate.X && warp.Y == candidate.Y)
                 || farm.doors.ContainsKey(new Point(candidate.X, candidate.Y))
@@ -82,8 +87,7 @@ internal sealed class WateringTargetPlanner
                 continue;
 
             foundSafeArrival = true;
-            if (++checkedPaths > MaximumArrivalPathChecks)
-                break;
+            checkedPathsBySide[arrivalSide] = checkedOnSide + 1;
 
             Point arrivalTile = new(candidate.X, candidate.Y);
             WateringTargetSearchResult firstTarget = this.TryFindNext(
@@ -96,7 +100,7 @@ internal sealed class WateringTargetPlanner
             if (firstTarget.IsSuccess && firstTarget.Target is not null)
             {
                 return new WateringPlanResult(
-                    new WateringWorkPlan(arrivalTile, firstTarget.Target),
+                    new WateringWorkPlan(arrivalTile, arrivalSide, firstTarget.Target),
                     WateringPlanFailure.None);
             }
 

@@ -12,10 +12,9 @@ internal static class FarmEntranceSelection
 {
     private const int DefaultSearchRadius = 8;
 
-    // The standard farm's road/BusStop transition is the fixed worker entrance
-    // selected by the product flow. It is the east map boundary even though the
-    // Chinese UI names it the familiar "left-side entrance".
-    public const FarmBoundarySide FixedWorkerEntranceSide = FarmBoundarySide.East;
+    // The standard farm's road/BusStop transition is on the right/east boundary.
+    // Other genuine boundary warps remain safe fallbacks for blocked/custom farms.
+    public const FarmBoundarySide PreferredWorkerEntranceSide = FarmBoundarySide.East;
 
     /// <summary>
     /// Enumerate visible arrival candidates around genuine map-boundary warps without
@@ -25,29 +24,31 @@ internal static class FarmEntranceSelection
         int mapWidth,
         int mapHeight,
         IEnumerable<GridPoint> warpTiles,
-        int searchRadius = DefaultSearchRadius,
-        FarmBoundarySide? requiredSide = null)
+        int searchRadius = DefaultSearchRadius)
     {
         if (mapWidth <= 0 || mapHeight <= 0 || searchRadius < 0)
             return Array.Empty<GridPoint>();
 
-        GridPoint[] anchors = warpTiles
+        (GridPoint Tile, FarmBoundarySide Side)[] anchors = warpTiles
             .Where(tile => IsBoundaryWarp(tile, mapWidth, mapHeight))
-            .Where(tile => requiredSide is null
-                || GetNearestBoundarySide(mapWidth, mapHeight, tile) == requiredSide)
-            .Select(tile => new GridPoint(
-                Math.Clamp(tile.X, 0, mapWidth - 1),
-                Math.Clamp(tile.Y, 0, mapHeight - 1)))
+            .Select(tile => (
+                Tile: new GridPoint(
+                    Math.Clamp(tile.X, 0, mapWidth - 1),
+                    Math.Clamp(tile.Y, 0, mapHeight - 1)),
+                Side: GetNearestBoundarySide(mapWidth, mapHeight, tile)))
             .Distinct()
+            .OrderBy(anchor => GetEntrancePriority(anchor.Side))
+            .ThenBy(anchor => anchor.Tile.Y)
+            .ThenBy(anchor => anchor.Tile.X)
             .ToArray();
         if (anchors.Length == 0)
             return Array.Empty<GridPoint>();
 
         List<GridPoint> ordered = new();
         HashSet<GridPoint> seen = new();
-        for (int distance = 0; distance <= searchRadius; distance++)
+        foreach ((GridPoint anchor, FarmBoundarySide _) in anchors)
         {
-            foreach (GridPoint anchor in anchors)
+            for (int distance = 0; distance <= searchRadius; distance++)
             {
                 foreach (GridPoint candidate in EnumerateRing(anchor, distance))
                 {
@@ -64,6 +65,20 @@ internal static class FarmEntranceSelection
         }
 
         return ordered;
+    }
+
+    public static int GetEntrancePriority(FarmBoundarySide side)
+    {
+        if (side == PreferredWorkerEntranceSide)
+            return 0;
+
+        return side switch
+        {
+            FarmBoundarySide.South => 1,
+            FarmBoundarySide.North => 2,
+            FarmBoundarySide.West => 3,
+            _ => int.MaxValue
+        };
     }
 
     public static FarmBoundarySide GetNearestBoundarySide(

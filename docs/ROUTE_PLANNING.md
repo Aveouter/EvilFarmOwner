@@ -1,8 +1,8 @@
 # Farm Work Route Planning
 
-Named watering and harvesting contracts dispatch the leased NPC only at the fixed main road/BusStop farm entrance (called the left-side entrance in the Chinese UI). They do not reuse the NPC's vanilla schedule path because vanilla NPC movement may clear player-placed objects when blocked.
+Named watering and harvesting contracts prefer the right/east main-road (Bus Stop) entrance, then fall back to other genuine farm-boundary entrances when the preferred side cannot provide a safe round trip. They do not reuse the NPC's vanilla schedule path because vanilla NPC movement may clear player-placed objects when blocked.
 
-The arrival planner reads only the farm map's east-boundary main-road warp, clamps its off-map source tile to a visible edge anchor, and performs a bounded search around that entrance. South, north, farmhouse, greenhouse, cave, and custom-map transfers are not fallback entrances. Dispatch is committed only after the worker is present at the planned farm-edge tile and an object-safe route to a real target has been found.
+The arrival planner reads genuine map-boundary warps, clamps each off-map source tile to a visible edge anchor, and orders them right/east, bottom/south, top/north, then left/west. It performs at most eight safe path checks per side, so a blocked preferred entrance cannot consume the entire search budget. Farmhouse, greenhouse, cave, and other interior transfers are never worker entrances. Dispatch is committed only after the worker is present at the selected farm-edge tile and an object-safe route to a real target and back to that same entrance has been found.
 
 ## Safety invariants
 
@@ -10,7 +10,7 @@ The arrival planner reads only the farm map's east-boundary main-road warp, clam
 - The work lease disables `willDestroyObjectsUnderfoot`, charging, and accumulated blocked movement for the full contract, then restores the original values.
 - Every attached path controller must use `nonDestructivePathing`; the lease rejects any controller which does not.
 - Contract travel completes as soon as the worker enters the planned interaction tile, then aligns the worker to that tile's canonical pixel position before the next route starts. This avoids both the vanilla controller's final centering pin and a half-entered tile blocking the following route.
-- The dispatch HUD identifies the fixed entrance so an off-screen arrival is explicit instead of looking like a missing worker.
+- The dispatch HUD identifies the actual selected entrance so a fallback arrival is explicit instead of looking like a missing worker.
 - A target tile and its interaction tile are separate. A trellis crop can be acted on from a reachable cardinal neighbor without treating the crop tile as walkable.
 - Interaction tiles are accepted from the live collision route, not `CanSpawnCharacterHere`. The latter rejects ordinary occupied HoeDirt even though Stardew marks non-trellis crops as passable, which previously made the interior of dense fields incorrectly unreachable. Raised-seed trellises remain blocked by `HoeDirt.isPassable` for ordinary NPCs.
 - A route which becomes blocked is recorded as a failed target/interaction edge. The planner may try another side of the same crop, but it cannot retry the same failed edge indefinitely.

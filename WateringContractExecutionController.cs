@@ -126,7 +126,8 @@ internal sealed class WateringContractExecutionController
             worker.Halt();
             worker.Sprite?.ClearAnimation();
             this.Monitor.Log(
-                $"Dispatching watering worker '{worker.Name}' from visible farm-edge tile {planResult.Plan.ArrivalTile}.",
+                $"Dispatching watering worker '{worker.Name}' from {planResult.Plan.ArrivalSide} "
+                + $"farm-boundary tile {planResult.Plan.ArrivalTile}.",
                 LogLevel.Debug);
 
             if (worker.TilePoint == planResult.Plan.FirstTarget.InteractionTile)
@@ -138,7 +139,7 @@ internal sealed class WateringContractExecutionController
                     {
                         worker = worker.displayName,
                         gold = preview.MaximumAuthorizedWage,
-                        entrance = this.GetArrivalDescription()
+                        entrance = this.GetArrivalDescription(contract.Plan.ArrivalSide)
                     }),
                     HUDMessage.newQuest_type));
                 return true;
@@ -160,7 +161,7 @@ internal sealed class WateringContractExecutionController
                 {
                     worker = worker.displayName,
                     gold = preview.MaximumAuthorizedWage,
-                    entrance = this.GetArrivalDescription()
+                    entrance = this.GetArrivalDescription(contract.Plan.ArrivalSide)
                 }),
                 HUDMessage.newQuest_type));
             return true;
@@ -764,9 +765,9 @@ internal sealed class WateringContractExecutionController
         };
     }
 
-    private string GetArrivalDescription()
+    private string GetArrivalDescription(FarmBoundarySide side)
     {
-        return this.Translation.Get("contract.entrance.fixed-main");
+        return this.Translation.Get($"contract.entrance.{side.ToString().ToLowerInvariant()}");
     }
 
     private enum WateringContractPhase

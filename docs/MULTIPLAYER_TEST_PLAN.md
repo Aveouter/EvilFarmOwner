@@ -20,7 +20,7 @@ Run `efo_netstatus` on each peer before every scenario. The host must report `ro
 1. Record host money, farmhand money, dry-crop count, NPC location/state, and `efo_netstatus` on both peers.
 2. On the farmhand, press `K`, select an available NPC, choose watering, and confirm.
 3. Verify the farmhand sees pending then accepted feedback; the host receives the request and owns the contract.
-4. Verify the named NPC enters only from the fixed main/left-side farm entrance and both peers observe the same worker, target sequence, watering actions, and return.
+4. With the right/east boundary route open, verify the named NPC enters there and returns there. Then block that route in a disposable setup and verify another genuine boundary entrance is selected; both peers must observe the same entrance, worker, target sequence, actions, and return.
 5. Verify every reachable dry crop is watered before completion.
 6. Verify only the requesting farmhand's money changes, exactly once, by the reported settlement; host money is unchanged.
 7. Verify both peers receive the same final work count and contract ID disappears from `efo_netstatus`.

@@ -23,6 +23,7 @@ internal sealed record HarvestTargetPlan(
 
 internal sealed record HarvestWorkPlan(
     Point ArrivalTile,
+    FarmBoundarySide ArrivalSide,
     HarvestTargetPlan FirstTarget);
 
 internal sealed record HarvestTargetSearchResult(
@@ -43,7 +44,7 @@ internal sealed record HarvestPlanResult(
 internal sealed class HarvestTargetPlanner
 {
     private const int MaximumSupportedMapDimension = 255;
-    private const int MaximumArrivalPathChecks = 32;
+    private const int MaximumArrivalPathChecksPerSide = 8;
     private static readonly Point[] InteractionOffsets =
     {
         new(0, 1),
@@ -67,14 +68,18 @@ internal sealed class HarvestTargetPlanner
             return new HarvestPlanResult(null, HarvestPlanFailure.UnsupportedFarmMap);
 
         bool foundSafeArrival = false;
-        int checkedPaths = 0;
+        Dictionary<FarmBoundarySide, int> checkedPathsBySide = new();
         HarvestPlanFailure lastFailure = HarvestPlanFailure.NoReachableCrop;
         foreach (GridPoint candidate in FarmEntranceSelection.OrderBoundaryArrivalCandidates(
                      width,
                      height,
-                     farm.warps.Select(warp => new GridPoint(warp.X, warp.Y)),
-                     requiredSide: FarmEntranceSelection.FixedWorkerEntranceSide))
+                     farm.warps.Select(warp => new GridPoint(warp.X, warp.Y))))
         {
+            FarmBoundarySide arrivalSide = FarmEntranceSelection.GetNearestBoundarySide(width, height, candidate);
+            int checkedOnSide = checkedPathsBySide.GetValueOrDefault(arrivalSide);
+            if (checkedOnSide >= MaximumArrivalPathChecksPerSide)
+                continue;
+
             Vector2 candidateTile = new(candidate.X, candidate.Y);
             if (farm.warps.Any(warp => warp.X == candidate.X && warp.Y == candidate.Y)
                 || farm.doors.ContainsKey(new Point(candidate.X, candidate.Y))
@@ -82,8 +87,7 @@ internal sealed class HarvestTargetPlanner
                 continue;
 
             foundSafeArrival = true;
-            if (++checkedPaths > MaximumArrivalPathChecks)
-                break;
+            checkedPathsBySide[arrivalSide] = checkedOnSide + 1;
 
             Point arrivalTile = new(candidate.X, candidate.Y);
             HarvestTargetSearchResult firstTarget = this.TryFindNext(
@@ -96,7 +100,7 @@ internal sealed class HarvestTargetPlanner
             if (firstTarget.IsSuccess && firstTarget.Target is not null)
             {
                 return new HarvestPlanResult(
-                    new HarvestWorkPlan(arrivalTile, firstTarget.Target),
+                    new HarvestWorkPlan(arrivalTile, arrivalSide, firstTarget.Target),
                     HarvestPlanFailure.None);
             }
 

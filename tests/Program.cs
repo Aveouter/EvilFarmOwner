@@ -17,7 +17,7 @@ List<(string Name, Action Test)> tests = new()
     ("destination tile alignment", TestDestinationTileAlignment),
     ("travel progress watchdog", TestTravelProgressWatchdog),
     ("external boundary arrival ordering", TestExternalBoundaryArrivalOrdering),
-    ("fixed main entrance filtering", TestFixedMainEntranceFiltering),
+    ("right entrance priority", TestRightEntrancePriority),
     ("nearest arrival boundary side", TestNearestArrivalBoundarySide),
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
@@ -216,33 +216,37 @@ static void TestExternalBoundaryArrivalOrdering()
         new[]
         {
             new GridPoint(34, 5), // interior cave warp
-            new GridPoint(80, 15), // bus stop
+            new GridPoint(41, -1), // backwoods
             new GridPoint(40, 65), // forest
-            new GridPoint(41, -1) // backwoods
+            new GridPoint(80, 15) // bus stop
         });
 
     Equal(new GridPoint(79, 15), candidates[0]);
-    Equal(new GridPoint(40, 64), candidates[1]);
-    Equal(new GridPoint(41, 0), candidates[2]);
+    int firstSouth = Array.FindIndex(
+        candidates.ToArray(),
+        candidate => FarmEntranceSelection.GetNearestBoundarySide(80, 65, candidate) == FarmBoundarySide.South);
+    int firstNorth = Array.FindIndex(
+        candidates.ToArray(),
+        candidate => FarmEntranceSelection.GetNearestBoundarySide(80, 65, candidate) == FarmBoundarySide.North);
+    Equal(true, firstSouth > 0);
+    Equal(new GridPoint(40, 64), candidates[firstSouth]);
+    Equal(true, firstNorth > firstSouth);
+    Equal(new GridPoint(41, 0), candidates[firstNorth]);
+    for (int index = 0; index < firstSouth; index++)
+    {
+        Equal(
+            FarmBoundarySide.East,
+            FarmEntranceSelection.GetNearestBoundarySide(80, 65, candidates[index]));
+    }
     Equal(false, candidates.Contains(new GridPoint(34, 7)));
 }
 
-static void TestFixedMainEntranceFiltering()
+static void TestRightEntrancePriority()
 {
-    IReadOnlyList<GridPoint> candidates = FarmEntranceSelection.OrderBoundaryArrivalCandidates(
-        mapWidth: 80,
-        mapHeight: 65,
-        new[]
-        {
-            new GridPoint(80, 15),
-            new GridPoint(40, 65),
-            new GridPoint(41, -1)
-        },
-        requiredSide: FarmBoundarySide.East);
-
-    Equal(new GridPoint(79, 15), candidates[0]);
-    Equal(false, candidates.Contains(new GridPoint(40, 64)));
-    Equal(false, candidates.Contains(new GridPoint(41, 0)));
+    Equal(0, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.East));
+    Equal(1, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.South));
+    Equal(2, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.North));
+    Equal(3, FarmEntranceSelection.GetEntrancePriority(FarmBoundarySide.West));
 }
 
 static void TestNearestArrivalBoundarySide()

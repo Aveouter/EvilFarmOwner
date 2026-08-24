@@ -6,11 +6,12 @@
 - Added fresh availability, funds, target, and two-way path checks before dispatch.
 - Added a recoverable NPC work lease with timeout and day-end cleanup.
 - Added six-hour wage reservation, per-started-hour settlement, and explicit rest-day triple-pay authorization.
-- Added deterministic wage, settlement, target-ordering, and left-entrance selection logic tests.
+- Added deterministic wage, settlement, target-ordering, and boundary-entrance selection logic tests.
 - Added task selection between whole-farm watering and one-crop visible harvesting.
 - Added vanilla-compatible harvest capture for exact quality, quantity, regrowth, metadata, and by-products.
 - Added deterministic chest ranking, mutex-protected partial delivery, persistent team overflow, replay protection, and explicit emergency ground drops.
 - Fixed dense-field routing by using vanilla live crop collision instead of spawn suitability; ordinary crop tiles are traversable while trellises remain blocking.
+- Changed worker arrival to prefer the right/east farm entrance and use other genuine boundary entrances only as safe fallbacks.
 - Added exact requester-inventory delivery when no chest route can accept an item and the requester remains on the farm with capacity.
 - Added `efo_overflow` to retrieve harvest results which could not fit in an eligible farm chest.
 - Added host-authoritative multiplayer contract requests, bounded request replay protection, phase/cargo/transfer snapshots, reconnect synchronization, and host-only visual action messages.
