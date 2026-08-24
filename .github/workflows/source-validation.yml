@@ -40,8 +40,8 @@ jobs:
             and (.UpdateKeys | index("GitHub:Aveouter/EvilFarmOwner") != null)
           ' manifest.json >/dev/null
 
-          rg -q '<Version>0\.1\.0</Version>' EvilFarmOwner.csproj
-          rg -q 'Stardew Valley SMAPI Mod · v0\.1\.0' README.md
+          grep -Eq '<Version>0\.1\.0</Version>' EvilFarmOwner.csproj
+          grep -Eq 'Stardew Valley SMAPI Mod · v0\.1\.0' README.md
 
           jq -r 'keys[]' i18n/default.json | LC_ALL=C sort > "$RUNNER_TEMP/efo-default-keys.txt"
           jq -r 'keys[]' i18n/zh.json | LC_ALL=C sort > "$RUNNER_TEMP/efo-zh-keys.txt"
