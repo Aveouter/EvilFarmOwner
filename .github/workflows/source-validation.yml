@@ -46,4 +46,3 @@ jobs:
           jq -r 'keys[]' i18n/default.json | LC_ALL=C sort > "$RUNNER_TEMP/efo-default-keys.txt"
           jq -r 'keys[]' i18n/zh.json | LC_ALL=C sort > "$RUNNER_TEMP/efo-zh-keys.txt"
           diff -u "$RUNNER_TEMP/efo-default-keys.txt" "$RUNNER_TEMP/efo-zh-keys.txt"
-
