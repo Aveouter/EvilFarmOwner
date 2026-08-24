@@ -20,6 +20,7 @@ internal sealed class MultiplayerContractCoordinator
     private readonly ProcessedContractRequestLedger ProcessedRequests = new();
     private readonly ContractSnapshotTracker SnapshotTracker = new();
     private readonly HostStateVersionTracker RemoteStateVersions = new();
+    private readonly HostSessionTracker ClientHostSession = new();
     private readonly Dictionary<long, ContractResultMessage> RecentResults = new();
     private readonly Dictionary<string, long> HostSequences = new(StringComparer.Ordinal);
     private readonly Queue<string> HostSequenceOrder = new();
@@ -27,7 +28,6 @@ internal sealed class MultiplayerContractCoordinator
     private readonly Queue<string> ClientResponseOrder = new();
 
     private string HostSessionId = "";
-    private string ExpectedHostSessionId = "";
     private long HostOrder;
     private long HostStateVersion;
     private ContractStartRequestMessage? PendingRequest;
@@ -61,7 +61,7 @@ internal sealed class MultiplayerContractCoordinator
     public string GetDiagnosticStatus()
     {
         string role = Context.IsMainPlayer ? "host" : "farmhand";
-        string session = Context.IsMainPlayer ? this.HostSessionId : this.ExpectedHostSessionId;
+        string session = Context.IsMainPlayer ? this.HostSessionId : this.ClientHostSession.Current;
         string active = this.GetHostRuntimeState()?.ContractId
             ?? this.RemoteActiveSnapshot?.ContractId
             ?? "none";
@@ -106,10 +106,17 @@ internal sealed class MultiplayerContractCoordinator
 
         this.PendingRequest = request;
         this.PendingTicks = 0;
-        this.SendMessage(
-            request,
-            MultiplayerContractProtocol.StartRequestType,
-            Game1.MasterPlayer.UniqueMultiplayerID);
+        if (this.ClientHostSession.HasSession)
+        {
+            this.SendMessage(
+                request,
+                MultiplayerContractProtocol.StartRequestType,
+                Game1.MasterPlayer.UniqueMultiplayerID);
+        }
+        else
+        {
+            this.SendSyncRequest();
+        }
         Game1.addHUDMessage(new HUDMessage(
             this.Translation.Get("multiplayer.hud.pending"),
             HUDMessage.newQuest_type));
@@ -217,27 +224,16 @@ internal sealed class MultiplayerContractCoordinator
         if (!Context.IsWorldReady)
             return;
 
-        if (Context.IsMainPlayer)
-        {
-            this.SendSyncState(e.Peer.PlayerID);
-        }
-        else if (e.Peer.IsHost)
-        {
-            this.ExpectedHostSessionId = "";
-            this.SnapshotTracker.Clear();
-            this.RemoteStateVersions.Clear();
-            this.RemoteActiveSnapshot = null;
-            this.SeenClientResponses.Clear();
-            this.ClientResponseOrder.Clear();
-            this.SendSyncRequest();
-            if (this.PendingRequest is not null)
-            {
-                this.SendMessage(
-                    this.PendingRequest,
-                    MultiplayerContractProtocol.StartRequestType,
-                    e.Peer.PlayerID);
-            }
-        }
+        if (Context.IsMainPlayer || !e.Peer.IsHost)
+            return;
+
+        this.ClientHostSession.Clear();
+        this.SnapshotTracker.Clear();
+        this.RemoteStateVersions.Clear();
+        this.RemoteActiveSnapshot = null;
+        this.SeenClientResponses.Clear();
+        this.ClientResponseOrder.Clear();
+        this.SendSyncRequest();
     }
 
     public void OnPeerDisconnected(object? sender, PeerDisconnectedEventArgs e)
@@ -254,7 +250,7 @@ internal sealed class MultiplayerContractCoordinator
         }
         else if (e.Peer.IsHost)
         {
-            this.ExpectedHostSessionId = "";
+            this.ClientHostSession.Clear();
             this.SnapshotTracker.Clear();
             this.RemoteStateVersions.Clear();
             this.RemoteActiveSnapshot = null;
@@ -538,11 +534,17 @@ internal sealed class MultiplayerContractCoordinator
         if (response.SchemaVersion != MultiplayerContractProtocol.SchemaVersion
             || response.SaveId != Game1.uniqueIDForThisGame
             || response.RequestingPlayerId != Game1.player.UniqueMultiplayerID
-            || string.IsNullOrWhiteSpace(response.RequestId)
-            || string.IsNullOrWhiteSpace(response.HostSessionId))
+            || response.HostOrder <= 0
+            || !Guid.TryParseExact(response.RequestId, "N", out _)
+            || (response.Accepted
+                ? !Guid.TryParseExact(response.ContractId, "N", out _)
+                    || !string.IsNullOrWhiteSpace(response.ReasonKey)
+                : !string.IsNullOrWhiteSpace(response.ContractId)
+                    || string.IsNullOrWhiteSpace(response.ReasonKey)))
             return;
 
-        if (!this.TryAcceptHostSession(response.HostSessionId))
+        bool matchesPendingRequest = this.PendingRequest?.RequestId == response.RequestId;
+        if (!matchesPendingRequest || !this.ClientHostSession.Matches(response.HostSessionId))
             return;
 
         string responseKey = $"{response.RequestingPlayerId}:{response.RequestId}";
@@ -552,15 +554,8 @@ internal sealed class MultiplayerContractCoordinator
         while (this.SeenClientResponses.Count > ClientResponseHistoryCapacity)
             this.SeenClientResponses.Remove(this.ClientResponseOrder.Dequeue());
 
-        bool matchesPendingRequest = this.PendingRequest?.RequestId == response.RequestId;
-        if (matchesPendingRequest)
-        {
-            this.PendingRequest = null;
-            this.PendingTicks = 0;
-        }
-
-        if (!matchesPendingRequest)
-            return;
+        this.PendingRequest = null;
+        this.PendingTicks = 0;
 
         if (response.Accepted)
         {
@@ -579,14 +574,14 @@ internal sealed class MultiplayerContractCoordinator
 
     private void HandleSnapshot(ContractSnapshotMessage snapshot)
     {
-        if (!this.TryAcceptHostSession(snapshot.HostSessionId)
+        if (!Enum.IsDefined(snapshot.Task)
+            || !Enum.IsDefined(snapshot.ArrivalSide)
+            || !this.ClientHostSession.Matches(snapshot.HostSessionId)
             || !this.RemoteStateVersions.CanAccept(snapshot.StateVersion)
             || !this.SnapshotTracker.TryAccept(
                 snapshot,
                 MultiplayerContractProtocol.SchemaVersion,
-                Game1.uniqueIDForThisGame)
-            || !Enum.IsDefined(snapshot.Task)
-            || !Enum.IsDefined(snapshot.ArrivalSide))
+                Game1.uniqueIDForThisGame))
             return;
 
         this.RemoteStateVersions.Commit(snapshot.StateVersion);
@@ -636,13 +631,13 @@ internal sealed class MultiplayerContractCoordinator
 
     private void HandleResult(ContractResultMessage result)
     {
-        if (!this.TryAcceptHostSession(result.HostSessionId)
+        if (!Enum.IsDefined(result.Task)
+            || !this.ClientHostSession.Matches(result.HostSessionId)
             || !this.RemoteStateVersions.CanAccept(result.StateVersion)
             || !this.SnapshotTracker.TryAccept(
                 result,
                 MultiplayerContractProtocol.SchemaVersion,
-                Game1.uniqueIDForThisGame)
-            || !Enum.IsDefined(result.Task))
+                Game1.uniqueIDForThisGame))
             return;
 
         this.RemoteStateVersions.Commit(result.StateVersion);
@@ -694,24 +689,30 @@ internal sealed class MultiplayerContractCoordinator
             || !string.Equals(request.ModVersion, this.Manifest.Version.ToString(), StringComparison.Ordinal)
             || request.SaveId != Game1.uniqueIDForThisGame
             || request.RequestingPlayerId != senderPlayerId
+            || !Guid.TryParseExact(request.SyncRequestId, "N", out _)
             || Game1.GetPlayer(senderPlayerId, onlyOnline: true) is null)
             return;
 
-        this.SendSyncState(senderPlayerId);
+        this.SendSyncState(senderPlayerId, request.SyncRequestId);
     }
 
     private void HandleSyncState(ContractSyncStateMessage state)
     {
         if (state.SchemaVersion != MultiplayerContractProtocol.SchemaVersion
             || state.SaveId != Game1.uniqueIDForThisGame
-            || string.IsNullOrWhiteSpace(state.HostSessionId))
-            return;
-
-        if (!this.TryAcceptHostSession(state.HostSessionId))
+            || !Guid.TryParseExact(state.HostSessionId, "N", out _)
+            || state.StateVersion < 0
+            || state.HasActiveContract != (state.ActiveContract is not null)
+            || state.ActiveContract?.StateVersion > state.StateVersion
+            || state.RecentResult?.StateVersion > state.StateVersion)
             return;
 
         if (!this.RemoteStateVersions.CanAccept(state.StateVersion))
             return;
+
+        if (!this.ClientHostSession.TryEstablish(state.HostSessionId, state.SyncRequestId))
+            return;
+        this.SnapshotTracker.BeginSession(state.HostSessionId);
 
         if (state.RecentResult is not null)
             this.HandleResult(state.RecentResult);
@@ -725,6 +726,14 @@ internal sealed class MultiplayerContractCoordinator
             this.RemoteActiveSnapshot = null;
             this.RemoteStateVersions.Commit(state.StateVersion);
         }
+
+        if (this.PendingRequest is not null)
+        {
+            this.SendMessage(
+                this.PendingRequest,
+                MultiplayerContractProtocol.StartRequestType,
+                Game1.MasterPlayer.UniqueMultiplayerID);
+        }
     }
 
     private void SendSyncRequest()
@@ -732,12 +741,17 @@ internal sealed class MultiplayerContractCoordinator
         if (!Context.IsWorldReady || Context.IsMainPlayer || !Context.IsMultiplayer)
             return;
 
+        string syncRequestId = Guid.NewGuid().ToString("N");
+        if (!this.ClientHostSession.BeginHandshake(syncRequestId))
+            return;
+
         ContractSyncRequestMessage request = new()
         {
             SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
             ModVersion = this.Manifest.Version.ToString(),
             SaveId = Game1.uniqueIDForThisGame,
-            RequestingPlayerId = Game1.player.UniqueMultiplayerID
+            RequestingPlayerId = Game1.player.UniqueMultiplayerID,
+            SyncRequestId = syncRequestId
         };
         this.SendMessage(
             request,
@@ -745,13 +759,14 @@ internal sealed class MultiplayerContractCoordinator
             Game1.MasterPlayer.UniqueMultiplayerID);
     }
 
-    private void SendSyncState(long playerId)
+    private void SendSyncState(long playerId, string syncRequestId)
     {
         ContractSyncStateMessage state = new()
         {
             SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
             SaveId = Game1.uniqueIDForThisGame,
             HostSessionId = this.HostSessionId,
+            SyncRequestId = syncRequestId,
             StateVersion = this.HostStateVersion,
             HasActiveContract = this.CurrentHostSnapshot is not null,
             ActiveContract = this.CurrentHostSnapshot,
@@ -838,7 +853,7 @@ internal sealed class MultiplayerContractCoordinator
     private void ResetSessionState()
     {
         this.HostSessionId = "";
-        this.ExpectedHostSessionId = "";
+        this.ClientHostSession.Clear();
         this.HostOrder = 0;
         this.HostStateVersion = 0;
         this.PendingRequest = null;
@@ -932,20 +947,6 @@ internal sealed class MultiplayerContractCoordinator
     private string GetEntranceText(FarmBoundarySide side)
     {
         return this.Translation.Get($"contract.entrance.{side.ToString().ToLowerInvariant()}");
-    }
-
-    private bool TryAcceptHostSession(string hostSessionId)
-    {
-        if (string.IsNullOrWhiteSpace(hostSessionId))
-            return false;
-        if (string.IsNullOrWhiteSpace(this.ExpectedHostSessionId))
-        {
-            this.ExpectedHostSessionId = hostSessionId;
-            this.SnapshotTracker.BeginSession(hostSessionId);
-            return true;
-        }
-
-        return string.Equals(this.ExpectedHostSessionId, hostSessionId, StringComparison.Ordinal);
     }
 
     private static string NormalizeFailureKey(string? failureKey)

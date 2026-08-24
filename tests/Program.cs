@@ -38,6 +38,8 @@ List<(string Name, Action Test)> tests = new()
     ("multiplayer deterministic order", TestMultiplayerDeterministicOrder),
     ("multiplayer reconnect ledger", TestMultiplayerReconnectLedger),
     ("multiplayer restart recovery state", TestMultiplayerRestartRecoveryState),
+    ("multiplayer host session handshake", TestMultiplayerHostSessionHandshake),
+    ("multiplayer sync handshake serialization", TestMultiplayerSyncHandshakeSerialization),
     ("multiplayer stale snapshot rejection", TestMultiplayerStaleSnapshotRejection),
     ("multiplayer stale sync-state rejection", TestMultiplayerStaleSyncStateRejection),
     ("multiplayer snapshot serialization", TestMultiplayerSnapshotSerialization),
@@ -677,6 +679,20 @@ static void TestMultiplayerRestartRecoveryState()
         JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json);
     Equal(true, MultiplayerRecoveryState.IsValid(restored, 445566));
 
+    MultiplayerRecoverySaveData legacy =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json)!;
+    legacy.ProtocolSchemaVersion = 3;
+    foreach (ContractStartResponseMessage legacyResponse in legacy.ProcessedRequests)
+        legacyResponse.SchemaVersion = 3;
+    foreach (ContractResultMessage legacyResult in legacy.RecentResults)
+        legacyResult.SchemaVersion = 3;
+    Equal(true, MultiplayerRecoveryState.IsValid(legacy, 445566));
+    legacy.ProcessedRequests[0].SchemaVersion = MultiplayerContractProtocol.SchemaVersion;
+    Equal(false, MultiplayerRecoveryState.IsValid(legacy, 445566));
+    legacy.ProcessedRequests[0].SchemaVersion = 3;
+    legacy.ProtocolSchemaVersion = 2;
+    Equal(false, MultiplayerRecoveryState.IsValid(legacy, 445566));
+
     MultiplayerRecoveryState.RebindResponse(
         restored!.ProcessedRequests[0],
         "new-host-session",
@@ -804,6 +820,70 @@ static void TestMultiplayerStaleSnapshotRejection()
     Equal(false, tracker.TryAccept(result, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
 }
 
+static void TestMultiplayerHostSessionHandshake()
+{
+    HostSessionTracker tracker = new();
+    string syncA = Guid.NewGuid().ToString("N");
+    string syncB = Guid.NewGuid().ToString("N");
+    string hostA = Guid.NewGuid().ToString("N");
+    string hostB = Guid.NewGuid().ToString("N");
+    string oldHost = Guid.NewGuid().ToString("N");
+    Equal(false, tracker.HasSession);
+    Equal(false, tracker.Matches(hostA));
+    Equal(false, tracker.BeginHandshake("invalid"));
+    Equal(true, tracker.BeginHandshake(syncA));
+    Equal(false, tracker.TryEstablish(oldHost, syncB));
+    Equal(false, tracker.HasSession);
+    Equal(false, tracker.TryEstablish("invalid-host", syncA));
+    Equal(true, tracker.TryEstablish(hostA, syncA));
+    Equal(true, tracker.HasSession);
+    Equal(hostA, tracker.Current);
+    Equal(true, tracker.Matches(hostA));
+    Equal(false, tracker.Matches(hostB));
+    Equal(true, tracker.BeginHandshake(syncB));
+    Equal(false, tracker.TryEstablish(hostB, syncB));
+    Equal(hostA, tracker.Current);
+
+    tracker.Clear();
+    Equal(false, tracker.HasSession);
+    Equal(false, tracker.Matches(hostA));
+    Equal(true, tracker.BeginHandshake(syncB));
+    Equal(false, tracker.TryEstablish(oldHost, syncA));
+    Equal(true, tracker.TryEstablish(hostB, syncB));
+    Equal(hostB, tracker.Current);
+}
+
+static void TestMultiplayerSyncHandshakeSerialization()
+{
+    string syncRequestId = Guid.NewGuid().ToString("N");
+    string hostSessionId = Guid.NewGuid().ToString("N");
+    ContractSyncRequestMessage request = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        ModVersion = "0.1.0",
+        SaveId = 445566,
+        RequestingPlayerId = 55,
+        SyncRequestId = syncRequestId
+    };
+    ContractSyncRequestMessage? restoredRequest = JsonSerializer.Deserialize<ContractSyncRequestMessage>(
+        JsonSerializer.Serialize(request));
+    Equal(syncRequestId, restoredRequest!.SyncRequestId);
+
+    ContractSyncStateMessage state = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = hostSessionId,
+        SyncRequestId = syncRequestId,
+        StateVersion = 12
+    };
+    ContractSyncStateMessage? restoredState = JsonSerializer.Deserialize<ContractSyncStateMessage>(
+        JsonSerializer.Serialize(state));
+    Equal(hostSessionId, restoredState!.HostSessionId);
+    Equal(syncRequestId, restoredState.SyncRequestId);
+    Equal(12L, restoredState.StateVersion);
+}
+
 static void TestMultiplayerStaleSyncStateRejection()
 {
     HostStateVersionTracker tracker = new();
@@ -869,7 +949,7 @@ static void TestMultiplayerSnapshotSerialization()
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(3, MultiplayerContractProtocol.SchemaVersion);
+    Equal(4, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,

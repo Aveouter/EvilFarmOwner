@@ -52,7 +52,7 @@ The host diagnostic must also report `recoveryHealthy=True`. The host persists a
 1. Start a farmhand harvest request and disconnect the farmhand after acceptance but before delivery finishes.
 2. Verify the host continues safe delivery/overflow and restores the NPC; no cargo is lost or duplicated.
 3. Reconnect the same farmhand. Verify the active snapshot or processed final result is restored and the requesting farmer receives the correct refund despite the disconnect.
-4. Repeat with a disconnect immediately after confirmation/pending feedback. Verify a resend returns the prior request result and does not dispatch or charge twice.
+4. Repeat with a disconnect immediately after confirmation/pending feedback. Delay an old-session response and sync state until after the host reconnects. Verify the farmhand accepts only the sync state whose nonce matches its latest sync request, establishes that response's new host session, ignores both delayed old-session messages, then resends the pending request once with its original request ID. The host must return the prior request result and must not dispatch or charge twice.
 
 ### 5. Host save and restart replay safety
 
@@ -61,6 +61,7 @@ The host diagnostic must also report `recoveryHealthy=True`. The host persists a
 3. Resend the exact saved request ID from the farmhand test harness. Verify the host returns the prior accepted response/result rebound to the new session, with no new lease, crop mutation, item transfer, charge, or refund.
 4. Repeat with a previously rejected request and verify it remains rejected without reevaluating into a new contract.
 5. In a disposable copy, corrupt or schema-mismatch the persisted recovery record. Include a duplicate transfer ID and a produced-item total which does not equal requester inventory plus chest, overflow, and visible-drop totals. Verify the host reports `recoveryHealthy=False` and rejects all new contracts without mutating money or world state.
+6. In a disposable copy created by the immediately preceding protocol-3 development build, retain a clean recovery ledger and load it with protocol 4. Verify the host validates and rebinds the prior response/result to the new session, reports `recoveryHealthy=True`, and an exact request replay causes no second contract, mutation, transfer, charge, or refund. A mixed or older-than-3 schema must still fail closed.
 
 ### 6. Rejection safety
 

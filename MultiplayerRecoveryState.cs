@@ -17,6 +17,7 @@ internal static class MultiplayerRecoveryState
 {
     public const int SchemaVersion = 1;
     public const string SaveDataKey = "multiplayer-recovery";
+    private const int LegacyHandshakeProtocolSchemaVersion = 3;
 
     public static MultiplayerRecoverySaveData Create(
         string modVersion,
@@ -56,7 +57,7 @@ internal static class MultiplayerRecoveryState
     {
         if (state is null
             || state.SchemaVersion != SchemaVersion
-            || state.ProtocolSchemaVersion != MultiplayerContractProtocol.SchemaVersion
+            || !IsSupportedProtocolSchemaVersion(state.ProtocolSchemaVersion)
             || string.IsNullOrWhiteSpace(state.ModVersion)
             || state.SaveId != expectedSaveId
             || !state.IsClean
@@ -70,7 +71,7 @@ internal static class MultiplayerRecoveryState
         Dictionary<(long PlayerId, string RequestId), ContractStartResponseMessage> accepted = new();
         foreach (ContractStartResponseMessage response in state.ProcessedRequests)
         {
-            if (!IsValidResponse(response, expectedSaveId)
+            if (!IsValidResponse(response, expectedSaveId, state.ProtocolSchemaVersion)
                 || !requestKeys.Add((response.RequestingPlayerId, response.RequestId)))
                 return false;
 
@@ -81,7 +82,7 @@ internal static class MultiplayerRecoveryState
         HashSet<long> resultPlayers = new();
         foreach (ContractResultMessage result in state.RecentResults)
         {
-            if (!IsValidResult(result, expectedSaveId)
+            if (!IsValidResult(result, expectedSaveId, state.ProtocolSchemaVersion)
                 || !resultPlayers.Add(result.RequestingPlayerId)
                 || !accepted.TryGetValue(
                     (result.RequestingPlayerId, result.RequestId),
@@ -117,10 +118,22 @@ internal static class MultiplayerRecoveryState
         result.StateVersion = stateVersion;
     }
 
-    private static bool IsValidResponse(ContractStartResponseMessage? response, ulong expectedSaveId)
+    private static bool IsSupportedProtocolSchemaVersion(int protocolSchemaVersion)
+    {
+        // Protocol 4 only adds the reconnect sync nonce. The persisted response/result
+        // payloads are unchanged from protocol 3, so a clean protocol-3 ledger can be
+        // fully validated and rebound to the new host session without losing replay safety.
+        return protocolSchemaVersion is LegacyHandshakeProtocolSchemaVersion
+            or MultiplayerContractProtocol.SchemaVersion;
+    }
+
+    private static bool IsValidResponse(
+        ContractStartResponseMessage? response,
+        ulong expectedSaveId,
+        int expectedProtocolSchemaVersion)
     {
         return response is not null
-            && response.SchemaVersion == MultiplayerContractProtocol.SchemaVersion
+            && response.SchemaVersion == expectedProtocolSchemaVersion
             && response.SaveId == expectedSaveId
             && !string.IsNullOrWhiteSpace(response.HostSessionId)
             && response.HostOrder > 0
@@ -133,10 +146,13 @@ internal static class MultiplayerRecoveryState
                     && !string.IsNullOrWhiteSpace(response.ReasonKey));
     }
 
-    private static bool IsValidResult(ContractResultMessage? result, ulong expectedSaveId)
+    private static bool IsValidResult(
+        ContractResultMessage? result,
+        ulong expectedSaveId,
+        int expectedProtocolSchemaVersion)
     {
         if (result is null
-            || result.SchemaVersion != MultiplayerContractProtocol.SchemaVersion
+            || result.SchemaVersion != expectedProtocolSchemaVersion
             || result.SaveId != expectedSaveId
             || string.IsNullOrWhiteSpace(result.HostSessionId)
             || !Guid.TryParseExact(result.ContractId, "N", out _)
