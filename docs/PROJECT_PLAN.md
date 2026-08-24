@@ -41,15 +41,15 @@ Every issue should have one label from each group when possible.
 
 ## Milestones
 
-### v0.1.x - Prototype Stabilization
+### v0.1.0 - First Public Release
 
-Stabilize the current playable prototype before deeper feature work.
+Ship the first public version with the complete named-worker baseline.
 
 Focus:
 
-- Make unsafe behavior explicit.
-- Document current limitations.
-- Keep host-only multiplayer behavior clear.
+- Provide visible named watering and harvest contracts.
+- Deliver harvest output without silent item loss.
+- Support host-authoritative network multiplayer requests and synchronization.
 - Improve packaging and release hygiene.
 
 ### v0.2.0 - Hiring Menu MVP
@@ -99,4 +99,4 @@ Focus:
 
 ## Current Priority
 
-The next implementation milestone is `v0.2.0 - Hiring Menu MVP`. Before starting it, complete the project setup work in this PR so future changes have consistent issue and PR structure.
+The current release gate is `v0.1.0`: finish real-save watering and harvest validation, complete a real host/farmhand network test, then pass the packaging and release audit. Later milestone sections describe the historical feature sequence, not permission to defer these first-release requirements.
