@@ -140,6 +140,11 @@ internal sealed class StorageSortRuntimePlan
 
     public IReadOnlyDictionary<string, StorageSortStackBinding> StackBindings { get; }
 
+    internal IReadOnlyDictionary<GridPoint, Chest> RuntimeChests => this.Chests;
+
+    internal IReadOnlyDictionary<GridPoint, StorageSortChestFingerprint> InitialChestFingerprints =>
+        this.ChestFingerprints;
+
     public bool TryValidateUnchanged(Farm farm, out StorageSortSnapshotFailure failure)
     {
         failure = StorageSortSnapshotFailure.None;
