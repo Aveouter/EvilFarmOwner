@@ -13,7 +13,7 @@ List<(string Name, Action Test)> tests = new()
     ("actual path cost ordering", TestActualPathCostOrdering),
     ("trellis detour route", TestTrellisDetourRoute),
     ("failed interaction edge isolation", TestFailedInteractionEdgeIsolation),
-    ("left entrance selection", TestLeftEntranceSelection),
+    ("left boundary arrival ordering", TestLeftBoundaryArrivalOrdering),
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
@@ -170,19 +170,17 @@ static void TestFailedInteractionEdgeIsolation()
         new GridPoint(7, 8))));
 }
 
-static void TestLeftEntranceSelection()
+static void TestLeftBoundaryArrivalOrdering()
 {
-    GridPoint selected = FarmEntranceSelection.SelectLeftEntrance(
+    IReadOnlyList<GridPoint> candidates = FarmEntranceSelection.OrderLeftBoundaryCandidates(
         mapWidth: 100,
-        mapHeight: 80,
-        new[]
-        {
-            new GridPoint(99, 20),
-            new GridPoint(40, 79),
-            new GridPoint(0, 24)
-        });
+        mapHeight: 80);
 
-    Equal(new GridPoint(1, 24), selected);
+    Equal(new GridPoint(1, 40), candidates[0]);
+    Equal(new GridPoint(1, 39), candidates[1]);
+    Equal(new GridPoint(1, 41), candidates[2]);
+    Equal(true, candidates.All(tile => tile.X >= 1 && tile.X <= 9));
+    Equal(false, candidates.Contains(new GridPoint(34, 7)));
 }
 
 static void TestSixHourWageCap()

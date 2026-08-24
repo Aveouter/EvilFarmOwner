@@ -2,22 +2,29 @@ namespace EvilFarmOwner;
 
 internal static class FarmEntranceSelection
 {
-    public static GridPoint SelectLeftEntrance(
+    private const int DefaultSearchDepth = 8;
+
+    /// <summary>
+    /// Enumerate visible farm-edge arrival candidates without treating interior map warps
+    /// (farmhouse, greenhouse, cave, and similar doors) as entrances.
+    /// </summary>
+    public static IReadOnlyList<GridPoint> OrderLeftBoundaryCandidates(
         int mapWidth,
         int mapHeight,
-        IEnumerable<GridPoint> warpTiles)
+        int searchDepth = DefaultSearchDepth)
     {
-        GridPoint boundary = warpTiles
+        if (mapWidth <= 0 || mapHeight <= 0 || searchDepth < 0)
+            return Array.Empty<GridPoint>();
+
+        int firstInwardX = mapWidth > 1 ? 1 : 0;
+        int lastInwardX = Math.Min(mapWidth - 1, firstInwardX + searchDepth);
+        int verticalCenter = mapHeight / 2;
+
+        return Enumerable.Range(firstInwardX, lastInwardX - firstInwardX + 1)
+            .SelectMany(x => Enumerable.Range(0, mapHeight).Select(y => new GridPoint(x, y)))
             .OrderBy(tile => tile.X)
-            .ThenBy(tile => Math.Abs(tile.Y - mapHeight / 2))
+            .ThenBy(tile => Math.Abs(tile.Y - verticalCenter))
             .ThenBy(tile => tile.Y)
-            .FirstOrDefault(new GridPoint(0, mapHeight / 2));
-
-        int inwardX = boundary.X <= mapWidth / 2
-            ? Math.Min(mapWidth - 1, boundary.X + 1)
-            : Math.Max(0, boundary.X - 1);
-
-        int inwardY = Math.Clamp(boundary.Y, 0, Math.Max(0, mapHeight - 1));
-        return new GridPoint(inwardX, inwardY);
+            .ToArray();
     }
 }

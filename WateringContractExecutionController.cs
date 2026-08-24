@@ -113,8 +113,19 @@ internal sealed class WateringContractExecutionController
             Game1.warpCharacter(worker, mainFarm, new Vector2(
                 planResult.Plan.ArrivalTile.X,
                 planResult.Plan.ArrivalTile.Y));
+            if (!ReferenceEquals(worker.currentLocation, mainFarm)
+                || !mainFarm.characters.Contains(worker)
+                || worker.TilePoint != planResult.Plan.ArrivalTile)
+            {
+                throw new InvalidOperationException(
+                    $"Worker did not arrive at the planned farm-edge tile {planResult.Plan.ArrivalTile}.");
+            }
+
             worker.Halt();
             worker.Sprite?.ClearAnimation();
+            this.Monitor.Log(
+                $"Dispatching watering worker '{worker.Name}' from visible farm-edge tile {planResult.Plan.ArrivalTile}.",
+                LogLevel.Debug);
 
             if (worker.TilePoint == planResult.Plan.FirstTarget.InteractionTile)
             {

@@ -43,7 +43,7 @@ internal sealed record WateringPlanResult(
 internal sealed class WateringTargetPlanner
 {
     private const int MaximumSupportedMapDimension = 255;
-    private const int ArrivalSearchRadius = 8;
+    private const int MaximumArrivalPathChecks = 32;
     private static readonly Point[] InteractionOffsets =
     {
         new(0, 1),
@@ -66,27 +66,44 @@ internal sealed class WateringTargetPlanner
         if (width > MaximumSupportedMapDimension || height > MaximumSupportedMapDimension)
             return new WateringPlanResult(null, WateringPlanFailure.UnsupportedFarmMap);
 
-        GridPoint entrance = FarmEntranceSelection.SelectLeftEntrance(
-            width,
-            height,
-            farm.warps.Select(warp => new GridPoint(warp.X, warp.Y)));
-        Point? arrivalTile = this.FindArrivalTile(farm, new Point(entrance.X, entrance.Y));
-        if (arrivalTile is null)
-            return new WateringPlanResult(null, WateringPlanFailure.NoSafeArrivalTile);
+        bool foundSafeArrival = false;
+        int checkedPaths = 0;
+        WateringPlanFailure lastFailure = WateringPlanFailure.NoReachableCrop;
+        foreach (GridPoint candidate in FarmEntranceSelection.OrderLeftBoundaryCandidates(width, height))
+        {
+            Vector2 candidateTile = new(candidate.X, candidate.Y);
+            if (farm.warps.Any(warp => warp.X == candidate.X && warp.Y == candidate.Y)
+                || farm.doors.ContainsKey(new Point(candidate.X, candidate.Y))
+                || !farm.CanSpawnCharacterHere(candidateTile))
+                continue;
 
-        WateringTargetSearchResult firstTarget = this.TryFindNext(
-            farm,
-            worker,
-            arrivalTile.Value,
-            arrivalTile.Value,
-            new HashSet<Point>(),
-            new HashSet<FarmTaskRouteEdge>());
-        if (!firstTarget.IsSuccess || firstTarget.Target is null)
-            return new WateringPlanResult(null, firstTarget.Failure);
+            foundSafeArrival = true;
+            if (++checkedPaths > MaximumArrivalPathChecks)
+                break;
+
+            Point arrivalTile = new(candidate.X, candidate.Y);
+            WateringTargetSearchResult firstTarget = this.TryFindNext(
+                farm,
+                worker,
+                arrivalTile,
+                arrivalTile,
+                new HashSet<Point>(),
+                new HashSet<FarmTaskRouteEdge>());
+            if (firstTarget.IsSuccess && firstTarget.Target is not null)
+            {
+                return new WateringPlanResult(
+                    new WateringWorkPlan(arrivalTile, firstTarget.Target),
+                    WateringPlanFailure.None);
+            }
+
+            lastFailure = firstTarget.Failure;
+            if (lastFailure == WateringPlanFailure.NoDryCrop)
+                break;
+        }
 
         return new WateringPlanResult(
-            new WateringWorkPlan(arrivalTile.Value, firstTarget.Target),
-            WateringPlanFailure.None);
+            null,
+            foundSafeArrival ? lastFailure : WateringPlanFailure.NoSafeArrivalTile);
     }
 
     public WateringTargetSearchResult TryFindNext(
@@ -210,29 +227,6 @@ internal sealed class WateringTargetPlanner
         return new FarmTaskRouteEdge(
             new GridPoint(target.X, target.Y),
             new GridPoint(interaction.X, interaction.Y));
-    }
-
-    private Point? FindArrivalTile(Farm farm, Point center)
-    {
-        for (int distance = 0; distance <= ArrivalSearchRadius; distance++)
-        {
-            for (int yOffset = -distance; yOffset <= distance; yOffset++)
-            {
-                int xOffsetMagnitude = distance - Math.Abs(yOffset);
-                int[] xOffsets = xOffsetMagnitude == 0
-                    ? new[] { 0 }
-                    : new[] { -xOffsetMagnitude, xOffsetMagnitude };
-
-                foreach (int xOffset in xOffsets)
-                {
-                    Vector2 tile = new(center.X + xOffset, center.Y + yOffset);
-                    if (farm.CanSpawnCharacterHere(tile))
-                        return new Point((int)tile.X, (int)tile.Y);
-                }
-            }
-        }
-
-        return null;
     }
 
     private static int GetFacingDirection(Point interaction, Point target)

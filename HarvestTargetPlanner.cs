@@ -43,7 +43,7 @@ internal sealed record HarvestPlanResult(
 internal sealed class HarvestTargetPlanner
 {
     private const int MaximumSupportedMapDimension = 255;
-    private const int ArrivalSearchRadius = 8;
+    private const int MaximumArrivalPathChecks = 32;
     private static readonly Point[] InteractionOffsets =
     {
         new(0, 1),
@@ -66,27 +66,44 @@ internal sealed class HarvestTargetPlanner
         if (width > MaximumSupportedMapDimension || height > MaximumSupportedMapDimension)
             return new HarvestPlanResult(null, HarvestPlanFailure.UnsupportedFarmMap);
 
-        GridPoint entrance = FarmEntranceSelection.SelectLeftEntrance(
-            width,
-            height,
-            farm.warps.Select(warp => new GridPoint(warp.X, warp.Y)));
-        Point? arrivalTile = this.FindArrivalTile(farm, new Point(entrance.X, entrance.Y));
-        if (arrivalTile is null)
-            return new HarvestPlanResult(null, HarvestPlanFailure.NoSafeArrivalTile);
+        bool foundSafeArrival = false;
+        int checkedPaths = 0;
+        HarvestPlanFailure lastFailure = HarvestPlanFailure.NoReachableCrop;
+        foreach (GridPoint candidate in FarmEntranceSelection.OrderLeftBoundaryCandidates(width, height))
+        {
+            Vector2 candidateTile = new(candidate.X, candidate.Y);
+            if (farm.warps.Any(warp => warp.X == candidate.X && warp.Y == candidate.Y)
+                || farm.doors.ContainsKey(new Point(candidate.X, candidate.Y))
+                || !farm.CanSpawnCharacterHere(candidateTile))
+                continue;
 
-        HarvestTargetSearchResult firstTarget = this.TryFindNext(
-            farm,
-            worker,
-            arrivalTile.Value,
-            arrivalTile.Value,
-            new HashSet<Point>(),
-            new HashSet<FarmTaskRouteEdge>());
-        if (!firstTarget.IsSuccess || firstTarget.Target is null)
-            return new HarvestPlanResult(null, firstTarget.Failure);
+            foundSafeArrival = true;
+            if (++checkedPaths > MaximumArrivalPathChecks)
+                break;
+
+            Point arrivalTile = new(candidate.X, candidate.Y);
+            HarvestTargetSearchResult firstTarget = this.TryFindNext(
+                farm,
+                worker,
+                arrivalTile,
+                arrivalTile,
+                new HashSet<Point>(),
+                new HashSet<FarmTaskRouteEdge>());
+            if (firstTarget.IsSuccess && firstTarget.Target is not null)
+            {
+                return new HarvestPlanResult(
+                    new HarvestWorkPlan(arrivalTile, firstTarget.Target),
+                    HarvestPlanFailure.None);
+            }
+
+            lastFailure = firstTarget.Failure;
+            if (lastFailure == HarvestPlanFailure.NoMatureCrop)
+                break;
+        }
 
         return new HarvestPlanResult(
-            new HarvestWorkPlan(arrivalTile.Value, firstTarget.Target),
-            HarvestPlanFailure.None);
+            null,
+            foundSafeArrival ? lastFailure : HarvestPlanFailure.NoSafeArrivalTile);
     }
 
     public HarvestTargetSearchResult TryFindNext(
@@ -203,28 +220,6 @@ internal sealed class HarvestTargetPlanner
             }
         }
         return count;
-    }
-
-    private Point? FindArrivalTile(Farm farm, Point center)
-    {
-        for (int distance = 0; distance <= ArrivalSearchRadius; distance++)
-        {
-            for (int yOffset = -distance; yOffset <= distance; yOffset++)
-            {
-                int xOffsetMagnitude = distance - Math.Abs(yOffset);
-                int[] xOffsets = xOffsetMagnitude == 0
-                    ? new[] { 0 }
-                    : new[] { -xOffsetMagnitude, xOffsetMagnitude };
-
-                foreach (int xOffset in xOffsets)
-                {
-                    Vector2 tile = new(center.X + xOffset, center.Y + yOffset);
-                    if (farm.CanSpawnCharacterHere(tile))
-                        return new Point((int)tile.X, (int)tile.Y);
-                }
-            }
-        }
-        return null;
     }
 
     private static int GetFacingDirection(Point interaction, Point target)
