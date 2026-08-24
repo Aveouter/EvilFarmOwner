@@ -27,6 +27,7 @@ List<(string Name, Action Test)> tests = new()
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
     ("harvest fallback capacity ordering", TestHarvestFallbackCapacityOrdering),
     ("harvest partial remainder", TestHarvestPartialRemainder),
+    ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest overflow fallback", TestHarvestOverflowFallback),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
     ("harvest placement conservation", TestHarvestPlacementConservation),
@@ -407,6 +408,22 @@ static void TestHarvestPartialRemainder()
     Equal(6, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 4));
     Equal(0, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 10));
     Equal(10, HarvestTransferMath.GetDeliveredCount(requestedStack: 10, remainingStack: 0));
+}
+
+static void TestRegrowingHarvestCaptureSemantics()
+{
+    Equal(true, ContractHarvestSemantics.HasCapturedOutput(
+        vanillaRequestsCropRemoval: false,
+        capturedItemCount: 3));
+    Equal(true, ContractHarvestSemantics.HasCapturedOutput(
+        vanillaRequestsCropRemoval: true,
+        capturedItemCount: 1));
+    Equal(false, ContractHarvestSemantics.HasCapturedOutput(
+        vanillaRequestsCropRemoval: false,
+        capturedItemCount: 0));
+    Equal(false, ContractHarvestSemantics.HasCapturedOutput(
+        vanillaRequestsCropRemoval: true,
+        capturedItemCount: 0));
 }
 
 static void TestHarvestPlacementConservation()

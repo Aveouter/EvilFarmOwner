@@ -635,17 +635,18 @@ internal sealed class HarvestingContractExecutionController
             || dirt.crop is not { } crop)
             return false;
 
-        bool destroyAfterHarvest = !crop.RegrowsAfterHarvest();
         ContractHarvestCollector collector = new(contract.Farm, contract.Lease.Worker.Position);
-        bool harvested = crop.harvest(
+        bool vanillaRequestsCropRemoval = crop.harvest(
             contract.CurrentTarget.TargetTile.X,
             contract.CurrentTarget.TargetTile.Y,
             dirt,
             collector);
-        if (!harvested || collector.Items.Count == 0)
+        if (!ContractHarvestSemantics.HasCapturedOutput(
+                vanillaRequestsCropRemoval,
+                collector.Items.Count))
             return false;
 
-        if (destroyAfterHarvest)
+        if (vanillaRequestsCropRemoval)
             dirt.destroyCrop(showAnimation: false);
 
         foreach (Item item in collector.Items)
