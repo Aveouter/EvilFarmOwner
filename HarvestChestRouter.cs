@@ -130,7 +130,10 @@ internal sealed class HarvestChestRouter
         if (chest.Items.Any(existing => existing?.QualifiedItemId == incoming.QualifiedItemId))
             return HarvestChestMatchKind.SameItem;
 
-        if (chest.Items.Any(existing => existing is not null && existing.Category == incoming.Category))
+        if (chest.Items.Any(existing => existing is not null
+                && HarvestSemanticGroupClassifier.AreSameKnownGroup(
+                    existing.Category,
+                    incoming.Category)))
             return HarvestChestMatchKind.SameGroup;
 
         return HarvestChestMatchKind.AvailableCapacity;

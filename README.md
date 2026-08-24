@@ -39,7 +39,7 @@ Press one key to review named worker candidates and see why someone is currently
 - Watch the selected NPC prefer the right/east farm entrance, safely fall back to another genuine boundary entrance when needed, walk between reachable crops, return to the selected entrance, and resume their prior state.
 - Watch a selected NPC harvest every reachable mature crop through the vanilla crop logic, carry every exact output, deliver it to ranked ordinary farm chests or the on-farm requester, and return safely.
 - Route around kegs, chests, machines, fences, trellis crops, and other occupied tiles without moving or destroying them; dynamically retry another interaction edge if a route becomes blocked.
-- Route harvest outputs by exact stack compatibility, same item, same category, then real acceptable capacity; when no chest route can accept an item, hand it to the on-farm requester if their inventory can accept it, then fall back to overflow or a visible ground drop. Audit every destination before settlement.
+- Route harvest outputs by exact stack compatibility, same item, the same stable semantic group, then real acceptable capacity; when no chest route can accept an item, hand it to the on-farm requester if their inventory can accept it, then fall back to overflow or a visible ground drop. Audit every destination before settlement. Unknown or custom categories use capacity-only fallback instead of guessing.
 - Reserve the six-hour maximum on dispatch, charge each started work hour (minimum one), and refund the unused authorization on return.
 - Let both the host and connected farmhands request contracts through host-authoritative multiplayer synchronization.
 - Support English and Chinese text.
@@ -115,7 +115,7 @@ Mods/EvilFarmOwner/config.json
 - 观看所选 NPC 优先从农场右侧入口进入；右侧没有安全往返路线时使用其他真实边界入口，逐格完成可到达的农活，再从所选入口返回并恢复原状态。
 - 观看所选 NPC 通过游戏原生作物逻辑收获全部可到达的成熟作物，携带每一件实际产物、送入按规则选择的普通农场箱子或交给仍在农场的合同请求者，再安全返回。
 - 木桶、箱子、机器、栅栏、棚架作物和其他占用格都作为不可破坏的障碍绕行；途中路线失效时会换一个交互边重新规划，不会移动或清除摆件。
-- 收获成果依次按“可堆叠同品质、同物品、同类别、真实可用容量”选择箱子；没有可接收的箱子路线时，若合同请求者仍在主农场且背包能接收，就直接交给请求者，再依次使用溢出仓和明确可见的地面掉落。结算前会核对所有去向是否完全守恒。
+- 收获成果依次按“可堆叠同品质、同物品、稳定语义分组、真实可用容量”选择箱子；未知或自定义类别不会凭原始类别数字猜测分组，而是使用容量兜底。没有可接收的箱子路线时，若合同请求者仍在主农场且背包能接收，就直接交给请求者，再依次使用溢出仓和明确可见的地面掉落。结算前会核对所有去向是否完全守恒。
 - 出工时预留六小时最高工资，完成后按已开始的工作小时计费（最少一小时）并退还未使用的授权金额。
 - 主机和已连接的农场工都可以通过主机权威多人同步请求合同。
 - 支持中文和英文文本。

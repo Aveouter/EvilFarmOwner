@@ -24,6 +24,7 @@ List<(string Name, Action Test)> tests = new()
     ("NPC lease recovery policy", TestNpcLeaseRecoveryPolicy),
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
+    ("harvest semantic groups", TestHarvestSemanticGroups),
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
     ("harvest route cost before spare capacity", TestHarvestRouteCostBeforeSpareCapacity),
     ("harvest partial remainder", TestHarvestPartialRemainder),
@@ -373,6 +374,31 @@ static void TestHarvestChestMatchPriority()
     Equal(HarvestChestMatchKind.SameItem, ordered[1].MatchKind);
     Equal(HarvestChestMatchKind.SameGroup, ordered[2].MatchKind);
     Equal(HarvestChestMatchKind.AvailableCapacity, ordered[3].MatchKind);
+}
+
+static void TestHarvestSemanticGroups()
+{
+    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.MetalResources,
+        HarvestItemCategory.BuildingResources));
+    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.Vegetable,
+        HarvestItemCategory.Fruit));
+    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.Seed,
+        HarvestItemCategory.Fertilizer));
+    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.Gem,
+        HarvestItemCategory.Mineral));
+    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.Clothing,
+        HarvestItemCategory.Boots));
+    Equal(false, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        HarvestItemCategory.Furniture,
+        HarvestItemCategory.Clothing));
+    Equal(false, HarvestSemanticGroupClassifier.AreSameKnownGroup(
+        leftCategory: 123456,
+        rightCategory: 123456));
 }
 
 static void TestHarvestChestFullAcceptance()
