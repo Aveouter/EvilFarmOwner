@@ -79,7 +79,7 @@ efo_overflow
 efo_netstatus
 ```
 
-`efo_overflow` opens the persistent team inventory used only when no eligible farm chest can accept a harvest result and the on-farm requester cannot receive it. Emergency ground drops are announced explicitly.
+`efo_overflow` opens the persistent team inventory used only when no eligible farm chest can accept a harvest result and the on-farm requester cannot receive it. Emergency ground drops are announced explicitly and placed at the on-farm requester or a collision-free farmhouse/selected-entrance delivery tile before the worker position is considered.
 
 `efo_netstatus` reports the local network role, host session, active contract, pending request, processed-request count, and synchronized state version for multiplayer acceptance testing.
 
@@ -153,7 +153,7 @@ efo_overflow
 efo_netstatus
 ```
 
-`efo_overflow` 用于打开持久化队伍溢出仓；只有普通农场箱子都无法接收产物、且仍在农场的合同请求者也无法接收时才会使用它。紧急地面掉落一定会明确提示。
+`efo_overflow` 用于打开持久化队伍溢出仓；只有普通农场箱子都无法接收产物、且仍在农场的合同请求者也无法接收时才会使用它。紧急地面掉落一定会明确提示，并优先落在仍在农场的请求者处；否则选择农舍交付区或本次入口附近无碰撞的空格，最后才考虑工人位置。
 
 `efo_netstatus` 用于多人验收，显示本地网络角色、主机会话、活动合同、待处理请求、已处理请求数量和同步状态版本。
 

@@ -13,12 +13,13 @@
 - Fixed dense-field routing by using vanilla live crop collision instead of spawn suitability; ordinary crop tiles are traversable while trellises remain blocking.
 - Changed worker arrival to prefer the right/east farm entrance and use other genuine boundary entrances only as safe fallbacks.
 - Added runtime entrance failover so a worker stalled on the first live step excludes that side instead of retrying every crop edge.
+- Moved emergency harvest drops to the on-farm requester or a deterministic collision-free delivery tile before falling back to the worker position.
 - Added exact requester-inventory delivery when no chest route can accept an item and the requester remains on the farm with capacity.
 - Added `efo_overflow` to retrieve harvest results which could not fit in an eligible farm chest.
 - Added host-authoritative multiplayer contract requests, bounded request replay protection, phase/cargo/transfer snapshots, reconnect synchronization, and host-only visual action messages.
 - Bound wage reservation and refund to the requesting farmer instead of the host's local player.
 - Added mutex-aware persistent overflow delivery and save-time lease/cargo cleanup.
-- Expanded the deterministic logic harness to 33 wage, routing, storage, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
+- Expanded the deterministic logic harness to 34 wage, routing, storage, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
 - Removed the legacy instant `efo_work`, task toggles, player-centered scan settings, and bundled user config from the production release surface.
 - Corrected manifest ownership, release description, and GitHub update metadata.
 - Added English and Chinese UI, configuration, multiplayer, failure, storage, and settlement text.

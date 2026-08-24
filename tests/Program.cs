@@ -28,6 +28,7 @@ List<(string Name, Action Test)> tests = new()
     ("harvest overflow fallback", TestHarvestOverflowFallback),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
     ("harvest placement conservation", TestHarvestPlacementConservation),
+    ("emergency drop tile ordering", TestEmergencyDropTileOrdering),
     ("multiplayer request authorization", TestMultiplayerRequestAuthorization),
     ("multiplayer request replay", TestMultiplayerRequestReplay),
     ("multiplayer deterministic order", TestMultiplayerDeterministicOrder),
@@ -368,6 +369,30 @@ static void TestHarvestPlacementConservation()
         overflow: 4,
         dropped: 2,
         unresolved: 1));
+}
+
+static void TestEmergencyDropTileOrdering()
+{
+    HashSet<GridPoint> blocked = new()
+    {
+        new(4, 4),
+        new(4, 3),
+        new(3, 4)
+    };
+    GridPoint? selected = HarvestEmergencyDropSelection.FindNearest(
+        mapWidth: 10,
+        mapHeight: 10,
+        anchor: new GridPoint(4, 4),
+        isEligible: tile => !blocked.Contains(tile),
+        maximumRadius: 2);
+
+    Equal(new GridPoint(5, 4), selected!.Value);
+    Equal(true, HarvestEmergencyDropSelection.FindNearest(
+        mapWidth: 2,
+        mapHeight: 2,
+        anchor: new GridPoint(0, 0),
+        isEligible: _ => false,
+        maximumRadius: 1) is null);
 }
 
 static void TestHarvestOverflowFallback()

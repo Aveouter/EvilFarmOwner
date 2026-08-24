@@ -34,7 +34,7 @@ Run `efo_netstatus` on each peer before every scenario. The host must report `ro
 5. Verify the NPC routes around trellises, kegs, chests, machines, and fences; no placed object is removed, moved, replaced, or loses state.
 6. Verify every exact output, quality, stack, and by-product appears once in the ranked chest route. When an eligible chest accepts the item, both player inventories and the shipping bin must remain unchanged.
 7. Make all eligible chests unable to accept one output while the requesting farmhand remains on the main farm with inventory capacity. Verify that exact output enters only the requesting farmhand's inventory once; the host inventory and shipping bin remain unchanged.
-8. Repeat with the requester off the farm or without inventory capacity. Verify the exact remainder appears once in `efo_overflow`; if emergency dropping is forced, verify an explicit warning and visible exact drop.
+8. Repeat with the requester off the farm or without inventory capacity. Verify the exact remainder appears once in `efo_overflow`; if emergency dropping is forced, verify an explicit warning and visible exact drop at the on-farm requester, otherwise at a collision-free farmhouse/selected-entrance delivery tile. It must not appear inside a blocked worker tile.
 9. Verify only the requesting farmhand pays the reported wage once.
 
 ### 3. Host request and simultaneous request ordering

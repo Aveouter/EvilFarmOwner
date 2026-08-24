@@ -1261,18 +1261,21 @@ internal sealed class HarvestingContractExecutionController
 
     private void DropCargoVisibly(ActiveHarvestContract contract, string reason)
     {
-        this.Monitor.Log($"{reason}; dropping exact harvest cargo visibly.", LogLevel.Error);
+        EmergencyDropDestination destination = this.ResolveEmergencyDropDestination(contract);
+        this.Monitor.Log(
+            $"{reason}; dropping exact harvest cargo visibly at {destination.Label} {destination.Tile}.",
+            LogLevel.Error);
         foreach (HarvestCargoEntry entry in contract.Cargo.ToArray())
         {
             int stack = entry.Item.Stack;
             try
             {
-                Game1.createItemDebris(entry.Item, contract.Lease.Worker.Position, -1, contract.Farm);
+                Game1.createItemDebris(entry.Item, destination.Position, -1, contract.Farm);
                 contract.DroppedItems += stack;
                 contract.Cargo.Remove(entry);
                 this.Monitor.Log(
                     $"Dropped harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{stack} "
-                    + $"visibly at {contract.Lease.Worker.TilePoint}.",
+                    + $"visibly at {destination.Label} {destination.Tile}.",
                     LogLevel.Warn);
             }
             catch (Exception dropException)
@@ -1284,8 +1287,92 @@ internal sealed class HarvestingContractExecutionController
         }
 
         Game1.addHUDMessage(new HUDMessage(
-            this.Translation.Get("harvest.hud.emergency-drop"),
+            this.Translation.Get("harvest.hud.emergency-drop", new { location = destination.Label }),
             HUDMessage.error_type));
+    }
+
+    private EmergencyDropDestination ResolveEmergencyDropDestination(ActiveHarvestContract contract)
+    {
+        Farmer? requester = Game1.GetPlayer(contract.Requester.UniqueMultiplayerID, onlyOnline: true);
+        if (requester is not null && ReferenceEquals(requester.currentLocation, contract.Farm))
+        {
+            Point requesterTile = new(
+                (int)Math.Floor(requester.Position.X / Game1.tileSize),
+                (int)Math.Floor(requester.Position.Y / Game1.tileSize));
+            return new EmergencyDropDestination(
+                requester.Position,
+                requesterTile,
+                requester.displayName);
+        }
+
+        int width = contract.Farm.Map.Layers[0].LayerWidth;
+        int height = contract.Farm.Map.Layers[0].LayerHeight;
+        Point farmhouseEntry = contract.Farm.GetMainFarmHouseEntry();
+        GridPoint? farmhouseTile = HarvestEmergencyDropSelection.FindNearest(
+            width,
+            height,
+            new GridPoint(farmhouseEntry.X, farmhouseEntry.Y),
+            tile => this.IsSafeEmergencyDropTile(contract, tile));
+        if (farmhouseTile is { } safeFarmhouseTile)
+        {
+            return this.CreateTileDropDestination(
+                safeFarmhouseTile,
+                this.Translation.Get("harvest.drop-location.farmhouse"));
+        }
+
+        GridPoint? entranceTile = HarvestEmergencyDropSelection.FindNearest(
+            width,
+            height,
+            new GridPoint(contract.Plan.ArrivalTile.X, contract.Plan.ArrivalTile.Y),
+            tile => this.IsSafeEmergencyDropTile(contract, tile));
+        if (entranceTile is { } safeEntranceTile)
+        {
+            return this.CreateTileDropDestination(
+                safeEntranceTile,
+                this.Translation.Get("harvest.drop-location.entrance"));
+        }
+
+        return new EmergencyDropDestination(
+            contract.Lease.Worker.Position,
+            contract.Lease.Worker.TilePoint,
+            this.Translation.Get("harvest.drop-location.worker"));
+    }
+
+    private bool IsSafeEmergencyDropTile(ActiveHarvestContract contract, GridPoint tile)
+    {
+        Point point = new(tile.X, tile.Y);
+        Vector2 tileVector = new(tile.X, tile.Y);
+        if (contract.Farm.warps.Any(warp => warp.X == tile.X && warp.Y == tile.Y)
+            || contract.Farm.doors.ContainsKey(point)
+            || contract.Farm.objects.ContainsKey(tileVector)
+            || contract.Farm.terrainFeatures.ContainsKey(tileVector)
+            || !contract.Farm.isTilePassable(tileVector))
+            return false;
+
+        Rectangle bounds = new(
+            tile.X * Game1.tileSize + 1,
+            tile.Y * Game1.tileSize + 1,
+            Game1.tileSize - 2,
+            Game1.tileSize - 2);
+        return !contract.Farm.isCollidingPosition(
+            bounds,
+            Game1.viewport,
+            isFarmer: true,
+            damagesFarmer: 0,
+            glider: false,
+            Game1.MasterPlayer,
+            pathfinding: true);
+    }
+
+    private EmergencyDropDestination CreateTileDropDestination(GridPoint tile, string label)
+    {
+        Vector2 position = new(
+            (tile.X + 0.5f) * Game1.tileSize,
+            (tile.Y + 0.5f) * Game1.tileSize);
+        return new EmergencyDropDestination(
+            position,
+            new Point(tile.X, tile.Y),
+            label);
     }
 
     private void StartHarvestAnimation(NPC worker)
@@ -1483,4 +1570,9 @@ internal sealed class HarvestingContractExecutionController
         string Name,
         int Quality,
         int Stack);
+
+    private sealed record EmergencyDropDestination(
+        Vector2 Position,
+        Point Tile,
+        string Label);
 }
