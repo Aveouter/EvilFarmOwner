@@ -16,6 +16,7 @@ public sealed class ModEntry : Mod
     private WateringContractExecutionController? WateringContracts;
     private HarvestingContractExecutionController? HarvestingContracts;
     private MultiplayerContractCoordinator? MultiplayerContracts;
+    private readonly HarvestAcceptanceFaults AcceptanceFaults = new();
 
     public override void Entry(IModHelper helper)
     {
@@ -30,7 +31,8 @@ public sealed class ModEntry : Mod
         this.HarvestingContracts = new HarvestingContractExecutionController(
             helper.Translation,
             this.Monitor,
-            this.WorkerRoster);
+            this.WorkerRoster,
+            this.AcceptanceFaults);
         this.MultiplayerContracts = new MultiplayerContractCoordinator(
             helper,
             this.ModManifest,
@@ -58,7 +60,74 @@ public sealed class ModEntry : Mod
         helper.ConsoleCommands.Add("efo_overflow", helper.Translation.Get("cmd.overflow"), (_, _) => this.OpenHarvestOverflow());
         helper.ConsoleCommands.Add("efo_quarantine", helper.Translation.Get("cmd.quarantine"), (_, _) => this.OpenHarvestQuarantine());
         helper.ConsoleCommands.Add("efo_netstatus", helper.Translation.Get("cmd.netstatus"), (_, _) => this.ShowNetworkStatus());
+#if EFO_ACCEPTANCE_FAULTS
+        helper.ConsoleCommands.Add(
+            "efo_acceptance_faults",
+            "Arm test-only harvest storage failures. This command is excluded from production builds.",
+            this.HandleAcceptanceFaultCommand);
+        this.Monitor.Log(
+            "ACCEPTANCE TEST BUILD: harvest storage fault injection is enabled. Do not distribute this DLL.",
+            LogLevel.Alert);
+#endif
     }
+
+#if EFO_ACCEPTANCE_FAULTS
+    private void HandleAcceptanceFaultCommand(string command, string[] args)
+    {
+        if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+        {
+            this.Monitor.Log($"Acceptance faults armed: {this.AcceptanceFaults.Describe()}.", LogLevel.Info);
+            return;
+        }
+
+        if (string.Equals(args[0], "clear", StringComparison.OrdinalIgnoreCase))
+        {
+            this.AcceptanceFaults.Clear();
+            this.Monitor.Log("Cleared all acceptance-test harvest storage faults.", LogLevel.Alert);
+            return;
+        }
+
+        if (string.Equals(args[0], "finalize", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Context.IsWorldReady || !Context.IsMainPlayer)
+            {
+                this.Monitor.Log("Acceptance finalization requires the active host save.", LogLevel.Warn);
+                return;
+            }
+
+            this.HarvestingContracts?.OnSaving();
+            this.MultiplayerContracts?.Update();
+            this.MultiplayerContracts?.OnSaving();
+            this.Monitor.Log("Invoked the harvest save-boundary finalizer for acceptance testing.", LogLevel.Alert);
+            return;
+        }
+
+        if (!string.Equals(args[0], "arm", StringComparison.OrdinalIgnoreCase) || args.Length < 2)
+        {
+            this.Monitor.Log(
+                "Usage: efo_acceptance_faults arm <overflow-lock|visible-drop|quarantine-lock|recovery-record-write|quarantine-write> [...]; clear; status; finalize",
+                LogLevel.Info);
+            return;
+        }
+
+        List<HarvestAcceptanceFault> parsedFaults = new();
+        foreach (string value in args.Skip(1))
+        {
+            if (!HarvestAcceptanceFaults.TryParse(value, out HarvestAcceptanceFault fault))
+            {
+                this.Monitor.Log($"Unknown acceptance fault '{value}'.", LogLevel.Warn);
+                return;
+            }
+
+            parsedFaults.Add(fault);
+        }
+
+        foreach (HarvestAcceptanceFault fault in parsedFaults)
+            this.AcceptanceFaults.Arm(fault);
+
+        this.Monitor.Log($"Acceptance faults armed: {this.AcceptanceFaults.Describe()}.", LogLevel.Alert);
+    }
+#endif
 
     private void RefreshHotkeyConflict()
     {

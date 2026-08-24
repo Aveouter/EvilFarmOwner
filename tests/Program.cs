@@ -33,6 +33,7 @@ List<(string Name, Action Test)> tests = new()
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
     ("harvest placement conservation", TestHarvestPlacementConservation),
     ("harvest quarantine recovery state", TestHarvestQuarantineRecoveryState),
+    ("harvest acceptance fault controls", TestHarvestAcceptanceFaultControls),
     ("emergency drop tile ordering", TestEmergencyDropTileOrdering),
     ("multiplayer request authorization", TestMultiplayerRequestAuthorization),
     ("multiplayer request replay", TestMultiplayerRequestReplay),
@@ -594,6 +595,36 @@ static void TestHarvestQuarantineRecoveryState()
             }
         });
     Equal(false, HarvestCargoRecoveryState.IsValid(excessivePayload, 445566));
+}
+
+static void TestHarvestAcceptanceFaultControls()
+{
+    HarvestAcceptanceFaults faults = new();
+    Equal("none", faults.Describe());
+    Equal(true, HarvestAcceptanceFaults.TryParse("overflow-lock", out HarvestAcceptanceFault overflow));
+    Equal(true, HarvestAcceptanceFaults.TryParse("VISIBLE-DROP", out HarvestAcceptanceFault visibleDrop));
+    Equal(true, HarvestAcceptanceFaults.TryParse("quarantine-lock", out HarvestAcceptanceFault quarantineLock));
+    Equal(true, HarvestAcceptanceFaults.TryParse("recovery-record-write", out HarvestAcceptanceFault recoveryWrite));
+    Equal(true, HarvestAcceptanceFaults.TryParse("quarantine-write", out HarvestAcceptanceFault quarantineWrite));
+    Equal(false, HarvestAcceptanceFaults.TryParse("unknown", out _));
+
+    faults.Arm(overflow);
+    faults.Arm(visibleDrop);
+    faults.Arm(quarantineLock);
+    faults.Arm(recoveryWrite);
+    faults.Arm(quarantineWrite);
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.OverflowLock));
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.VisibleDrop));
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.QuarantineLock));
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.RecoveryRecordWrite));
+    Equal(true, faults.IsArmed(HarvestAcceptanceFault.QuarantineWrite));
+    Equal(
+        "overflow-lock,visible-drop,quarantine-lock,recovery-record-write,quarantine-write",
+        faults.Describe());
+
+    faults.Clear();
+    Equal("none", faults.Describe());
+    Equal(false, faults.IsArmed(HarvestAcceptanceFault.OverflowLock));
 }
 
 static void TestEmergencyDropTileOrdering()

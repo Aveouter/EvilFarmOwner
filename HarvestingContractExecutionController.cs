@@ -38,6 +38,7 @@ internal sealed class HarvestingContractExecutionController
     private readonly WorkerRosterService WorkerRoster;
     private readonly HarvestTargetPlanner TargetPlanner;
     private readonly HarvestChestRouter ChestRouter;
+    private readonly HarvestAcceptanceFaults AcceptanceFaults;
     private ActiveHarvestContract? ActiveContract;
     private NamedContractCompletionState? LastCompletion;
     private bool HasPendingQuarantineRecovery;
@@ -46,13 +47,15 @@ internal sealed class HarvestingContractExecutionController
     public HarvestingContractExecutionController(
         ITranslationHelper translation,
         IMonitor monitor,
-        WorkerRosterService workerRoster)
+        WorkerRosterService workerRoster,
+        HarvestAcceptanceFaults? acceptanceFaults = null)
     {
         this.Translation = translation;
         this.Monitor = monitor;
         this.WorkerRoster = workerRoster;
         this.TargetPlanner = new HarvestTargetPlanner(monitor);
         this.ChestRouter = new HarvestChestRouter(monitor);
+        this.AcceptanceFaults = acceptanceFaults ?? new HarvestAcceptanceFaults();
     }
 
     public bool HasActiveContract => this.ActiveContract is not null;
@@ -1317,8 +1320,11 @@ internal sealed class HarvestingContractExecutionController
         NetMutex mutex = Game1.player.team.GetOrCreateGlobalInventoryMutex(OverflowInventoryId);
         try
         {
-            if (!this.TryAcquireOverflowLockImmediately(mutex))
+            bool forceLockFailure = this.AcceptanceFaults.IsArmed(HarvestAcceptanceFault.OverflowLock);
+            if (forceLockFailure || !this.TryAcquireOverflowLockImmediately(mutex))
             {
+                if (forceLockFailure)
+                    this.LogInjectedFault(HarvestAcceptanceFault.OverflowLock);
                 this.DropCargoVisibly(contract, "persistent overflow was locked during emergency settlement");
                 return;
             }
@@ -1357,6 +1363,13 @@ internal sealed class HarvestingContractExecutionController
             return;
 
         contract.OverflowLockRequested = true;
+        if (this.AcceptanceFaults.IsArmed(HarvestAcceptanceFault.OverflowLock))
+        {
+            this.LogInjectedFault(HarvestAcceptanceFault.OverflowLock);
+            contract.OverflowLockRequested = false;
+            return;
+        }
+
         NetMutex mutex = Game1.player.team.GetOrCreateGlobalInventoryMutex(OverflowInventoryId);
         mutex.RequestLock(
             () => this.OnOverflowLockAcquired(contract.Id, mutex),
@@ -1433,8 +1446,11 @@ internal sealed class HarvestingContractExecutionController
         NetMutex mutex = Game1.player.team.GetOrCreateGlobalInventoryMutex(QuarantineInventoryId);
         try
         {
-            if (!this.TryAcquireOverflowLockImmediately(mutex))
+            bool forceLockFailure = this.AcceptanceFaults.IsArmed(HarvestAcceptanceFault.QuarantineLock);
+            if (forceLockFailure || !this.TryAcquireOverflowLockImmediately(mutex))
             {
+                if (forceLockFailure)
+                    this.LogInjectedFault(HarvestAcceptanceFault.QuarantineLock);
                 this.Monitor.Log(
                     $"Emergency harvest quarantine is locked for contract {contract.Id:N}; "
                     + "persisting a serializable recovery record.",
@@ -1461,6 +1477,12 @@ internal sealed class HarvestingContractExecutionController
 
     private void StoreCargoInQuarantine(ActiveHarvestContract contract)
     {
+        if (this.AcceptanceFaults.IsArmed(HarvestAcceptanceFault.QuarantineWrite))
+        {
+            this.LogInjectedFault(HarvestAcceptanceFault.QuarantineWrite);
+            throw new IOException("Acceptance test forced the quarantine inventory write to fail.");
+        }
+
         Inventory quarantine = Game1.player.team.GetOrCreateGlobalInventory(QuarantineInventoryId);
         foreach (HarvestCargoEntry entry in contract.Cargo.ToArray())
         {
@@ -1521,6 +1543,12 @@ internal sealed class HarvestingContractExecutionController
     {
         try
         {
+            if (this.AcceptanceFaults.IsArmed(HarvestAcceptanceFault.RecoveryRecordWrite))
+            {
+                this.LogInjectedFault(HarvestAcceptanceFault.RecoveryRecordWrite);
+                throw new IOException("Acceptance test forced the quarantine recovery record write to fail.");
+            }
+
             List<HarvestCargoRecoveryItemData> savedItems = new();
             long payloadContentLength = contract.Id.ToString("N").Length;
             foreach (HarvestCargoEntry entry in contract.Cargo)
@@ -1664,8 +1692,11 @@ internal sealed class HarvestingContractExecutionController
                 }
                 return false;
             }
-            if (!this.TryAcquireOverflowLockImmediately(mutex))
+            bool forceLockFailure = this.AcceptanceFaults.IsArmed(HarvestAcceptanceFault.QuarantineLock);
+            if (forceLockFailure || !this.TryAcquireOverflowLockImmediately(mutex))
             {
+                if (forceLockFailure)
+                    this.LogInjectedFault(HarvestAcceptanceFault.QuarantineLock);
                 this.Monitor.Log(
                     "Harvest quarantine recovery is waiting for its persistent inventory lock.",
                     LogLevel.Warn);
@@ -1843,6 +1874,12 @@ internal sealed class HarvestingContractExecutionController
             int stack = entry.Item.Stack;
             try
             {
+                if (this.AcceptanceFaults.IsArmed(HarvestAcceptanceFault.VisibleDrop))
+                {
+                    this.LogInjectedFault(HarvestAcceptanceFault.VisibleDrop);
+                    throw new IOException("Acceptance test forced the visible ground drop to fail.");
+                }
+
                 Game1.createItemDebris(entry.Item, destination.Position, -1, contract.Farm);
                 contract.DroppedItems += stack;
                 contract.Cargo.Remove(entry);
@@ -1862,6 +1899,13 @@ internal sealed class HarvestingContractExecutionController
         Game1.addHUDMessage(new HUDMessage(
             this.Translation.Get("harvest.hud.emergency-drop", new { location = destination.Label }),
             HUDMessage.error_type));
+    }
+
+    private void LogInjectedFault(HarvestAcceptanceFault fault)
+    {
+        this.Monitor.Log(
+            $"ACCEPTANCE TEST ONLY: forcing harvest storage fault {fault}.",
+            LogLevel.Alert);
     }
 
     private EmergencyDropDestination ResolveEmergencyDropDestination(ActiveHarvestContract contract)

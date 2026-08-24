@@ -29,7 +29,8 @@
 - Added mutex-aware persistent overflow delivery and save-time lease/cargo cleanup.
 - Added a separate persistent emergency cargo quarantine, idempotent transfer markers, a size-bounded host recovery record, and `efo_quarantine` retrieval so failed overflow and ground-drop operations cannot release the only owned item instances.
 - Required day end, ordinary saving, and initial save creation to verify cargo ownership and force any transient remainder into the private team quarantine before contract settlement.
-- Expanded the deterministic logic harness to 42 wage, routing, storage, quarantine recovery, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
+- Added a compile-gated, non-distributable storage fault-injection harness for live overflow, drop, quarantine, recovery-record, and terminal-write acceptance tests; the normal Release verifier rejects any DLL which exposes its command.
+- Expanded the deterministic logic harness to 43 wage, routing, storage, quarantine recovery, acceptance-control, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
 - Removed the legacy instant `efo_work`, task toggles, player-centered scan settings, and bundled user config from the production release surface.
 - Corrected manifest ownership, release description, and GitHub update metadata.
 - Added English and Chinese UI, configuration, multiplayer, failure, storage, and settlement text.

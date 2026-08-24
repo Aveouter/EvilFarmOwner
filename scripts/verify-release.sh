@@ -27,11 +27,14 @@ echo "Source tree: $source_tree"
 dotnet run \
   -c Release \
   --project tests/EvilFarmOwner.LogicTests.csproj \
+  -p:EnableAcceptanceFaults=false \
   -p:EnableModDeploy=false \
   -p:EnableModZip=false
 
 dotnet build EvilFarmOwner.csproj \
+  -t:Rebuild \
   -c Release \
+  -p:EnableAcceptanceFaults=false \
   -p:EnableModDeploy=false \
   -p:EnableModZip=true
 
@@ -58,9 +61,9 @@ unzip -p "$package_path" EvilFarmOwner/manifest.json \
       and (.UpdateKeys | index("GitHub:Aveouter/EvilFarmOwner") != null)
     ' >/dev/null
 
-if strings "$project_root/bin/Release/net6.0/EvilFarmOwner.dll" \
-  | rg -q 'efo_work|efo_toggle|efo_status|WorkRadius|DailyWage|ClearDebris|PlantSeedsFromInventory|FertilizeEmptyDirt'; then
-  echo "Release DLL still exposes a legacy prototype command or setting." >&2
+dll_search_text="$(LC_ALL=C tr -d '\000' < "$project_root/bin/Release/net6.0/EvilFarmOwner.dll")"
+if [[ "$dll_search_text" =~ efo_work|efo_toggle|efo_status|efo_acceptance_faults|WorkRadius|DailyWage|ClearDebris|PlantSeedsFromInventory|FertilizeEmptyDirt ]]; then
+  echo "Release DLL still exposes a legacy prototype or acceptance-test command/setting." >&2
   exit 1
 fi
 
