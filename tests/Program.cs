@@ -13,6 +13,8 @@ List<(string Name, Action Test)> tests = new()
     ("actual path cost ordering", TestActualPathCostOrdering),
     ("trellis detour route", TestTrellisDetourRoute),
     ("failed interaction edge isolation", TestFailedInteractionEdgeIsolation),
+    ("controller path skips current tile", TestControllerPathSkipsCurrentTile),
+    ("travel progress watchdog", TestTravelProgressWatchdog),
     ("external boundary arrival ordering", TestExternalBoundaryArrivalOrdering),
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
@@ -168,6 +170,30 @@ static void TestFailedInteractionEdgeIsolation()
     Equal(false, failed.Contains(new FarmTaskRouteEdge(
         new GridPoint(8, 8),
         new GridPoint(7, 8))));
+}
+
+static void TestControllerPathSkipsCurrentTile()
+{
+    IReadOnlyList<GridPoint> steps = FarmNavigationMap.ToControllerSteps(new[]
+    {
+        new GridPoint(78, 15),
+        new GridPoint(77, 15),
+        new GridPoint(76, 15)
+    });
+
+    Equal(2, steps.Count);
+    Equal(new GridPoint(77, 15), steps[0]);
+    Equal(new GridPoint(76, 15), steps[1]);
+}
+
+static void TestTravelProgressWatchdog()
+{
+    TravelProgressWatchdog watchdog = new();
+    watchdog.Reset(100f, 200f);
+    Equal(false, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
+    Equal(false, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
+    Equal(true, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
+    Equal(false, watchdog.Tick(102f, 200f, maximumStalledTicks: 3));
 }
 
 static void TestExternalBoundaryArrivalOrdering()

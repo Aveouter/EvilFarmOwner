@@ -20,6 +20,8 @@ internal sealed class HarvestingContractExecutionController
     private const int ActionStartTicks = 8;
     private const int ActionDurationTicks = 40;
     private const int MaximumTravelTicks = 3600;
+    private const int MaximumStalledTravelTicks = 180;
+    private const int MaximumReturnReplans = 3;
     private const int MaximumLockWaitTicks = 300;
     private const int MaximumOverflowWaitTicks = 600;
     private const int OverflowRetryIntervalTicks = 60;
@@ -158,6 +160,7 @@ internal sealed class HarvestingContractExecutionController
                 this.OnArrivedAtTarget);
             contract.Controller = outbound;
             lease.AttachController(outbound);
+            contract.TravelWatchdog.Reset(worker.Position.X, worker.Position.Y);
             contract.Dispatched = true;
 
             Game1.addHUDMessage(new HUDMessage(
@@ -315,6 +318,19 @@ internal sealed class HarvestingContractExecutionController
             return;
         }
 
+        if ((Game1.activeClickableMenu is null || Game1.IsMultiplayer)
+            && contract.TravelWatchdog.Tick(
+                contract.Lease.Worker.Position.X,
+                contract.Lease.Worker.Position.Y,
+                MaximumStalledTravelTicks))
+        {
+            this.Monitor.Log(
+                $"Harvest worker '{contract.Lease.Worker.Name}' stalled during {contract.Phase} at {contract.Lease.Worker.TilePoint}; replanning.",
+                LogLevel.Warn);
+            this.HandleInterruptedTravel(contract, timedOut: false);
+            return;
+        }
+
         if (contract.PhaseTicks > 1 && contract.Lease.Worker.controller is null)
             this.HandleInterruptedTravel(contract, timedOut: false);
     }
@@ -341,12 +357,19 @@ internal sealed class HarvestingContractExecutionController
                 break;
 
             case HarvestContractPhase.Returning:
-                this.FinishContract(
-                    contract,
-                    succeeded: false,
-                    timedOut
-                        ? "contract.failure.return-timeout"
-                        : "contract.failure.return-interrupted");
+                contract.ReturnReplanAttempts++;
+                if (contract.ReturnReplanAttempts > MaximumReturnReplans)
+                {
+                    this.FinishContract(
+                        contract,
+                        succeeded: false,
+                        timedOut
+                            ? "contract.failure.return-timeout"
+                            : "contract.failure.return-interrupted");
+                    break;
+                }
+
+                this.BeginReturn(contract, depositOverflowOnReturn: false);
                 break;
         }
     }
@@ -492,6 +515,9 @@ internal sealed class HarvestingContractExecutionController
                 this.OnArrivedAtChest);
             contract.Controller = controller;
             contract.Lease.AttachController(controller);
+            contract.TravelWatchdog.Reset(
+                contract.Lease.Worker.Position.X,
+                contract.Lease.Worker.Position.Y);
         }
         catch (Exception ex)
         {
@@ -639,6 +665,9 @@ internal sealed class HarvestingContractExecutionController
                 this.OnArrivedAtTarget);
             contract.Controller = controller;
             contract.Lease.AttachController(controller);
+            contract.TravelWatchdog.Reset(
+                contract.Lease.Worker.Position.X,
+                contract.Lease.Worker.Position.Y);
         }
         catch (Exception ex)
         {
@@ -696,6 +725,9 @@ internal sealed class HarvestingContractExecutionController
                 this.OnReturnedToArrival);
             contract.Controller = returning;
             contract.Lease.AttachController(returning);
+            contract.TravelWatchdog.Reset(
+                contract.Lease.Worker.Position.X,
+                contract.Lease.Worker.Position.Y);
         }
         catch (Exception ex)
         {
@@ -1118,6 +1150,7 @@ internal sealed class HarvestingContractExecutionController
         public HarvestTargetPlan CurrentTarget { get; set; }
         public HashSet<Point> CompletedTargets { get; } = new();
         public HashSet<FarmTaskRouteEdge> FailedEdges { get; } = new();
+        public TravelProgressWatchdog TravelWatchdog { get; } = new();
         public HarvestTransferLedger TransferLedger { get; } = new();
         public List<HarvestCargoEntry> Cargo { get; } = new();
         public List<HarvestItemSnapshot> HarvestedItems { get; } = new();
@@ -1136,6 +1169,7 @@ internal sealed class HarvestingContractExecutionController
         public int ChestDeliveredItems { get; set; }
         public int OverflowItems { get; set; }
         public int DroppedItems { get; set; }
+        public int ReturnReplanAttempts { get; set; }
 
         public HashSet<Point> GetAttemptedChests(string transferId)
         {

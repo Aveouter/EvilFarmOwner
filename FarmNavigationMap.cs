@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Locations;
+using StardewValley.Objects;
 
 namespace EvilFarmOwner;
 
@@ -132,10 +133,19 @@ internal static class FarmNavigationMap
 
     public static Stack<Point> ToPath(IReadOnlyList<GridPoint> gridPath)
     {
+        IReadOnlyList<GridPoint> steps = ToControllerSteps(gridPath);
         Stack<Point> path = new();
-        for (int index = gridPath.Count - 1; index >= 0; index--)
-            path.Push(new Point(gridPath[index].X, gridPath[index].Y));
+        for (int index = steps.Count - 1; index >= 0; index--)
+            path.Push(new Point(steps[index].X, steps[index].Y));
         return path;
+    }
+
+    public static IReadOnlyList<GridPoint> ToControllerSteps(IReadOnlyList<GridPoint> gridPath)
+    {
+        // PathFindController tries to center a character within its first waypoint.
+        // A freshly warped NPC is already on gridPath[0], and that centering step can
+        // collide with an adjacent edge tile before the NPC ever starts walking.
+        return gridPath.Skip(1).ToArray();
     }
 
     private static bool IsPassable(Farm farm, NPC worker, GridPoint tile)
@@ -143,6 +153,15 @@ internal static class FarmNavigationMap
         if (farm.warps.Any(warp => warp.X == tile.X && warp.Y == tile.Y)
             || farm.doors.ContainsKey(new Point(tile.X, tile.Y)))
             return false;
+
+        Vector2 tileVector = new(tile.X, tile.Y);
+        if (farm.objects.TryGetValue(tileVector, out StardewValley.Object? placedObject)
+            && placedObject is Fence { isGate.Value: true })
+        {
+            // PathFindController.nonDestructivePathing opens a gate immediately before
+            // entering it. Plan against the underlying map tile without opening it early.
+            return farm.isTilePassable(tileVector);
+        }
 
         Rectangle bounds = new(
             tile.X * Game1.tileSize + 1,

@@ -61,6 +61,8 @@ K
 
 Select a green available row, choose watering or harvesting, then review the six-hour maximum authorization, one-hour minimum callout, friendship multiplier, workday or rest-day multiplier, baseline efficiency, and overtime policy. Confirm while standing on the main farm. The mod rechecks the NPC, funds, target, and required paths before changing money or NPC state. Watering handles every reachable dry crop before 9 PM. Harvesting handles every reachable mature crop before 9 PM, visibly walks to the best eligible chest for each exact output, and falls back to persistent overflow without using player inventory or auto-shipping. Both tasks enter and return through a genuine external farm entrance. A single-source shortest-path scan uses reachable adjacent interaction tiles and actual walking cost, so trellis crops and placed objects are routed around rather than altered. Settlement charges each started work hour up to six and refunds the unused authorization. Rest-day confirmation explicitly authorizes triple pay.
 
+Farm travel is always non-destructive. Workers can open gates, dynamically replan after a short movement stall, and safely stop and restore if no object-safe route remains.
+
 The route algorithm and object-safety invariants are documented in [`docs/ROUTE_PLANNING.md`](docs/ROUTE_PLANNING.md).
 
 Named contracts must start by 4:00 PM and stop at the 10:00 PM safety boundary. Only one named contract can run at a time. There is no instant global work command in the release build: all production farm mutation must pass through a named contract.
@@ -134,6 +136,8 @@ K
 ```
 
 选择绿色“当前可雇佣”行，再选择浇水或收获，可以查看六小时最高授权金额、一小时最低出工费、好感度系数、工作日或休息日系数、基础效率和加班政策。站在主农场确认后，模组会重新检查 NPC、资金、目标以及所需路线；所有检查通过后才预留工资并让 NPC 出工。浇水会处理晚上 9 点前全部可到达的缺水作物；收获会处理晚上 9 点前全部可到达的成熟作物，逐件走到最合适的箱子交付，无法入箱时进入持久化溢出仓，不会借用玩家背包或自动出售。两种任务都从真实农场边界入口进入并返回。每次动作后只做一次单源最短路扫描，以可到达的相邻交互格和实际步行成本选择下一个目标，因此会绕过棚架作物和玩家摆件。工资按已开始的小时结算，未使用的授权金额会退还；休息日按钮会明确要求授权三倍工资。
+
+农场内的移动始终禁止破坏物品；工人可以打开栅栏门，在短暂卡住后动态重新规划，并在不存在安全路线时停止工作和恢复原状态。
 
 具名合同最迟必须在下午 4:00 开始，并受晚上 10:00 安全停止时间约束；同一时间只能执行一份。发布构建不提供瞬时全局工作命令：所有生产环境农场变更都必须经过具名合同。
 

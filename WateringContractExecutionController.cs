@@ -16,6 +16,8 @@ internal sealed class WateringContractExecutionController
     private const int ActionStartTicks = 8;
     private const int ActionDurationTicks = 36;
     private const int MaximumTravelTicks = 3600;
+    private const int MaximumStalledTravelTicks = 180;
+    private const int MaximumReturnReplans = 3;
 
     private readonly ITranslationHelper Translation;
     private readonly IMonitor Monitor;
@@ -149,6 +151,7 @@ internal sealed class WateringContractExecutionController
                 this.OnArrivedAtTarget);
             contract.Controller = outbound;
             lease.AttachController(outbound);
+            contract.TravelWatchdog.Reset(worker.Position.X, worker.Position.Y);
             contract.Dispatched = true;
 
             Game1.addHUDMessage(new HUDMessage(
@@ -200,6 +203,19 @@ internal sealed class WateringContractExecutionController
                     return;
                 }
 
+                if ((Game1.activeClickableMenu is null || Game1.IsMultiplayer)
+                    && contract.TravelWatchdog.Tick(
+                        contract.Lease.Worker.Position.X,
+                        contract.Lease.Worker.Position.Y,
+                        MaximumStalledTravelTicks))
+                {
+                    this.Monitor.Log(
+                        $"Watering worker '{contract.Lease.Worker.Name}' stalled at {contract.Lease.Worker.TilePoint}; replanning the target route.",
+                        LogLevel.Warn);
+                    this.HandleInterruptedTargetTravel(contract);
+                    return;
+                }
+
                 if (contract.PhaseTicks > 1 && contract.Lease.Worker.controller is null)
                     this.HandleInterruptedTargetTravel(contract);
                 break;
@@ -227,7 +243,7 @@ internal sealed class WateringContractExecutionController
             case WateringContractPhase.Returning:
                 if (contract.PhaseTicks > MaximumTravelTicks)
                 {
-                    this.FinishContract(contract, succeeded: false, "contract.failure.return-timeout");
+                    this.HandleInterruptedReturnTravel(contract);
                     return;
                 }
 
@@ -239,8 +255,21 @@ internal sealed class WateringContractExecutionController
                     return;
                 }
 
+                if ((Game1.activeClickableMenu is null || Game1.IsMultiplayer)
+                    && contract.TravelWatchdog.Tick(
+                        contract.Lease.Worker.Position.X,
+                        contract.Lease.Worker.Position.Y,
+                        MaximumStalledTravelTicks))
+                {
+                    this.Monitor.Log(
+                        $"Watering worker '{contract.Lease.Worker.Name}' stalled while returning from {contract.Lease.Worker.TilePoint}; replanning the return route.",
+                        LogLevel.Warn);
+                    this.HandleInterruptedReturnTravel(contract);
+                    return;
+                }
+
                 if (contract.PhaseTicks > 1 && contract.Lease.Worker.controller is null)
-                    this.FinishContract(contract, succeeded: false, "contract.failure.return-interrupted");
+                    this.HandleInterruptedReturnTravel(contract);
                 break;
 
             case WateringContractPhase.Returned:
@@ -443,6 +472,9 @@ internal sealed class WateringContractExecutionController
                 this.OnReturnedToArrival);
             contract.Controller = returning;
             contract.Lease.AttachController(returning);
+            contract.TravelWatchdog.Reset(
+                contract.Lease.Worker.Position.X,
+                contract.Lease.Worker.Position.Y);
         }
         catch (Exception ex)
         {
@@ -467,6 +499,29 @@ internal sealed class WateringContractExecutionController
             contract.CurrentTarget.TargetTile,
             contract.CurrentTarget.InteractionTile));
         this.BeginNextOrReturn(contract);
+    }
+
+    private void HandleInterruptedReturnTravel(ActiveWateringContract contract)
+    {
+        if (contract.Lease.Worker.controller is not null
+            && !ReferenceEquals(contract.Lease.Worker.controller, contract.Controller))
+        {
+            this.FinishContract(contract, succeeded: false, "contract.failure.controller-conflict");
+            return;
+        }
+
+        if (ReferenceEquals(contract.Lease.Worker.controller, contract.Controller))
+            contract.Lease.Worker.controller = null;
+        contract.Lease.Worker.Halt();
+
+        contract.ReturnReplanAttempts++;
+        if (contract.ReturnReplanAttempts > MaximumReturnReplans)
+        {
+            this.FinishContract(contract, succeeded: false, "contract.failure.return-interrupted");
+            return;
+        }
+
+        this.BeginReturn(contract);
     }
 
     private void BeginNextOrReturn(ActiveWateringContract contract)
@@ -521,6 +576,9 @@ internal sealed class WateringContractExecutionController
                 this.OnArrivedAtTarget);
             contract.Controller = controller;
             contract.Lease.AttachController(controller);
+            contract.TravelWatchdog.Reset(
+                contract.Lease.Worker.Position.X,
+                contract.Lease.Worker.Position.Y);
         }
         catch (Exception ex)
         {
@@ -701,6 +759,7 @@ internal sealed class WateringContractExecutionController
         public WateringWorkPlan Plan { get; }
         public HashSet<Point> CompletedTargets { get; } = new();
         public HashSet<FarmTaskRouteEdge> FailedEdges { get; } = new();
+        public TravelProgressWatchdog TravelWatchdog { get; } = new();
         public WateringTargetPlan CurrentTarget { get; set; }
         public WateringContractPhase Phase { get; set; } = WateringContractPhase.TravelingToTarget;
         public PathFindController? Controller { get; set; }
@@ -711,5 +770,6 @@ internal sealed class WateringContractExecutionController
         public int SkippedTargets { get; set; }
         public int UnreachableTargets { get; set; }
         public int RemainingTargets { get; set; }
+        public int ReturnReplanAttempts { get; set; }
     }
 }
