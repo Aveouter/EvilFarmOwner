@@ -237,9 +237,6 @@ internal sealed class WateringContractExecutionController
                         contract.Lease.Worker.Position.Y,
                         MaximumStalledTravelTicks))
                 {
-                    this.Monitor.Log(
-                        $"Watering worker '{contract.Lease.Worker.Name}' stalled at {contract.Lease.Worker.TilePoint}; replanning the target route.",
-                        LogLevel.Warn);
                     this.HandleInterruptedTargetTravel(contract);
                     return;
                 }
@@ -387,6 +384,7 @@ internal sealed class WateringContractExecutionController
 
         contract.Phase = WateringContractPhase.Acting;
         contract.PhaseTicks = 0;
+        contract.ReplanBudget.Reset(TravelRoutePurpose.Target);
         contract.Lease.Worker.Halt();
         contract.Lease.Worker.faceDirection(contract.CurrentTarget.FacingDirection);
     }
@@ -576,10 +574,43 @@ internal sealed class WateringContractExecutionController
         if (this.TryHandleStalledEntrance(contract))
             return;
 
-        contract.FailedEdges.Add(WateringTargetPlanner.ToEdge(
+        this.HandleFailedTargetRoute(contract, "stalled or stopped controller");
+    }
+
+    private void HandleFailedTargetRoute(ActiveWateringContract contract, string reason)
+    {
+        FarmTaskRouteEdge failedEdge = WateringTargetPlanner.ToEdge(
             contract.CurrentTarget.TargetTile,
-            contract.CurrentTarget.InteractionTile));
-        this.BeginNextOrReturn(contract);
+            contract.CurrentTarget.InteractionTile);
+        contract.FailedEdges.Add(failedEdge);
+
+        GridPoint origin = new(
+            contract.Lease.Worker.TilePoint.X,
+            contract.Lease.Worker.TilePoint.Y);
+        TravelReplanDecision decision = contract.ReplanBudget.RecordFailure(
+            TravelRoutePurpose.Target,
+            origin);
+        if (decision.CanReplan)
+        {
+            this.Monitor.Log(
+                $"Watering target route {failedEdge} failed from {origin} ({reason}); "
+                + $"trying another safe interaction edge "
+                + $"[{decision.FailureCount}/{decision.MaximumFailures}].",
+                LogLevel.Debug);
+            this.BeginNextOrReturn(contract);
+            return;
+        }
+
+        int remaining = WateringTargetPlanner.CountRemainingDryCrops(
+            contract.Farm,
+            contract.CompletedTargets);
+        contract.UnreachableTargets += remaining;
+        this.Monitor.Log(
+            $"Watering worker '{contract.Lease.Worker.Name}' exhausted "
+            + $"{decision.MaximumFailures} consecutive target routes from {origin}; "
+            + $"returning with {remaining} dry crop(s) marked unreachable.",
+            LogLevel.Warn);
+        this.BeginReturn(contract);
     }
 
     private bool TryHandleStalledEntrance(ActiveWateringContract contract)
@@ -627,6 +658,7 @@ internal sealed class WateringContractExecutionController
             contract.PhaseTicks = 0;
             contract.ReturnReplanAttempts = 0;
             contract.FailedEdges.Clear();
+            contract.ReplanBudget.Reset(TravelRoutePurpose.Target);
             contract.EntranceSwitches++;
 
             Game1.warpCharacter(worker, contract.Farm, new Vector2(
@@ -749,6 +781,19 @@ internal sealed class WateringContractExecutionController
                 return;
             }
 
+            if (!FarmNavigationMap.CanBeginPath(
+                    contract.Farm,
+                    contract.Lease.Worker,
+                    contract.Lease.Worker.TilePoint,
+                    next.Target.Path,
+                    out string firstStepFailure))
+            {
+                this.HandleFailedTargetRoute(
+                    contract,
+                    $"first-step collision probe rejected the route: {firstStepFailure}");
+                return;
+            }
+
             PathFindController controller = this.CreatePathController(
                 contract,
                 next.Target.Path,
@@ -763,13 +808,9 @@ internal sealed class WateringContractExecutionController
         }
         catch (Exception ex)
         {
-            contract.FailedEdges.Add(WateringTargetPlanner.ToEdge(
-                next.Target.TargetTile,
-                next.Target.InteractionTile));
-            this.Monitor.Log(
-                $"Worker '{contract.Lease.Worker.Name}' could not start the next watering path: {ex.Message}",
-                LogLevel.Warn);
-            this.BeginNextOrReturn(contract);
+            this.HandleFailedTargetRoute(
+                contract,
+                $"controller setup failed: {ex.Message}");
         }
     }
 
@@ -1011,6 +1052,7 @@ internal sealed class WateringContractExecutionController
         public HashSet<FarmTaskRouteEdge> FailedEdges { get; } = new();
         public HashSet<FarmBoundarySide> FailedArrivalSides { get; } = new();
         public TravelProgressWatchdog TravelWatchdog { get; } = new();
+        public TravelReplanBudget ReplanBudget { get; } = new();
         public WateringTargetPlan CurrentTarget { get; set; }
         public WateringContractPhase Phase { get; set; } = WateringContractPhase.TravelingToTarget;
         public PathFindController? Controller { get; set; }

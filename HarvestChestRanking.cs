@@ -4,8 +4,35 @@ internal enum HarvestChestMatchKind
 {
     ExactStack = 0,
     SameItem = 1,
-    SameGroup = 2,
-    AvailableCapacity = 3
+    SameCategory = 2,
+    Empty = 3
+}
+
+internal readonly record struct HarvestChestContents(
+    int ExactStackSlots,
+    int SameItemSlots,
+    int SameCategorySlots,
+    int OccupiedSlots)
+{
+    public int CategoryPurityBasisPoints => this.OccupiedSlots <= 0
+        ? 0
+        : this.SameCategorySlots * 10_000 / this.OccupiedSlots;
+}
+
+internal static class HarvestChestClassification
+{
+    public static HarvestChestMatchKind? Classify(HarvestChestContents contents)
+    {
+        if (contents.ExactStackSlots > 0)
+            return HarvestChestMatchKind.ExactStack;
+        if (contents.SameItemSlots > 0)
+            return HarvestChestMatchKind.SameItem;
+        if (contents.SameCategorySlots > 0)
+            return HarvestChestMatchKind.SameCategory;
+        return contents.OccupiedSlots == 0
+            ? HarvestChestMatchKind.Empty
+            : null;
+    }
 }
 
 internal sealed record HarvestChestOption(
@@ -14,7 +41,8 @@ internal sealed record HarvestChestOption(
     HarvestChestMatchKind MatchKind,
     int AcceptableCapacity,
     int RequestedStack,
-    int TravelDistance)
+    int TravelDistance,
+    HarvestChestContents Contents = default)
 {
     public bool CanFullyAccept => this.AcceptableCapacity >= this.RequestedStack;
 }
@@ -24,12 +52,18 @@ internal static class HarvestChestRanking
     public static IReadOnlyList<HarvestChestOption> Order(IEnumerable<HarvestChestOption> options)
     {
         return options
+            .Where(option => option.CanFullyAccept)
             .OrderBy(option => option.MatchKind)
-            .ThenByDescending(option => option.CanFullyAccept)
-            .ThenBy(option => option.TravelDistance)
-            .ThenByDescending(option => option.AcceptableCapacity)
+            .ThenByDescending(option => option.Contents.ExactStackSlots)
+            .ThenByDescending(option => option.Contents.SameItemSlots)
+            .ThenByDescending(option => option.Contents.CategoryPurityBasisPoints)
+            .ThenByDescending(option => option.Contents.SameCategorySlots)
+            .ThenByDescending(option => option.MatchKind == HarvestChestMatchKind.Empty
+                ? option.AcceptableCapacity
+                : 0)
             .ThenBy(option => option.ChestTile.Y)
             .ThenBy(option => option.ChestTile.X)
+            .ThenBy(option => option.TravelDistance)
             .ThenBy(option => option.InteractionTile.Y)
             .ThenBy(option => option.InteractionTile.X)
             .ToArray();
@@ -84,31 +118,5 @@ internal static class HarvestPlacementAudit
             || unresolved < 0)
             return false;
         return harvested == (long)playerInventory + chest + overflow + quarantine + dropped + unresolved;
-    }
-}
-
-internal enum HarvestFallbackDestination
-{
-    Chest,
-    PlayerInventory,
-    PersistentOverflow,
-    VisibleGroundDrop
-}
-
-internal static class HarvestDeliveryFallback
-{
-    public static HarvestFallbackDestination Select(
-        bool hasEligibleChest,
-        bool requesterOnFarm,
-        bool playerInventoryCanAccept,
-        bool persistentOverflowAvailable)
-    {
-        if (hasEligibleChest)
-            return HarvestFallbackDestination.Chest;
-        if (requesterOnFarm && playerInventoryCanAccept)
-            return HarvestFallbackDestination.PlayerInventory;
-        return persistentOverflowAvailable
-            ? HarvestFallbackDestination.PersistentOverflow
-            : HarvestFallbackDestination.VisibleGroundDrop;
     }
 }

@@ -50,15 +50,18 @@ internal sealed class HarvestChestRouter
                 continue;
 
             Point chestTile = new((int)pair.Key.X, (int)pair.Key.Y);
-            if (attemptedChestTiles.Contains(chestTile)
-                || (chest.GetMutex().IsLocked() && !chest.GetMutex().IsLockHeld()))
+            if (attemptedChestTiles.Contains(chestTile))
                 continue;
 
             int acceptableCapacity = GetAcceptableCapacity(chest, item);
-            if (acceptableCapacity <= 0)
+            if (acceptableCapacity < item.Stack)
                 continue;
 
-            HarvestChestMatchKind matchKind = GetMatchKind(chest, item);
+            HarvestChestContents contents = GetContents(chest, item);
+            HarvestChestMatchKind? matchKind = HarvestChestClassification.Classify(contents);
+            if (!matchKind.HasValue)
+                continue;
+
             foreach (Point offset in InteractionOffsets)
             {
                 Point interaction = new(chestTile.X + offset.X, chestTile.Y + offset.Y);
@@ -71,16 +74,18 @@ internal sealed class HarvestChestRouter
                     new HarvestChestOption(
                         new GridPoint(chestTile.X, chestTile.Y),
                         new GridPoint(interaction.X, interaction.Y),
-                        matchKind,
+                        matchKind.Value,
                         acceptableCapacity,
                         item.Stack,
-                        distance),
+                        distance,
+                        contents),
                     chest,
                     FarmNavigationMap.ToPath(gridPath)));
             }
         }
 
-        HarvestChestOption? best = HarvestChestRanking.Order(candidates.Select(candidate => candidate.Option)).FirstOrDefault();
+        HarvestChestOption? best = HarvestChestRanking.Order(
+            candidates.Select(candidate => candidate.Option)).FirstOrDefault();
         if (best is null)
             return null;
 
@@ -103,6 +108,11 @@ internal sealed class HarvestChestRouter
             && chest.SpecialChestType is Chest.SpecialChestTypes.None or Chest.SpecialChestTypes.BigChest;
     }
 
+    public static bool HasEligibleChest(Farm farm)
+    {
+        return farm.objects.Values.Any(value => value is Chest chest && IsEligibleChest(chest));
+    }
+
     public static int GetAcceptableCapacity(Chest chest, Item incoming)
     {
         long capacity = 0;
@@ -122,21 +132,31 @@ internal sealed class HarvestChestRouter
         return (int)Math.Min(int.MaxValue, capacity);
     }
 
-    public static HarvestChestMatchKind GetMatchKind(Chest chest, Item incoming)
+    public static HarvestChestContents GetContents(Chest chest, Item incoming)
     {
-        if (chest.Items.Any(existing => existing is not null && existing.canStackWith(incoming)))
-            return HarvestChestMatchKind.ExactStack;
+        int exactStackSlots = 0;
+        int sameItemSlots = 0;
+        int sameCategorySlots = 0;
+        int occupiedSlots = 0;
+        foreach (Item? existing in chest.Items)
+        {
+            if (existing is null)
+                continue;
 
-        if (chest.Items.Any(existing => existing?.QualifiedItemId == incoming.QualifiedItemId))
-            return HarvestChestMatchKind.SameItem;
+            occupiedSlots++;
+            if (existing.canStackWith(incoming))
+                exactStackSlots++;
+            if (existing.QualifiedItemId == incoming.QualifiedItemId)
+                sameItemSlots++;
+            if (existing.Category == incoming.Category)
+                sameCategorySlots++;
+        }
 
-        if (chest.Items.Any(existing => existing is not null
-                && HarvestSemanticGroupClassifier.AreSameKnownGroup(
-                    existing.Category,
-                    incoming.Category)))
-            return HarvestChestMatchKind.SameGroup;
-
-        return HarvestChestMatchKind.AvailableCapacity;
+        return new HarvestChestContents(
+            exactStackSlots,
+            sameItemSlots,
+            sameCategorySlots,
+            occupiedSlots);
     }
 
 }

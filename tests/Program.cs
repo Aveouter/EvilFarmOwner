@@ -17,6 +17,7 @@ List<(string Name, Action Test)> tests = new()
     ("controller path skips current tile", TestControllerPathSkipsCurrentTile),
     ("destination tile alignment", TestDestinationTileAlignment),
     ("travel progress watchdog", TestTravelProgressWatchdog),
+    ("consecutive route failure budget", TestConsecutiveRouteFailureBudget),
     ("NPC protected activity policy", TestNpcProtectedActivityPolicy),
     ("path first-step offsets", TestPathFirstStepOffsets),
     ("external boundary arrival ordering", TestExternalBoundaryArrivalOrdering),
@@ -25,13 +26,15 @@ List<(string Name, Action Test)> tests = new()
     ("nearest arrival boundary side", TestNearestArrivalBoundarySide),
     ("NPC lease recovery policy", TestNpcLeaseRecoveryPolicy),
     ("six-hour wage cap", TestSixHourWageCap),
-    ("harvest chest match priority", TestHarvestChestMatchPriority),
-    ("harvest semantic groups", TestHarvestSemanticGroups),
+    ("harvest chest classification", TestHarvestChestClassification),
+    ("harvest category purity", TestHarvestCategoryPurity),
+    ("harvest incompatible chest exclusion", TestHarvestIncompatibleChestExclusion),
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
-    ("harvest route cost before spare capacity", TestHarvestRouteCostBeforeSpareCapacity),
+    ("harvest stable category destination", TestHarvestStableCategoryDestination),
+    ("harvest empty chest capacity fallback", TestHarvestEmptyChestCapacityFallback),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
-    ("harvest overflow fallback", TestHarvestOverflowFallback),
+    ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
     ("harvest placement conservation", TestHarvestPlacementConservation),
     ("harvest quarantine recovery state", TestHarvestQuarantineRecoveryState),
@@ -241,6 +244,37 @@ static void TestTravelProgressWatchdog()
     Equal(false, watchdog.Tick(102f, 200f, maximumStalledTicks: 3));
 }
 
+static void TestConsecutiveRouteFailureBudget()
+{
+    TravelReplanBudget budget = new(maximumFailures: 3);
+    GridPoint origin = new(68, 17);
+
+    TravelReplanDecision first = budget.RecordFailure(TravelRoutePurpose.Target, origin);
+    Equal(1, first.FailureCount);
+    Equal(3, first.MaximumFailures);
+    Equal(true, first.CanReplan);
+
+    Equal(true, budget.RecordFailure(TravelRoutePurpose.Target, origin).CanReplan);
+    TravelReplanDecision exhausted = budget.RecordFailure(TravelRoutePurpose.Target, origin);
+    Equal(3, exhausted.FailureCount);
+    Equal(false, exhausted.CanReplan);
+
+    TravelReplanDecision moved = budget.RecordFailure(
+        TravelRoutePurpose.Target,
+        new GridPoint(67, 17));
+    Equal(1, moved.FailureCount);
+    Equal(true, moved.CanReplan);
+
+    TravelReplanDecision delivery = budget.RecordFailure(
+        TravelRoutePurpose.Delivery,
+        origin);
+    Equal(1, delivery.FailureCount);
+    Equal(true, delivery.CanReplan);
+
+    budget.Reset(TravelRoutePurpose.Target);
+    Equal(1, budget.RecordFailure(TravelRoutePurpose.Target, origin).FailureCount);
+}
+
 static void TestNpcProtectedActivityPolicy()
 {
     Equal(false, NpcActivityPolicy.HasProtectedActivity(
@@ -434,46 +468,61 @@ static void TestSixHourWageCap()
     Equal(0, settlement.RefundedGold);
 }
 
-static void TestHarvestChestMatchPriority()
+static void TestHarvestChestClassification()
 {
     HarvestChestOption[] options =
     {
         new(new GridPoint(1, 1), new GridPoint(1, 2), HarvestChestMatchKind.SameItem, 999, 10, 1),
-        new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.ExactStack, 1, 10, 20),
-        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.SameGroup, 999, 10, 2),
-        new(new GridPoint(3, 3), new GridPoint(3, 4), HarvestChestMatchKind.AvailableCapacity, 9999, 10, 1)
+        new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.ExactStack, 999, 10, 20),
+        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.SameCategory, 999, 10, 2),
+        new(new GridPoint(3, 3), new GridPoint(3, 4), HarvestChestMatchKind.Empty, 9999, 10, 1)
     };
 
     IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
     Equal(HarvestChestMatchKind.ExactStack, ordered[0].MatchKind);
     Equal(HarvestChestMatchKind.SameItem, ordered[1].MatchKind);
-    Equal(HarvestChestMatchKind.SameGroup, ordered[2].MatchKind);
-    Equal(HarvestChestMatchKind.AvailableCapacity, ordered[3].MatchKind);
+    Equal(HarvestChestMatchKind.SameCategory, ordered[2].MatchKind);
+    Equal(HarvestChestMatchKind.Empty, ordered[3].MatchKind);
+
+    Equal(HarvestChestMatchKind.ExactStack, HarvestChestClassification.Classify(
+        new HarvestChestContents(1, 1, 1, 4))!.Value);
+    Equal(HarvestChestMatchKind.SameItem, HarvestChestClassification.Classify(
+        new HarvestChestContents(0, 1, 1, 4))!.Value);
+    Equal(HarvestChestMatchKind.SameCategory, HarvestChestClassification.Classify(
+        new HarvestChestContents(0, 0, 2, 4))!.Value);
+    Equal(HarvestChestMatchKind.Empty, HarvestChestClassification.Classify(
+        new HarvestChestContents(0, 0, 0, 0))!.Value);
 }
 
-static void TestHarvestSemanticGroups()
+static void TestHarvestCategoryPurity()
 {
-    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
-        HarvestItemCategory.MetalResources,
-        HarvestItemCategory.BuildingResources));
-    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
-        HarvestItemCategory.Vegetable,
-        HarvestItemCategory.Fruit));
-    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
-        HarvestItemCategory.Seed,
-        HarvestItemCategory.Fertilizer));
-    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
-        HarvestItemCategory.Gem,
-        HarvestItemCategory.Mineral));
-    Equal(true, HarvestSemanticGroupClassifier.AreSameKnownGroup(
-        HarvestItemCategory.Clothing,
-        HarvestItemCategory.Boots));
-    Equal(false, HarvestSemanticGroupClassifier.AreSameKnownGroup(
-        HarvestItemCategory.Furniture,
-        HarvestItemCategory.Clothing));
-    Equal(false, HarvestSemanticGroupClassifier.AreSameKnownGroup(
-        leftCategory: 123456,
-        rightCategory: 123456));
+    HarvestChestOption dedicated = new(
+        new GridPoint(2, 2),
+        new GridPoint(2, 3),
+        HarvestChestMatchKind.SameCategory,
+        AcceptableCapacity: 999,
+        RequestedStack: 1,
+        TravelDistance: 20,
+        Contents: new HarvestChestContents(0, 0, 4, 4));
+    HarvestChestOption mixed = new(
+        new GridPoint(8, 8),
+        new GridPoint(8, 9),
+        HarvestChestMatchKind.SameCategory,
+        AcceptableCapacity: 999,
+        RequestedStack: 1,
+        TravelDistance: 1,
+        Contents: new HarvestChestContents(0, 0, 4, 12));
+
+    IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(new[] { mixed, dedicated });
+    Equal(dedicated, ordered[0]);
+    Equal(10_000, dedicated.Contents.CategoryPurityBasisPoints);
+    Equal(3_333, mixed.Contents.CategoryPurityBasisPoints);
+}
+
+static void TestHarvestIncompatibleChestExclusion()
+{
+    Equal(true, HarvestChestClassification.Classify(
+        new HarvestChestContents(0, 0, 0, 8)) is null);
 }
 
 static void TestHarvestChestFullAcceptance()
@@ -487,21 +536,33 @@ static void TestHarvestChestFullAcceptance()
     IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
     Equal(new GridPoint(8, 8), ordered[0].ChestTile);
     Equal(true, ordered[0].CanFullyAccept);
+    Equal(1, ordered.Count);
 }
 
-static void TestHarvestRouteCostBeforeSpareCapacity()
+static void TestHarvestStableCategoryDestination()
 {
     HarvestChestOption[] options =
     {
-        new(new GridPoint(1, 1), new GridPoint(1, 2), HarvestChestMatchKind.AvailableCapacity, 5, 10, 1),
-        new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.AvailableCapacity, 20, 10, 20),
-        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.AvailableCapacity, 12, 10, 2)
+        new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.SameCategory, 999, 10, 1,
+            new HarvestChestContents(0, 0, 3, 3)),
+        new(new GridPoint(2, 2), new GridPoint(2, 3), HarvestChestMatchKind.SameCategory, 999, 10, 20,
+            new HarvestChestContents(0, 0, 3, 3))
     };
 
     IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
     Equal(new GridPoint(2, 2), ordered[0].ChestTile);
-    Equal(new GridPoint(8, 8), ordered[1].ChestTile);
-    Equal(new GridPoint(1, 1), ordered[2].ChestTile);
+}
+
+static void TestHarvestEmptyChestCapacityFallback()
+{
+    HarvestChestOption[] options =
+    {
+        new(new GridPoint(1, 1), new GridPoint(1, 2), HarvestChestMatchKind.Empty, 36, 10, 1),
+        new(new GridPoint(8, 8), new GridPoint(8, 9), HarvestChestMatchKind.Empty, 70, 10, 20)
+    };
+
+    IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(options);
+    Equal(new GridPoint(8, 8), ordered[0].ChestTile);
 }
 
 static void TestHarvestPartialRemainder()
@@ -722,43 +783,17 @@ static void TestEmergencyDropTileOrdering()
         maximumRadius: 1) is null);
 }
 
-static void TestHarvestOverflowFallback()
+static void TestHarvestUnavailableStorageStop()
 {
-    Equal(
-        HarvestFallbackDestination.Chest,
-        HarvestDeliveryFallback.Select(
-            hasEligibleChest: true,
-            requesterOnFarm: true,
-            playerInventoryCanAccept: true,
-            persistentOverflowAvailable: true));
-    Equal(
-        HarvestFallbackDestination.PlayerInventory,
-        HarvestDeliveryFallback.Select(
-            hasEligibleChest: false,
-            requesterOnFarm: true,
-            playerInventoryCanAccept: true,
-            persistentOverflowAvailable: true));
-    Equal(
-        HarvestFallbackDestination.PersistentOverflow,
-        HarvestDeliveryFallback.Select(
-            hasEligibleChest: false,
-            requesterOnFarm: false,
-            playerInventoryCanAccept: true,
-            persistentOverflowAvailable: true));
-    Equal(
-        HarvestFallbackDestination.PersistentOverflow,
-        HarvestDeliveryFallback.Select(
-            hasEligibleChest: false,
-            requesterOnFarm: true,
-            playerInventoryCanAccept: false,
-            persistentOverflowAvailable: true));
-    Equal(
-        HarvestFallbackDestination.VisibleGroundDrop,
-        HarvestDeliveryFallback.Select(
-            hasEligibleChest: false,
-            requesterOnFarm: true,
-            playerInventoryCanAccept: false,
-            persistentOverflowAvailable: false));
+    HarvestChestOption insufficient = new(
+        new GridPoint(1, 1),
+        new GridPoint(1, 2),
+        HarvestChestMatchKind.SameCategory,
+        AcceptableCapacity: 9,
+        RequestedStack: 10,
+        TravelDistance: 1,
+        Contents: new HarvestChestContents(0, 0, 5, 5));
+    Equal(0, HarvestChestRanking.Order(new[] { insufficient }).Count);
 }
 
 static void TestHarvestTransferReplayProtection()

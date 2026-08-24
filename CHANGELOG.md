@@ -10,20 +10,22 @@
 - Added task selection between whole-farm watering and one-crop visible harvesting.
 - Added vanilla-compatible harvest capture for exact quality, quantity, regrowth, metadata, and by-products.
 - Fixed regrowing crop capture by treating `Crop.harvest`'s return value as the crop-removal signal while using captured items as the success source of truth.
-- Added deterministic chest ranking, mutex-protected partial delivery, persistent team overflow, replay protection, and explicit emergency ground drops.
-- Replaced raw same-category routing with stable semantic groups for resources, crops/food, artisan goods, animal products, seeds/fertilizer, minerals/gems, furniture, and clothing/equipment; unknown categories remain capacity-only.
-- Aligned same-tier chest selection with the approved rule: full acceptance, shortest reachable route, greater capacity, then stable tile order.
+- Added deterministic, content-based chest classification with exact-stack, same-item, exact game-category, and empty-chest tiers.
+- Ranked category chests by content purity and matching slots, then stable chest tile; NPC position only chooses the interaction edge and cannot make a category jump between otherwise equal chests.
+- Required one candidate chest to accept the complete stack; partial multi-chest delivery is not used.
+- Added an empty-chest fallback that chooses the greatest acceptable capacity and then stable tile order.
 - Fixed dense-field routing by using vanilla live crop collision instead of spawn suitability; ordinary crop tiles are traversable while trellises remain blocking.
 - Changed worker arrival to prefer the right/east farm entrance and use other genuine boundary entrances only as safe fallbacks.
 - Added runtime entrance failover so a worker stalled on the first live step excludes that side instead of retrying every crop edge.
 - Protected active vanilla route animations, square-walk activities, sprite animations, and movement pauses from hiring without treating persisted route-end metadata as an active activity; unavailable NPCs are omitted from the roster.
 - Reworked the worker roster into compact rows that show friendship, today's hourly wage, and the six-hour maximum without redundant availability explanations or disabled footer controls.
 - Added an NPC-bounds first-pixel entrance probe so false-positive arrival tiles are rejected before wages or NPC state change.
+- Bounded target and chest replanning to three consecutive failures from one origin, with first-step probes on every dynamic route and lossless delivery fallback after exhaustion.
 - Added bounded lease recovery: controller conflicts wait briefly, then release only this mod's lease and safety flags without overriding the other activity.
 - Moved emergency harvest drops to the on-farm requester or a deterministic collision-free delivery tile before falling back to the worker position.
 - Excluded dead crops from watering target acquisition.
-- Added exact requester-inventory delivery when no chest route can accept an item and the requester remains on the farm with capacity.
-- Added `efo_overflow` to retrieve harvest results which could not fit in an eligible farm chest.
+- Stop harvest contracts when no reachable category-compatible chest can accept the complete stack; already harvested cargo enters the lossless emergency path before the worker returns.
+- Added `efo_overflow` to retrieve already harvested cargo preserved after a storage-triggered stop.
 - Added host-authoritative multiplayer contract requests, bounded request replay protection, phase/cargo/transfer snapshots, reconnect synchronization, and host-only visual action messages.
 - Persisted the bounded processed-request ledger and latest per-player results so host restarts rebind prior transactions to the new network session without repeating work or charges.
 - Rejected internally inconsistent multiplayer recovery results with duplicate transfer IDs, unbalanced item destinations, impossible hours, or contradictory success reasons.
