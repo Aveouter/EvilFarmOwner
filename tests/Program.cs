@@ -55,6 +55,7 @@ List<(string Name, Action Test)> tests = new()
     ("storage transfer lock order", TestStorageTransferLockOrder),
     ("storage transfer sequence", TestStorageTransferSequence),
     ("storage transfer conservation", TestStorageTransferConservation),
+    ("storage transfer recovery ownership", TestStorageTransferRecoveryOwnership),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
@@ -1157,6 +1158,72 @@ static void TestStorageTransferConservation()
         restoredSource: 21,
         quarantine: 0,
         unresolved: 0));
+}
+
+static void TestStorageTransferRecoveryOwnership()
+{
+    GridPoint tile = new(4, 7);
+    StorageSortItemFingerprint first = SortFingerprint("(O)24", -75, 8, "first");
+    StorageSortItemFingerprint removed = SortFingerprint("(O)190", -79, 3, "removed");
+    StorageSortItemFingerprint last = SortFingerprint("(O)378", -12, 12, "last");
+    StorageSortChestFingerprint expected = new(
+        tile,
+        Capacity: 36,
+        new StorageSortStackBinding[]
+        {
+            new("4:7:0", tile, 0, first),
+            new("4:7:1", tile, 1, removed),
+            new("4:7:2", tile, 2, last)
+        });
+    StorageSortChestFingerprint actualWithoutRemoved = new(
+        tile,
+        Capacity: 36,
+        new StorageSortStackBinding[]
+        {
+            new("4:7:0", tile, 0, first),
+            new("4:7:1", tile, 1, last)
+        });
+
+    Equal(true, StorageSortRecoveryValidation.IsSourceWithoutTransfer(
+        "4:7:1",
+        expected,
+        actualWithoutRemoved));
+    Equal(false, StorageSortRecoveryValidation.IsSourceWithoutTransfer(
+        "4:7:9",
+        expected,
+        actualWithoutRemoved));
+    Equal(false, StorageSortRecoveryValidation.IsSourceWithoutTransfer(
+        "4:7:1",
+        expected,
+        actualWithoutRemoved with { Capacity = 12 }));
+    Equal(false, StorageSortRecoveryValidation.IsSourceWithoutTransfer(
+        "4:7:1",
+        expected,
+        actualWithoutRemoved with
+        {
+            Stacks = new StorageSortStackBinding[]
+            {
+                new("4:7:0", tile, 0, first),
+                new("4:7:1", tile, 1, removed)
+            }
+        }));
+}
+
+static StorageSortItemFingerprint SortFingerprint(
+    string itemId,
+    int category,
+    int quantity,
+    string xml)
+{
+    return new StorageSortItemFingerprint(
+        itemId,
+        RuntimeType: "StardewValley.Object",
+        RuntimeAssembly: "Stardew Valley",
+        category,
+        Quality: 0,
+        quantity,
+        MaximumStackSize: 999,
+        SerializedXml: xml);
 }
 
 static StorageSortChestSnapshot SortChest(

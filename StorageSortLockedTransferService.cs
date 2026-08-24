@@ -22,7 +22,9 @@ internal enum StorageSortLockedTransferFailure
 internal sealed record StorageSortLockedTransferResult(
     StorageSortLockedTransferFailure Failure,
     int MovedItems,
-    bool RequiresPersistentRecovery)
+    int PersistedRecoveryItems,
+    bool RequiresPersistentRecovery,
+    Item? UnresolvedItem)
 {
     public bool IsSuccess => this.Failure == StorageSortLockedTransferFailure.None;
 }
@@ -75,6 +77,38 @@ internal static class StorageSortTransferAudit
         }
 
         return expected == (long)destination + restoredSource + quarantine + unresolved;
+    }
+}
+
+internal static class StorageSortRecoveryValidation
+{
+    public static bool IsSourceWithoutTransfer(
+        string removedStackId,
+        StorageSortChestFingerprint expected,
+        StorageSortChestFingerprint actual)
+    {
+        if (string.IsNullOrWhiteSpace(removedStackId)
+            || expected.ChestTile != actual.ChestTile
+            || expected.Capacity != actual.Capacity
+            || expected.Stacks.Count(binding => string.Equals(
+                binding.StackId,
+                removedStackId,
+                StringComparison.Ordinal)) != 1)
+        {
+            return false;
+        }
+
+        StorageSortItemFingerprint[] expectedItems = expected.Stacks
+            .Where(binding => !string.Equals(
+                binding.StackId,
+                removedStackId,
+                StringComparison.Ordinal))
+            .Select(binding => binding.Fingerprint)
+            .ToArray();
+        StorageSortItemFingerprint[] actualItems = actual.Stacks
+            .Select(binding => binding.Fingerprint)
+            .ToArray();
+        return expectedItems.SequenceEqual(actualItems);
     }
 }
 
@@ -137,8 +171,15 @@ internal sealed class StorageSortExecutionSession
         return true;
     }
 
-    public StorageSortLockedTransferResult TryExecuteLocked(StorageSortTransfer transfer)
+    public StorageSortLockedTransferResult TryExecuteLocked(
+        StorageSortTransfer transfer,
+        StorageSortRecoveryManager recoveryManager,
+        Guid contractId,
+        Guid transferId)
     {
+        ArgumentNullException.ThrowIfNull(recoveryManager);
+        if (contractId == Guid.Empty || transferId == Guid.Empty)
+            return Failure(StorageSortLockedTransferFailure.InvalidSequence);
         if (!StorageSortTransferPolicy.IsExpectedTransfer(
                 this.RuntimePlan.Plan.Transfers,
                 this.NextSequence,
@@ -174,7 +215,7 @@ internal sealed class StorageSortExecutionSession
             return Failure(StorageSortLockedTransferFailure.SourceItemMissing);
         }
 
-        int sourceSlot = source.Items.IndexOf(sourceItem);
+        int sourceSlot = FindReferenceSlot(source, sourceItem);
         if (sourceSlot < 0)
             return Failure(StorageSortLockedTransferFailure.SourceItemMissing);
         if (GetSymmetricAcceptableCapacity(destination, sourceItem) < sourceItem.Stack)
@@ -183,6 +224,8 @@ internal sealed class StorageSortExecutionSession
         StorageSortChestFingerprint expectedSource = this.ExpectedChestFingerprints[transfer.SourceChest];
         StorageSortChestFingerprint expectedDestination =
             this.ExpectedChestFingerprints[transfer.DestinationChest];
+        string expectedSourceStackId =
+            $"{transfer.SourceChest.X}:{transfer.SourceChest.Y}:{sourceSlot}";
         List<(Item Item, int Stack)> destinationStacks = destination.Items
             .Where(item => item is not null
                 && item.canStackWith(sourceItem)
@@ -224,8 +267,8 @@ internal sealed class StorageSortExecutionSession
             int destinationAfter = destinationStacks.Sum(entry => entry.Item.Stack)
                 + (addedToDestination ? sourceItem.Stack : 0);
             if (destinationAfter - destinationBefore != originalQuantity
-                || source.Items.Contains(sourceItem)
-                || (addedToDestination && !destination.Items.Contains(sourceItem)))
+                || ContainsReference(source, sourceItem)
+                || (addedToDestination && !ContainsReference(destination, sourceItem)))
             {
                 throw new InvalidOperationException("Locked transfer failed its immediate conservation audit.");
             }
@@ -252,7 +295,9 @@ internal sealed class StorageSortExecutionSession
             return new StorageSortLockedTransferResult(
                 StorageSortLockedTransferFailure.None,
                 originalQuantity,
-                RequiresPersistentRecovery: false);
+                PersistedRecoveryItems: 0,
+                RequiresPersistentRecovery: false,
+                UnresolvedItem: null);
         }
         catch
         {
@@ -267,12 +312,22 @@ internal sealed class StorageSortExecutionSession
                 addedToDestination,
                 expectedSource,
                 expectedDestination);
-            return rolledBack
-                ? Failure(StorageSortLockedTransferFailure.CommitFailed)
-                : new StorageSortLockedTransferResult(
-                    StorageSortLockedTransferFailure.RollbackFailed,
-                    MovedItems: 0,
-                    RequiresPersistentRecovery: true);
+            if (rolledBack)
+                return Failure(StorageSortLockedTransferFailure.CommitFailed);
+
+            return this.TryPersistFailedRollback(
+                source,
+                destination,
+                sourceItem,
+                sourceSlot,
+                originalQuantity,
+                destinationStacks,
+                expectedSourceStackId,
+                expectedSource,
+                expectedDestination,
+                recoveryManager,
+                contractId,
+                transferId);
         }
     }
 
@@ -336,12 +391,12 @@ internal sealed class StorageSortExecutionSession
         try
         {
             if (addedToDestination)
-                destination.Items.Remove(sourceItem);
+                RemoveAllReferences(destination, sourceItem);
             foreach ((Item item, int stack) in destinationStacks)
                 item.Stack = stack;
 
             sourceItem.Stack = originalQuantity;
-            if (removedFromSource && !source.Items.Contains(sourceItem))
+            if (removedFromSource && !ContainsReference(source, sourceItem))
             {
                 if (sourceSlot <= source.Items.Count)
                     source.Items.Insert(sourceSlot, sourceItem);
@@ -373,12 +428,178 @@ internal sealed class StorageSortExecutionSession
         }
     }
 
+    private StorageSortLockedTransferResult TryPersistFailedRollback(
+        Chest source,
+        Chest destination,
+        Item sourceItem,
+        int sourceSlot,
+        int originalQuantity,
+        IReadOnlyList<(Item Item, int Stack)> destinationStacks,
+        string expectedSourceStackId,
+        StorageSortChestFingerprint expectedSource,
+        StorageSortChestFingerprint expectedDestination,
+        StorageSortRecoveryManager recoveryManager,
+        Guid contractId,
+        Guid transferId)
+    {
+        bool detached = TryDetachExactRecoveryItem(
+            source,
+            destination,
+            sourceItem,
+            originalQuantity,
+            destinationStacks,
+            expectedSourceStackId,
+            expectedSource,
+            expectedDestination);
+        if (detached)
+        {
+            StorageSortRecoveryWriteStatus recoveryStatus = recoveryManager.TryPersistDetached(
+                contractId,
+                transferId,
+                sourceItem);
+            if (recoveryStatus == StorageSortRecoveryWriteStatus.Persisted)
+            {
+                return new StorageSortLockedTransferResult(
+                    StorageSortLockedTransferFailure.RollbackFailed,
+                    MovedItems: 0,
+                    PersistedRecoveryItems: originalQuantity,
+                    RequiresPersistentRecovery: false,
+                    UnresolvedItem: null);
+            }
+            if (recoveryStatus == StorageSortRecoveryWriteStatus.UncertainAfterWrite)
+            {
+                return new StorageSortLockedTransferResult(
+                    StorageSortLockedTransferFailure.RollbackFailed,
+                    MovedItems: 0,
+                    PersistedRecoveryItems: 0,
+                    RequiresPersistentRecovery: true,
+                    UnresolvedItem: sourceItem);
+            }
+        }
+
+        try
+        {
+            foreach ((Item item, int stack) in destinationStacks)
+                item.Stack = stack;
+            sourceItem.Stack = originalQuantity;
+            RemoveAllReferences(destination, sourceItem);
+            if (!ContainsReference(source, sourceItem))
+            {
+                if (sourceSlot <= source.Items.Count)
+                    source.Items.Insert(sourceSlot, sourceItem);
+                else
+                    source.Items.Add(sourceItem);
+            }
+        }
+        catch
+        {
+            return new StorageSortLockedTransferResult(
+                StorageSortLockedTransferFailure.RollbackFailed,
+                MovedItems: 0,
+                PersistedRecoveryItems: 0,
+                RequiresPersistentRecovery: true,
+                UnresolvedItem: sourceItem);
+        }
+
+        bool exactSourceRestored = IsExactFingerprint(expectedSource, source);
+        bool exactDestinationRestored = IsExactFingerprint(expectedDestination, destination);
+        return exactSourceRestored && exactDestinationRestored
+            ? Failure(StorageSortLockedTransferFailure.CommitFailed)
+            : new StorageSortLockedTransferResult(
+                StorageSortLockedTransferFailure.RollbackFailed,
+                MovedItems: 0,
+                PersistedRecoveryItems: 0,
+                RequiresPersistentRecovery: true,
+                UnresolvedItem: sourceItem);
+    }
+
+    private static bool TryDetachExactRecoveryItem(
+        Chest source,
+        Chest destination,
+        Item sourceItem,
+        int originalQuantity,
+        IReadOnlyList<(Item Item, int Stack)> destinationStacks,
+        string expectedSourceStackId,
+        StorageSortChestFingerprint expectedSource,
+        StorageSortChestFingerprint expectedDestination)
+    {
+        try
+        {
+            RemoveAllReferences(source, sourceItem);
+            RemoveAllReferences(destination, sourceItem);
+            foreach ((Item item, int stack) in destinationStacks)
+                item.Stack = stack;
+            sourceItem.Stack = originalQuantity;
+
+            return IsExactFingerprint(expectedDestination, destination)
+                && IsSourceFingerprintWithoutTransfer(
+                    expectedSourceStackId,
+                    expectedSource,
+                    source);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsSourceFingerprintWithoutTransfer(
+        string stackId,
+        StorageSortChestFingerprint expected,
+        Chest source)
+    {
+        if (!TryCreateFingerprint(expected.ChestTile, source, out StorageSortChestFingerprint? actual)
+            || actual is null)
+        {
+            return false;
+        }
+
+        return StorageSortRecoveryValidation.IsSourceWithoutTransfer(
+            stackId,
+            expected,
+            actual);
+    }
+
+    private static bool IsExactFingerprint(StorageSortChestFingerprint expected, Chest chest)
+    {
+        return TryCreateFingerprint(expected.ChestTile, chest, out StorageSortChestFingerprint? actual)
+            && actual is not null
+            && StorageSortSnapshotValidation.IsChestUnchanged(expected, actual);
+    }
+
+    private static void RemoveAllReferences(Chest chest, Item item)
+    {
+        for (int index = chest.Items.Count - 1; index >= 0; index--)
+        {
+            if (ReferenceEquals(chest.Items[index], item))
+                chest.Items.RemoveAt(index);
+        }
+    }
+
+    private static bool ContainsReference(Chest chest, Item item)
+    {
+        return FindReferenceSlot(chest, item) >= 0;
+    }
+
+    private static int FindReferenceSlot(Chest chest, Item item)
+    {
+        for (int index = 0; index < chest.Items.Count; index++)
+        {
+            if (ReferenceEquals(chest.Items[index], item))
+                return index;
+        }
+
+        return -1;
+    }
+
     private static StorageSortLockedTransferResult Failure(
         StorageSortLockedTransferFailure failure)
     {
         return new StorageSortLockedTransferResult(
             failure,
             MovedItems: 0,
-            RequiresPersistentRecovery: false);
+            PersistedRecoveryItems: 0,
+            RequiresPersistentRecovery: false,
+            UnresolvedItem: null);
     }
 }
