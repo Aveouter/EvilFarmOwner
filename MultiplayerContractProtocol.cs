@@ -2,7 +2,7 @@ namespace EvilFarmOwner;
 
 internal static class MultiplayerContractProtocol
 {
-    public const int SchemaVersion = 5;
+    public const int SchemaVersion = 6;
     public const int ProcessedRequestCapacity = 256;
     public const string StartRequestType = "Contract/StartRequest";
     public const string StartResponseType = "Contract/StartResponse";
@@ -49,6 +49,7 @@ internal sealed class ContractSnapshotMessage
     public long RequestingPlayerId { get; set; }
     public string WorkerName { get; set; } = "";
     public NamedFarmTask Task { get; set; }
+    public decimal EfficiencyMultiplier { get; set; }
     public string Phase { get; set; } = "";
     public int ArrivalX { get; set; }
     public int ArrivalY { get; set; }
@@ -399,6 +400,7 @@ internal sealed record NamedContractRuntimeState(
     long RequestingPlayerId,
     string WorkerName,
     NamedFarmTask Task,
+    decimal EfficiencyMultiplier,
     string Phase,
     int ArrivalX,
     int ArrivalY,

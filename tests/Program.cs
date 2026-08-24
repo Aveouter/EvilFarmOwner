@@ -6,6 +6,11 @@ List<(string Name, Action Test)> tests = new()
     ("regular high-risk wage", TestRegularHighRiskWage),
     ("rest-day triple wage", TestRestDayTripleWage),
     ("trusted wage", TestTrustedWage),
+    ("worker efficiency profile coverage", TestWorkerEfficiencyProfileCoverage),
+    ("worker task-specific efficiency", TestWorkerTaskSpecificEfficiency),
+    ("worker efficiency fallback", TestWorkerEfficiencyFallback),
+    ("worker efficiency timing", TestWorkerEfficiencyTiming),
+    ("worker efficiency contract snapshot", TestWorkerEfficiencyContractSnapshot),
     ("pre-dispatch settlement", TestPreDispatchSettlement),
     ("dispatched one-hour settlement", TestDispatchedSettlement),
     ("elapsed multi-hour settlement", TestElapsedMultiHourSettlement),
@@ -95,6 +100,73 @@ static void TestTrustedWage()
     Equal(FriendshipWageBand.Trusted, preview.FriendshipBand);
     Equal(90, preview.MinimumCalloutWage);
     Equal(540, preview.MaximumAuthorizedWage);
+}
+
+static void TestWorkerEfficiencyProfileCoverage()
+{
+    IReadOnlyCollection<WorkerEfficiencyProfile> profiles =
+        WorkerEfficiencyProfiles.GetExplicitProfiles();
+    Equal(27, profiles.Count);
+    Equal(27, profiles.Select(profile => profile.WorkerName).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    Equal(true, profiles.All(profile =>
+        WorkerEfficiencyProfiles.IsValidMultiplier(profile.WateringMultiplier)
+        && WorkerEfficiencyProfiles.IsValidMultiplier(profile.HarvestingMultiplier)));
+    Equal(false, WorkerEfficiencyProfiles.IsValidMultiplier(0.99m));
+    Equal(false, WorkerEfficiencyProfiles.IsValidMultiplier(1.11m));
+}
+
+static void TestWorkerTaskSpecificEfficiency()
+{
+    WorkerEfficiencyProfile alex = WorkerEfficiencyProfiles.GetProfile("Alex");
+    Equal(1.10m, alex.GetMultiplier(NamedFarmTask.Watering));
+    Equal(1.05m, alex.GetMultiplier(NamedFarmTask.Harvesting));
+
+    WorkerEfficiencyProfile leah = WorkerEfficiencyProfiles.GetProfile("leah");
+    Equal(1.05m, leah.GetMultiplier(NamedFarmTask.Watering));
+    Equal(1.10m, leah.GetMultiplier(NamedFarmTask.Harvesting));
+}
+
+static void TestWorkerEfficiencyFallback()
+{
+    WorkerEfficiencyProfile custom = WorkerEfficiencyProfiles.GetProfile("ExampleCustomNpc");
+    Equal(WorkerEfficiencyBackground.Baseline, custom.Background);
+    Equal(1.00m, custom.GetMultiplier(NamedFarmTask.Watering));
+    Equal(1.00m, custom.GetMultiplier(NamedFarmTask.Harvesting));
+}
+
+static void TestWorkerEfficiencyTiming()
+{
+    Equal(36, WorkerEfficiencyTiming.GetActionDurationTicks(36, 8, 1.00m));
+    Equal(35, WorkerEfficiencyTiming.GetActionDurationTicks(36, 8, 1.05m));
+    Equal(33, WorkerEfficiencyTiming.GetActionDurationTicks(36, 8, 1.10m));
+    Equal(37, WorkerEfficiencyTiming.GetActionDurationTicks(40, 8, 1.10m));
+    Equal(36, WorkerEfficiencyTiming.GetActionDurationTicks(36, 8, 0.00m));
+    Equal(9, WorkerEfficiencyTiming.GetActionDurationTicks(9, 8, 1.10m));
+}
+
+static void TestWorkerEfficiencyContractSnapshot()
+{
+    WorkContractPreview first = ContractPreviewService.Create(
+        friendshipHearts: 4,
+        dayOfMonth: 1,
+        workerName: "Alex",
+        task: NamedFarmTask.Watering);
+    WorkContractPreview second = ContractPreviewService.Create(
+        friendshipHearts: 4,
+        dayOfMonth: 1,
+        workerName: "Alex",
+        task: NamedFarmTask.Watering);
+    WorkContractPreview harvesting = ContractPreviewService.Create(
+        friendshipHearts: 4,
+        dayOfMonth: 1,
+        workerName: "Alex",
+        task: NamedFarmTask.Harvesting);
+
+    Equal(first, second);
+    Equal(1.10m, first.EfficiencyMultiplier);
+    Equal(WorkerEfficiencyBackground.ManualFieldwork, first.EfficiencyBackground);
+    Equal(1.05m, harvesting.EfficiencyMultiplier);
+    Equal(first.MaximumAuthorizedWage, harvesting.MaximumAuthorizedWage);
 }
 
 static void TestPreDispatchSettlement()
@@ -957,6 +1029,15 @@ static void TestMultiplayerRestartRecoveryState()
         legacyResult.SchemaVersion = 4;
     Equal(true, MultiplayerRecoveryState.IsValid(legacyQuarantine, 445566));
 
+    MultiplayerRecoverySaveData legacyPlacement =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json)!;
+    legacyPlacement.ProtocolSchemaVersion = 5;
+    foreach (ContractStartResponseMessage legacyResponse in legacyPlacement.ProcessedRequests)
+        legacyResponse.SchemaVersion = 5;
+    foreach (ContractResultMessage legacyResult in legacyPlacement.RecentResults)
+        legacyResult.SchemaVersion = 5;
+    Equal(true, MultiplayerRecoveryState.IsValid(legacyPlacement, 445566));
+
     MultiplayerRecoveryState.RebindResponse(
         restored!.ProcessedRequests[0],
         "new-host-session",
@@ -1180,6 +1261,7 @@ static void TestMultiplayerSnapshotSerialization()
         RequestingPlayerId = 55,
         WorkerName = "Leah",
         Task = NamedFarmTask.Harvesting,
+        EfficiencyMultiplier = 1.10m,
         Phase = "TravelingToChest",
         ArrivalX = 78,
         ArrivalY = 15,
@@ -1208,6 +1290,7 @@ static void TestMultiplayerSnapshotSerialization()
     Equal("contract-1", restored!.ContractId);
     Equal(12L, restored.StateVersion);
     Equal(NamedFarmTask.Harvesting, restored.Task);
+    Equal(1.10m, restored.EfficiencyMultiplier);
     Equal(78, restored.ArrivalX);
     Equal(15, restored.ArrivalY);
     Equal(FarmBoundarySide.East, restored.ArrivalSide);
@@ -1219,7 +1302,7 @@ static void TestMultiplayerSnapshotSerialization()
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(5, MultiplayerContractProtocol.SchemaVersion);
+    Equal(6, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,

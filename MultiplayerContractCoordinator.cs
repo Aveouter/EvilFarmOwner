@@ -440,6 +440,7 @@ internal sealed class MultiplayerContractCoordinator
             '|',
             state.ContractId,
             state.Phase,
+            state.EfficiencyMultiplier,
             state.ArrivalX,
             state.ArrivalY,
             state.ArrivalSide,
@@ -466,6 +467,7 @@ internal sealed class MultiplayerContractCoordinator
             RequestingPlayerId = state.RequestingPlayerId,
             WorkerName = state.WorkerName,
             Task = state.Task,
+            EfficiencyMultiplier = state.EfficiencyMultiplier,
             Phase = state.Phase,
             ArrivalX = state.ArrivalX,
             ArrivalY = state.ArrivalY,
@@ -586,6 +588,7 @@ internal sealed class MultiplayerContractCoordinator
     {
         if (!Enum.IsDefined(snapshot.Task)
             || !Enum.IsDefined(snapshot.ArrivalSide)
+            || !WorkerEfficiencyProfiles.IsValidMultiplier(snapshot.EfficiencyMultiplier)
             || !this.ClientHostSession.Matches(snapshot.HostSessionId)
             || !this.RemoteStateVersions.CanAccept(snapshot.StateVersion)
             || !this.SnapshotTracker.TryAccept(
@@ -621,6 +624,7 @@ internal sealed class MultiplayerContractCoordinator
                 {
                     worker = snapshot.WorkerName,
                     task = GetTaskText(snapshot.Task),
+                    efficiency = $"{snapshot.EfficiencyMultiplier:0.00}x",
                     entrance = this.GetEntranceText(snapshot.ArrivalSide)
                 }),
                 HUDMessage.newQuest_type));

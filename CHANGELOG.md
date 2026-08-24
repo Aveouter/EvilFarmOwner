@@ -6,6 +6,7 @@
 - Added fresh availability, funds, target, and two-way path checks before dispatch.
 - Added a recoverable NPC work lease with timeout and day-end cleanup.
 - Added six-hour wage reservation, per-started-hour settlement, and explicit rest-day triple-pay authorization.
+- Added explicit background-based watering and harvesting efficiency profiles for all 27 supported workers, with conservative `1.00x` fallback, immutable host snapshots, and action-duration-only effects.
 - Added deterministic wage, settlement, target-ordering, and boundary-entrance selection logic tests.
 - Added task selection between whole-farm watering and one-crop visible harvesting.
 - Added vanilla-compatible harvest capture for exact quality, quantity, regrowth, metadata, and by-products.
@@ -30,13 +31,13 @@
 - Persisted the bounded processed-request ledger and latest per-player results so host restarts rebind prior transactions to the new network session without repeating work or charges.
 - Added read-only `efo_report` output for the current player's latest authoritative contract result, including grouped cargo, destinations, and billing.
 - Rejected internally inconsistent multiplayer recovery results with duplicate transfer IDs, unbalanced item destinations, impossible hours, or contradictory success reasons.
-- Required a nonce-correlated authoritative sync-state handshake before a farmhand binds a new host session or resends a pending request, so delayed responses or sync states from the prior host session cannot capture reconnect state; clean protocol-3 and protocol-4 recovery ledgers are fully validated before being rebound to protocol 5.
+- Required a nonce-correlated authoritative sync-state handshake before a farmhand binds a new host session or resends a pending request, so delayed responses or sync states from the prior host session cannot capture reconnect state; clean protocol-3 through protocol-5 recovery ledgers are fully validated before being rebound to protocol 6.
 - Bound wage reservation and refund to the requesting farmer instead of the host's local player.
 - Added mutex-aware persistent overflow delivery and save-time lease/cargo cleanup.
 - Added a separate persistent emergency cargo quarantine, idempotent transfer markers, a size-bounded host recovery record, and `efo_quarantine` retrieval so failed overflow and ground-drop operations cannot release the only owned item instances.
 - Required day end, ordinary saving, and initial save creation to verify cargo ownership and force any transient remainder into the private team quarantine before contract settlement.
 - Added a compile-gated, non-distributable storage fault-injection harness for live overflow, drop, quarantine, recovery-record, and terminal-write acceptance tests; the normal Release verifier rejects any DLL which exposes its command.
-- Expanded the deterministic logic harness to 49 wage, availability, routing, storage, reporting, quarantine recovery, acceptance-control, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
+- Expanded the deterministic logic harness to 54 wage, efficiency, availability, routing, storage, reporting, quarantine recovery, acceptance-control, protocol serialization, authorization, ordering, reconnect, stale-message, and replay tests.
 - Removed the legacy instant `efo_work`, task toggles, player-centered scan settings, and bundled user config from the production release surface.
 - Corrected manifest ownership, release description, and GitHub update metadata.
 - Added English and Chinese UI, configuration, multiplayer, failure, storage, and settlement text.

@@ -77,7 +77,11 @@ internal sealed class WateringContractExecutionController
         }
 
         int friendshipHearts = requester.getFriendshipHeartLevelForNPC(worker.Name);
-        WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
+        WorkContractPreview preview = ContractPreviewService.Create(
+            friendshipHearts,
+            Game1.dayOfMonth,
+            worker.Name,
+            NamedFarmTask.Watering);
         if (requester.Money < preview.MaximumAuthorizedWage)
         {
             this.LastStartFailureKey = "contract.start.insufficient-funds";
@@ -261,7 +265,7 @@ internal sealed class WateringContractExecutionController
                     contract.CompletedTargets.Add(contract.CurrentTarget.TargetTile);
                 }
 
-                if (contract.PhaseTicks >= ActionDurationTicks)
+                if (contract.PhaseTicks >= contract.ActionDurationTicks)
                     this.BeginNextOrReturn(contract);
                 break;
 
@@ -352,6 +356,7 @@ internal sealed class WateringContractExecutionController
             contract.Requester.UniqueMultiplayerID,
             contract.Lease.Worker.Name,
             NamedFarmTask.Watering,
+            contract.Preview.EfficiencyMultiplier,
             contract.Phase.ToString(),
             contract.Plan.ArrivalTile.X,
             contract.Plan.ArrivalTile.Y,
@@ -1036,6 +1041,10 @@ internal sealed class WateringContractExecutionController
             this.Requester = requester;
             this.Lease = lease;
             this.Preview = preview;
+            this.ActionDurationTicks = WorkerEfficiencyTiming.GetActionDurationTicks(
+                WateringContractExecutionController.ActionDurationTicks,
+                WateringContractExecutionController.ActionStartTicks,
+                preview.EfficiencyMultiplier);
             this.Farm = farm;
             this.Plan = plan;
             this.CurrentTarget = plan.FirstTarget;
@@ -1046,6 +1055,7 @@ internal sealed class WateringContractExecutionController
         public Farmer Requester { get; }
         public NpcWorkLease Lease { get; }
         public WorkContractPreview Preview { get; }
+        public int ActionDurationTicks { get; }
         public Farm Farm { get; }
         public WateringWorkPlan Plan { get; set; }
         public HashSet<Point> CompletedTargets { get; } = new();

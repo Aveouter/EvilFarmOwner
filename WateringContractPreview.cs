@@ -23,6 +23,7 @@ internal sealed record WorkContractPreview(
     int BaseHourlyWage,
     int RegularShiftHours,
     decimal EfficiencyMultiplier,
+    WorkerEfficiencyBackground EfficiencyBackground,
     bool OvertimeEnabled,
     decimal OvertimeMultiplier,
     int MaximumOvertimeHours,

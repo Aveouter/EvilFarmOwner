@@ -61,7 +61,8 @@ The host diagnostic must also report `recoveryHealthy=True` and `quarantineHealt
 3. Resend the exact saved request ID from the farmhand test harness. Verify the host returns the prior accepted response/result rebound to the new session, with no new lease, crop mutation, item transfer, charge, or refund.
 4. Repeat with a previously rejected request and verify it remains rejected without reevaluating into a new contract.
 5. In a disposable copy, corrupt or schema-mismatch the persisted recovery record. Include a duplicate transfer ID and a produced-item total which does not equal requester inventory plus chest, overflow, and visible-drop totals. Verify the host reports `recoveryHealthy=False` and rejects all new contracts without mutating money or world state.
-6. In disposable copies created by the protocol-3 and protocol-4 development builds, retain a clean recovery ledger and load it with protocol 5. Verify the host validates and rebinds the prior response/result to the new session, reports `recoveryHealthy=True`, and an exact request replay causes no second contract, mutation, transfer, charge, or refund. A mixed or older-than-3 schema must still fail closed.
+6. In disposable copies created by the protocol-3, protocol-4, and protocol-5 development builds, retain a clean recovery ledger and load it with protocol 6. Verify the host validates and rebinds the prior response/result to the new session, reports `recoveryHealthy=True`, and an exact request replay causes no second contract, mutation, transfer, charge, or refund. A mixed or older-than-3 schema must still fail closed.
+7. Start workers with both baseline and non-baseline task profiles. Verify the farmhand's start notice displays the exact multiplier from the host snapshot and rejects a missing or out-of-range multiplier without rendering an action.
 
 ### 6. Rejection safety
 
