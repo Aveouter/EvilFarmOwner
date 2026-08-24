@@ -21,6 +21,7 @@ List<(string Name, Action Test)> tests = new()
     ("right entrance priority", TestRightEntrancePriority),
     ("stalled entrance fallback ordering", TestStalledEntranceFallbackOrdering),
     ("nearest arrival boundary side", TestNearestArrivalBoundarySide),
+    ("NPC lease recovery policy", TestNpcLeaseRecoveryPolicy),
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest match priority", TestHarvestChestMatchPriority),
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
@@ -304,6 +305,46 @@ static void TestNearestArrivalBoundarySide()
         mapWidth: 80,
         mapHeight: 65,
         new GridPoint(41, 1)));
+}
+
+static void TestNpcLeaseRecoveryPolicy()
+{
+    Equal(
+        NpcLeaseRecoveryAction.Retry,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.ConflictingController,
+            deferredTicks: 0,
+            mustFinalizeNow: false));
+    Equal(
+        NpcLeaseRecoveryAction.Relinquish,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.ConflictingController,
+            NpcLeaseRecoveryPolicy.MaximumDeferredTicks,
+            mustFinalizeNow: false));
+    Equal(
+        NpcLeaseRecoveryAction.Relinquish,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.ConflictingController,
+            deferredTicks: 0,
+            mustFinalizeNow: true));
+    Equal(
+        NpcLeaseRecoveryAction.Complete,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.Restored,
+            deferredTicks: 0,
+            mustFinalizeNow: false));
+    Equal(
+        NpcLeaseRecoveryAction.Complete,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.LeaseOwnershipLost,
+            deferredTicks: 0,
+            mustFinalizeNow: false));
+    Equal(
+        NpcLeaseRecoveryAction.Complete,
+        NpcLeaseRecoveryPolicy.Select(
+            NpcLeaseRestoreResult.Relinquished,
+            deferredTicks: 0,
+            mustFinalizeNow: false));
 }
 
 static void TestSixHourWageCap()

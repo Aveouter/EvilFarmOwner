@@ -23,6 +23,8 @@ Stardew's schedule system parses a daily schedule into destinations, builds a fi
 
 Evil Farm Owner keeps the useful execution behavior but supplies its own live collision route. The current tile is removed from every precomputed controller path because a freshly warped NPC is already standing there; asking the vanilla controller to recenter inside that tile can collide with an adjacent building before the first real step. A pixel-progress watchdog replans after 180 unpaused update ticks and return travel gets three bounded replans before safe restoration.
 
+If another activity replaces the leased NPC's controller, the contract enters a bounded recovery phase instead of discarding its lease state. It retries full restoration for 300 update ticks. When the other controller releases, the NPC is restored to the exact pre-contract location and movement state. If the conflict persists until that bound, saving, day end, or world closure, the contract removes only its own controller/lease marker and restores only the safety flags it changed; it never halts, warps, or replaces the controller owned by the other activity. Wage settlement and contract release occur once after either outcome.
+
 All current contract controllers execute on the farm, so they always use the non-destructive policy. A future cross-map travel phase may use a separate outside-farm escalation policy (open doors first, replan, then allow vanilla destructive clearing only after a confirmed stall), but that policy must never remain enabled after entering a farm.
 
 ## Dynamic shortest-path algorithm

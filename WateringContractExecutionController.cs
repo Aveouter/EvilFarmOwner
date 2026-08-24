@@ -169,7 +169,11 @@ internal sealed class WateringContractExecutionController
         catch (Exception ex)
         {
             this.Monitor.Log($"Failed to dispatch watering worker '{worker.Name}': {ex}", LogLevel.Error);
-            this.FinishContract(contract, succeeded: false, "contract.failure.dispatch");
+            this.FinishContract(
+                contract,
+                succeeded: false,
+                "contract.failure.dispatch",
+                mustFinalizeNow: true);
             return false;
         }
     }
@@ -180,11 +184,27 @@ internal sealed class WateringContractExecutionController
         if (contract is null || !Context.IsWorldReady)
             return;
 
+        if (contract.FinalizationPrepared)
+        {
+            contract.RestoreWaitTicks++;
+            this.ContinueFinalization(
+                contract,
+                mustFinalizeNow: !Context.IsMainPlayer
+                    || Game1.Date.TotalDays != contract.Lease.StartTotalDays
+                    || Game1.timeOfDay >= HardStopTime
+                    || contract.RestoreWaitTicks >= NpcLeaseRecoveryPolicy.MaximumDeferredTicks);
+            return;
+        }
+
         if (!Context.IsMainPlayer
             || Game1.Date.TotalDays != contract.Lease.StartTotalDays
             || Game1.timeOfDay >= HardStopTime)
         {
-            this.FinishContract(contract, succeeded: false, "contract.failure.safety-stop");
+            this.FinishContract(
+                contract,
+                succeeded: false,
+                "contract.failure.safety-stop",
+                mustFinalizeNow: true);
             return;
         }
 
@@ -301,13 +321,25 @@ internal sealed class WateringContractExecutionController
     public void OnDayEnding()
     {
         if (this.ActiveContract is { } contract)
-            this.FinishContract(contract, succeeded: false, "contract.failure.day-ending");
+        {
+            this.FinishContract(
+                contract,
+                succeeded: false,
+                "contract.failure.day-ending",
+                mustFinalizeNow: true);
+        }
     }
 
     public void OnReturnedToTitle()
     {
         if (this.ActiveContract is { } contract && Context.IsWorldReady)
-            this.FinishContract(contract, succeeded: false, "contract.failure.world-closed");
+        {
+            this.FinishContract(
+                contract,
+                succeeded: false,
+                "contract.failure.world-closed",
+                mustFinalizeNow: true);
+        }
 
         this.ActiveContract = null;
     }
@@ -771,12 +803,56 @@ internal sealed class WateringContractExecutionController
     private void FinishContract(
         ActiveWateringContract contract,
         bool succeeded,
-        string? failureTranslationKey)
+        string? failureTranslationKey,
+        bool mustFinalizeNow = false)
     {
         if (!ReferenceEquals(this.ActiveContract, contract))
             return;
 
+        if (!contract.FinalizationPrepared)
+        {
+            contract.FinalizationPrepared = true;
+            contract.PendingSucceeded = succeeded;
+            contract.PendingFailureTranslationKey = failureTranslationKey;
+            contract.Phase = WateringContractPhase.RecoveringLease;
+            contract.PhaseTicks = 0;
+        }
+
+        this.ContinueFinalization(contract, mustFinalizeNow);
+    }
+
+    private void ContinueFinalization(ActiveWateringContract contract, bool mustFinalizeNow)
+    {
+        if (!ReferenceEquals(this.ActiveContract, contract) || !contract.FinalizationPrepared)
+            return;
+
         NpcLeaseRestoreResult restoreResult = contract.Lease.Restore();
+        NpcLeaseRecoveryAction recoveryAction = NpcLeaseRecoveryPolicy.Select(
+            restoreResult,
+            contract.RestoreWaitTicks,
+            mustFinalizeNow);
+        if (recoveryAction == NpcLeaseRecoveryAction.Retry)
+        {
+            if (!contract.RestoreWaitNoticeShown)
+            {
+                contract.RestoreWaitNoticeShown = true;
+                this.Monitor.Log(
+                    $"Watering contract {contract.Id:N} is waiting for a conflicting controller to release "
+                    + $"worker '{contract.Lease.Worker.Name}'.",
+                    LogLevel.Warn);
+                Game1.addHUDMessage(new HUDMessage(
+                    this.Translation.Get("contract.hud.restore-waiting", new
+                    {
+                        worker = contract.Lease.Worker.displayName
+                    }),
+                    HUDMessage.error_type));
+            }
+            return;
+        }
+
+        if (recoveryAction == NpcLeaseRecoveryAction.Relinquish)
+            restoreResult = contract.Lease.RelinquishToConflictingController();
+
         WateringContractSettlement settlement = WateringContractSettlement.Create(
             contract.Preview,
             contract.Dispatched,
@@ -785,12 +861,12 @@ internal sealed class WateringContractExecutionController
         contract.Requester.Money += settlement.RefundedGold;
         this.ActiveContract = null;
 
-        bool finalSucceeded = succeeded && restoreResult == NpcLeaseRestoreResult.Restored;
+        bool finalSucceeded = contract.PendingSucceeded && restoreResult == NpcLeaseRestoreResult.Restored;
         string finalReasonKey = finalSucceeded
             ? ""
             : restoreResult != NpcLeaseRestoreResult.Restored
-                ? "contract.hud.restore-failed"
-                : failureTranslationKey ?? "contract.failure.unknown";
+                ? GetRestoreFailureTranslationKey(restoreResult)
+                : contract.PendingFailureTranslationKey ?? "contract.failure.unknown";
         this.LastCompletion = new NamedContractCompletionState(
             contract.Id.ToString("N"),
             contract.RequestId,
@@ -813,12 +889,15 @@ internal sealed class WateringContractExecutionController
         if (restoreResult != NpcLeaseRestoreResult.Restored)
         {
             Game1.addHUDMessage(new HUDMessage(
-                this.Translation.Get("contract.hud.restore-failed", new { worker = contract.Lease.Worker.displayName }),
+                this.Translation.Get(GetRestoreHudTranslationKey(restoreResult), new
+                {
+                    worker = contract.Lease.Worker.displayName
+                }),
                 HUDMessage.error_type));
             return;
         }
 
-        if (succeeded)
+        if (contract.PendingSucceeded)
         {
             Game1.addHUDMessage(new HUDMessage(
                 this.Translation.Get("contract.hud.completed", new
@@ -836,9 +915,9 @@ internal sealed class WateringContractExecutionController
             return;
         }
 
-        string reason = failureTranslationKey is null
+        string reason = contract.PendingFailureTranslationKey is null
             ? this.Translation.Get("contract.failure.unknown")
-            : this.Translation.Get(failureTranslationKey);
+            : this.Translation.Get(contract.PendingFailureTranslationKey);
         Game1.addHUDMessage(new HUDMessage(
             this.Translation.Get("contract.hud.stopped", new
             {
@@ -853,6 +932,20 @@ internal sealed class WateringContractExecutionController
                 refunded = settlement.RefundedGold
             }),
             HUDMessage.error_type));
+    }
+
+    private static string GetRestoreFailureTranslationKey(NpcLeaseRestoreResult result)
+    {
+        return result == NpcLeaseRestoreResult.Relinquished
+            ? "contract.failure.restore-relinquished"
+            : "contract.failure.restore-ownership-lost";
+    }
+
+    private static string GetRestoreHudTranslationKey(NpcLeaseRestoreResult result)
+    {
+        return result == NpcLeaseRestoreResult.Relinquished
+            ? "contract.hud.restore-relinquished"
+            : "contract.hud.restore-ownership-lost";
     }
 
     private bool FailStart(string translationKey)
@@ -883,7 +976,8 @@ internal sealed class WateringContractExecutionController
         TravelingToTarget,
         Acting,
         Returning,
-        Returned
+        Returned,
+        RecoveringLease
     }
 
     private sealed class ActiveWateringContract
@@ -930,5 +1024,10 @@ internal sealed class WateringContractExecutionController
         public int RemainingTargets { get; set; }
         public int ReturnReplanAttempts { get; set; }
         public int EntranceSwitches { get; set; }
+        public bool FinalizationPrepared { get; set; }
+        public bool PendingSucceeded { get; set; }
+        public string? PendingFailureTranslationKey { get; set; }
+        public int RestoreWaitTicks { get; set; }
+        public bool RestoreWaitNoticeShown { get; set; }
     }
 }

@@ -835,7 +835,6 @@ internal sealed class MultiplayerContractCoordinator
         {
             "contract.start.insufficient-funds" => "multiplayer.reject.funds",
             "contract.start.worker-unavailable" => "multiplayer.reject.worker-state",
-            "contract.hud.restore-failed" => "multiplayer.reject.restore",
             null or "" => "contract.failure.unknown",
             _ => failureKey
         };
