@@ -51,6 +51,7 @@ List<(string Name, Action Test)> tests = new()
     ("storage sort conservation", TestStorageSortConservation),
     ("storage sort invalid snapshot", TestStorageSortInvalidSnapshot),
     ("storage sort generated invariants", TestStorageSortGeneratedInvariants),
+    ("storage snapshot validation", TestStorageSnapshotValidation),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
@@ -1019,6 +1020,62 @@ static void TestStorageSortGeneratedInvariants()
         Equal(true, repeated.CanExecute);
         Equal(0, repeated.Transfers.Count);
     }
+}
+
+static void TestStorageSnapshotValidation()
+{
+    GridPoint firstTile = new(1, 2);
+    GridPoint secondTile = new(3, 4);
+    Equal(true, StorageSortSnapshotValidation.HasSameChestSet(
+        new[] { firstTile, secondTile },
+        new[] { secondTile, firstTile }));
+    Equal(false, StorageSortSnapshotValidation.HasSameChestSet(
+        new[] { firstTile },
+        new[] { firstTile, secondTile }));
+
+    StorageSortItemFingerprint item = new(
+        "(O)24",
+        "StardewValley.Object",
+        "Stardew Valley",
+        Category: -75,
+        Quality: 0,
+        Quantity: 10,
+        MaximumStackSize: 999,
+        SerializedXml: "carrot");
+    StorageSortChestFingerprint expected = new(
+        firstTile,
+        Capacity: 36,
+        new[]
+        {
+            new StorageSortStackBinding("1:2:0", firstTile, Slot: 0, item)
+        });
+    StorageSortChestFingerprint unchanged = new(
+        firstTile,
+        Capacity: 36,
+        new[]
+        {
+            new StorageSortStackBinding("1:2:0", firstTile, Slot: 0, item with { })
+        });
+    StorageSortChestFingerprint changed = new(
+        firstTile,
+        Capacity: 36,
+        new[]
+        {
+            new StorageSortStackBinding(
+                "1:2:0",
+                firstTile,
+                Slot: 0,
+                item with { Quantity = 9 })
+        });
+
+    Equal(true, StorageSortSnapshotValidation.IsChestUnchanged(expected, unchanged));
+    Equal(false, StorageSortSnapshotValidation.IsChestUnchanged(expected, changed));
+    Equal(false, StorageSortSnapshotValidation.IsChestUnchanged(
+        expected,
+        unchanged with { Capacity = 48 }));
+    Equal(false, StorageSortSnapshotValidation.IsChestUnchanged(
+        expected,
+        unchanged with { ChestTile = secondTile }));
 }
 
 static StorageSortChestSnapshot SortChest(
