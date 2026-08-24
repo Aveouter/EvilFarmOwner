@@ -29,6 +29,7 @@ List<(string Name, Action Test)> tests = new()
     ("destination tile alignment", TestDestinationTileAlignment),
     ("travel progress watchdog", TestTravelProgressWatchdog),
     ("consecutive route failure budget", TestConsecutiveRouteFailureBudget),
+    ("target route failure isolation", TestTargetRouteFailureIsolation),
     ("NPC protected activity policy", TestNpcProtectedActivityPolicy),
     ("path first-step offsets", TestPathFirstStepOffsets),
     ("external boundary arrival ordering", TestExternalBoundaryArrivalOrdering),
@@ -499,6 +500,45 @@ static void TestConsecutiveRouteFailureBudget()
 
     budget.Reset(TravelRoutePurpose.Target);
     Equal(1, budget.RecordFailure(TravelRoutePurpose.Target, origin).FailureCount);
+}
+
+static void TestTargetRouteFailureIsolation()
+{
+    TravelReplanBudget budget = new(maximumFailures: 3);
+    GridPoint origin = new(73, 14);
+
+    TargetRouteFailureDecision first = TargetRouteFailurePolicy.RecordFailure(budget, origin);
+    Equal(TargetRouteFailureAction.RetryRoute, first.Action);
+    Equal(1, first.RouteFailureCount);
+
+    Equal(TargetRouteFailureAction.RetryRoute,
+        TargetRouteFailurePolicy.RecordFailure(budget, origin).Action);
+    TargetRouteFailureDecision firstSkipped = TargetRouteFailurePolicy.RecordFailure(budget, origin);
+    Equal(TargetRouteFailureAction.SkipTarget, firstSkipped.Action);
+    Equal(1, firstSkipped.StalledTargetCount);
+
+    for (int skippedTarget = 2; skippedTarget <= 3; skippedTarget++)
+    {
+        Equal(TargetRouteFailureAction.RetryRoute,
+            TargetRouteFailurePolicy.RecordFailure(budget, origin).Action);
+        Equal(TargetRouteFailureAction.RetryRoute,
+            TargetRouteFailurePolicy.RecordFailure(budget, origin).Action);
+        TargetRouteFailureDecision isolated = TargetRouteFailurePolicy.RecordFailure(budget, origin);
+        Equal(skippedTarget == 3
+                ? TargetRouteFailureAction.StopAtOrigin
+                : TargetRouteFailureAction.SkipTarget,
+            isolated.Action);
+        Equal(skippedTarget, isolated.StalledTargetCount);
+    }
+
+    TargetRouteFailurePolicy.ResetAfterArrival(budget);
+    Equal(TargetRouteFailureAction.RetryRoute,
+        TargetRouteFailurePolicy.RecordFailure(budget, origin).Action);
+    Equal(TargetRouteFailureAction.RetryRoute,
+        TargetRouteFailurePolicy.RecordFailure(budget, origin).Action);
+    TargetRouteFailureDecision afterSuccess = TargetRouteFailurePolicy.RecordFailure(budget, origin);
+    Equal(TargetRouteFailureAction.SkipTarget, afterSuccess.Action);
+    Equal(1, afterSuccess.StalledTargetCount);
 }
 
 static void TestNpcProtectedActivityPolicy()

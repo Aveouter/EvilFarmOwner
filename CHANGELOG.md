@@ -7,6 +7,7 @@
 - Execute deterministic exact-stack, same-item, exact-category, and empty-chest transfers under ordered dual mutexes with exact rollback or persistent quarantine recovery.
 - Force any verified detached sorting stack into the private team quarantine at the save boundary when its serializable recovery record is temporarily unavailable.
 - Added bilingual task selection, contract settlement HUDs, host-authoritative protocol 7 snapshots/results, and persistent per-transfer source/destination reports.
+- Isolated a crop after its live interaction routes are exhausted instead of marking every remaining crop unreachable; three independently stalled crops at one origin still trigger a bounded safe return.
 - Kept recurring automatic chest sorting disabled until the manual contract passes live acceptance.
 
 ## 0.1.0-beta.1 - 2026-08-24
