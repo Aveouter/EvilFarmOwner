@@ -879,6 +879,7 @@ internal sealed class WateringContractExecutionController
             PlayerItems: 0,
             ChestItems: 0,
             OverflowItems: 0,
+            QuarantinedItems: 0,
             DroppedItems: 0,
             settlement.BillableHours,
             settlement.ChargedGold,

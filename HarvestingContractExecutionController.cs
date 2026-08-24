@@ -1,5 +1,9 @@
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
+using System.Globalization;
+using System.Text.Json;
+using System.Xml;
+using System.Xml.Serialization;
 using StardewValley;
 using StardewValley.Inventories;
 using StardewValley.ItemTypeDefinitions;
@@ -13,6 +17,9 @@ namespace EvilFarmOwner;
 internal sealed class HarvestingContractExecutionController
 {
     internal const string OverflowInventoryId = "Aveouter.EvilFarmOwner/ContractOverflow";
+    internal const string QuarantineInventoryId = "Aveouter.EvilFarmOwner/ContractQuarantine";
+    internal const string QuarantineRecoveryDataKey = "Aveouter.EvilFarmOwner/QuarantineRecovery";
+    internal const string QuarantineTransferDataKey = "Aveouter.EvilFarmOwner/QuarantineTransfer";
 
     private const int LatestStartTime = 1600;
     private const int StopAcquiringTime = 2100;
@@ -33,6 +40,8 @@ internal sealed class HarvestingContractExecutionController
     private readonly HarvestChestRouter ChestRouter;
     private ActiveHarvestContract? ActiveContract;
     private NamedContractCompletionState? LastCompletion;
+    private bool HasPendingQuarantineRecovery;
+    private int QuarantineRecoveryRetryTicks;
 
     public HarvestingContractExecutionController(
         ITranslationHelper translation,
@@ -52,11 +61,30 @@ internal sealed class HarvestingContractExecutionController
 
     public string? ActiveContractId => this.ActiveContract?.Id.ToString("N");
 
+    public bool HasUnresolvedQuarantineRecovery => this.HasPendingQuarantineRecovery;
+
+    public void OnSaveLoaded()
+    {
+        this.HasPendingQuarantineRecovery = false;
+        this.QuarantineRecoveryRetryTicks = 0;
+        if (Context.IsWorldReady && Context.IsMainPlayer)
+            this.TryRestoreQuarantineRecovery(showHud: true);
+    }
+
+    public bool TryRecoverQuarantinedCargo()
+    {
+        return this.TryRestoreQuarantineRecovery(showHud: true);
+    }
+
     public bool TryStart(long requestingPlayerId, string workerInternalName, string requestId)
     {
         this.LastStartFailureKey = null;
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
             return this.FailStart("contract.start.host-only");
+
+        if ((this.HasPendingQuarantineRecovery || this.HasStoredQuarantineRecovery())
+            && !this.TryRestoreQuarantineRecovery(showHud: false))
+            return this.FailStart("harvest.start.quarantine-pending");
 
         if (this.ActiveContract is not null)
             return this.FailStart("contract.start.already-active");
@@ -190,8 +218,17 @@ internal sealed class HarvestingContractExecutionController
     public void Update()
     {
         ActiveHarvestContract? contract = this.ActiveContract;
-        if (contract is null || !Context.IsWorldReady)
+        if (!Context.IsWorldReady)
             return;
+
+        if (contract is null)
+        {
+            if (Context.IsMainPlayer
+                && this.HasPendingQuarantineRecovery
+                && ++this.QuarantineRecoveryRetryTicks % OverflowRetryIntervalTicks == 0)
+                this.TryRestoreQuarantineRecovery(showHud: false);
+            return;
+        }
 
         if (contract.FinalizationPrepared)
         {
@@ -274,19 +311,53 @@ internal sealed class HarvestingContractExecutionController
                         ? null
                         : "harvest.failure.target-invalidated");
                 break;
+
+            case HarvestContractPhase.QuarantiningCargo:
+                this.FinishContract(
+                    contract,
+                    succeeded: false,
+                    "harvest.failure.quarantine-pending");
+                break;
         }
     }
 
     public void OnDayEnding()
     {
-        if (this.ActiveContract is { } contract)
+        this.OnSaving();
+    }
+
+    public void OnSaving()
+    {
+        ActiveHarvestContract? contract = this.ActiveContract;
+        if (contract is null)
+            return;
+
+        this.FinishContract(
+            contract,
+            succeeded: false,
+            "contract.failure.day-ending",
+            mustFinalizeNow: true);
+        if (!ReferenceEquals(this.ActiveContract, contract) || contract.Cargo.Count == 0)
+            return;
+
+        this.Monitor.Log(
+            $"CRITICAL: contract {contract.Id:N} reached the save boundary without verified cargo "
+            + "ownership; forcing the exact remainder into the private team quarantine before save.",
+            LogLevel.Error);
+        if (!this.TryForceQuarantineAtSaveBoundary(contract))
         {
-            this.FinishContract(
-                contract,
-                succeeded: false,
-                "contract.failure.day-ending",
-                mustFinalizeNow: true);
+            this.Monitor.Log(
+                $"CRITICAL: save-boundary quarantine failed for contract {contract.Id:N}; "
+                + "the active contract is being retained and must not be reported as finalized.",
+                LogLevel.Error);
+            return;
         }
+
+        this.FinishContract(
+            contract,
+            succeeded: false,
+            "harvest.failure.quarantine-pending",
+            mustFinalizeNow: true);
     }
 
     public void OnReturnedToTitle()
@@ -301,6 +372,8 @@ internal sealed class HarvestingContractExecutionController
         }
 
         this.ActiveContract = null;
+        this.HasPendingQuarantineRecovery = false;
+        this.QuarantineRecoveryRetryTicks = 0;
     }
 
     public NamedContractRuntimeState? GetRuntimeState()
@@ -1046,8 +1119,16 @@ internal sealed class HarvestingContractExecutionController
         if (!contract.FinalizationPrepared)
         {
             this.ReleaseCurrentChestLock(contract);
-            if (contract.Cargo.Count > 0)
+            if (contract.Cargo.Count > 0 && contract.Phase != HarvestContractPhase.QuarantiningCargo)
                 this.PersistOrDropCargo(contract);
+            if (contract.Cargo.Count > 0 && !this.TryQuarantineRemainingCargo(contract))
+            {
+                contract.PendingSucceeded = false;
+                contract.PendingFailureTranslationKey = "harvest.failure.quarantine-pending";
+                contract.Phase = HarvestContractPhase.QuarantiningCargo;
+                contract.PhaseTicks = 0;
+                return;
+            }
 
             int harvestedItems = contract.HarvestedItems.Sum(item => item.Stack);
             int unresolvedItems = contract.Cargo.Sum(entry => entry.Item.Stack);
@@ -1056,12 +1137,14 @@ internal sealed class HarvestingContractExecutionController
                 contract.PlayerInventoryItems,
                 contract.ChestDeliveredItems,
                 contract.OverflowItems,
+                contract.QuarantinedItems,
                 contract.DroppedItems,
                 unresolvedItems);
             this.Monitor.Log(
                 $"Harvest placement audit for contract {contract.Id:N}: harvested={harvestedItems}, "
                 + $"player={contract.PlayerInventoryItems}, chest={contract.ChestDeliveredItems}, "
                 + $"overflow={contract.OverflowItems}, "
+                + $"quarantine={contract.QuarantinedItems}, "
                 + $"dropped={contract.DroppedItems}, unresolved={unresolvedItems}, balanced={placementBalanced}.",
                 placementBalanced && unresolvedItems == 0 ? LogLevel.Debug : LogLevel.Error);
             if (!placementBalanced || unresolvedItems > 0)
@@ -1138,6 +1221,7 @@ internal sealed class HarvestingContractExecutionController
             contract.PlayerInventoryItems,
             contract.ChestDeliveredItems,
             contract.OverflowItems,
+            contract.QuarantinedItems,
             contract.DroppedItems,
             settlement.BillableHours,
             settlement.ChargedGold,
@@ -1176,6 +1260,7 @@ internal sealed class HarvestingContractExecutionController
                     player = contract.PlayerInventoryItems,
                     chest = contract.ChestDeliveredItems,
                     overflow = contract.OverflowItems,
+                    quarantine = contract.QuarantinedItems,
                     dropped = contract.DroppedItems,
                     hours = settlement.BillableHours,
                     paid = settlement.ChargedGold,
@@ -1201,6 +1286,7 @@ internal sealed class HarvestingContractExecutionController
                 player = contract.PlayerInventoryItems,
                 chest = contract.ChestDeliveredItems,
                 overflow = contract.OverflowItems,
+                quarantine = contract.QuarantinedItems,
                 dropped = contract.DroppedItems,
                 hours = settlement.BillableHours,
                 paid = settlement.ChargedGold,
@@ -1337,6 +1423,399 @@ internal sealed class HarvestingContractExecutionController
             }
             contract.Cargo.Remove(entry);
         }
+    }
+
+    private bool TryQuarantineRemainingCargo(ActiveHarvestContract contract)
+    {
+        if (contract.Cargo.Count == 0)
+            return true;
+
+        NetMutex mutex = Game1.player.team.GetOrCreateGlobalInventoryMutex(QuarantineInventoryId);
+        try
+        {
+            if (!this.TryAcquireOverflowLockImmediately(mutex))
+            {
+                this.Monitor.Log(
+                    $"Emergency harvest quarantine is locked for contract {contract.Id:N}; "
+                    + "persisting a serializable recovery record.",
+                    LogLevel.Error);
+                return this.TryPersistQuarantineRecoveryRecord(contract);
+            }
+
+            this.StoreCargoInQuarantine(contract);
+            return contract.Cargo.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log(
+                $"Emergency harvest quarantine failed for contract {contract.Id:N}: {ex}",
+                LogLevel.Error);
+            return this.TryPersistQuarantineRecoveryRecord(contract);
+        }
+        finally
+        {
+            if (mutex.IsLockHeld())
+                mutex.ReleaseLock();
+        }
+    }
+
+    private void StoreCargoInQuarantine(ActiveHarvestContract contract)
+    {
+        Inventory quarantine = Game1.player.team.GetOrCreateGlobalInventory(QuarantineInventoryId);
+        foreach (HarvestCargoEntry entry in contract.Cargo.ToArray())
+        {
+            Item? existing = quarantine.FirstOrDefault(item => item is not null
+                && item.modData.TryGetValue(QuarantineTransferDataKey, out string? transferId)
+                && string.Equals(transferId, entry.TransferId, StringComparison.Ordinal));
+            if (existing is not null
+                && (existing.QualifiedItemId != entry.Item.QualifiedItemId
+                    || existing.Quality != entry.Item.Quality
+                    || existing.Stack != entry.Item.Stack))
+            {
+                throw new InvalidDataException(
+                    $"Quarantine transfer {entry.TransferId} already identifies different cargo.");
+            }
+
+            int stack = entry.Item.Stack;
+            bool applied = contract.TransferLedger.TryApply(
+                entry.TransferId,
+                () =>
+                {
+                    if (existing is not null)
+                        return;
+
+                    entry.Item.modData[QuarantineTransferDataKey] = entry.TransferId;
+                    quarantine.Add(entry.Item);
+                    if (!quarantine.Any(item => ReferenceEquals(item, entry.Item)))
+                        throw new InvalidDataException(
+                            $"Quarantine did not retain transfer {entry.TransferId} after insertion.");
+                });
+            if (!applied && existing is null)
+            {
+                throw new InvalidDataException(
+                    $"Transfer {entry.TransferId} was marked complete without a matching quarantine item.");
+            }
+
+            if ((applied || existing is not null)
+                && contract.QuarantinedTransferIds.Add(entry.TransferId))
+                contract.QuarantinedItems += stack;
+            contract.Cargo.Remove(entry);
+            this.Monitor.Log(
+                $"Quarantined harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{stack}; "
+                + $"transfer={entry.TransferId}.",
+                LogLevel.Error);
+        }
+
+        if (contract.Cargo.Count == 0)
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Translation.Get("harvest.hud.quarantined", new
+                {
+                    count = contract.QuarantinedItems
+                }),
+                HUDMessage.error_type));
+        }
+    }
+
+    private bool TryPersistQuarantineRecoveryRecord(ActiveHarvestContract contract)
+    {
+        try
+        {
+            List<HarvestCargoRecoveryItemData> savedItems = new();
+            long payloadContentLength = contract.Id.ToString("N").Length;
+            foreach (HarvestCargoEntry entry in contract.Cargo)
+            {
+                HarvestCargoRecoveryItemData savedItem = new()
+                {
+                    TransferId = entry.TransferId,
+                    QualifiedItemId = entry.Item.QualifiedItemId,
+                    DisplayName = entry.Item.DisplayName,
+                    RuntimeType = entry.Item.GetType().FullName ?? entry.Item.GetType().Name,
+                    RuntimeAssembly = entry.Item.GetType().Assembly.GetName().Name ?? "",
+                    SerializedItemXml = SerializeRecoveryItem(entry.Item),
+                    Quality = entry.Item.Quality,
+                    Stack = entry.Item.Stack,
+                    ModData = entry.Item.modData.Pairs
+                        .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                        .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+                };
+                if (!HarvestCargoRecoveryState.TryAccumulatePayloadContent(
+                        savedItem,
+                        ref payloadContentLength))
+                {
+                    this.Monitor.Log(
+                        "Refusing to build an oversized harvest quarantine recovery payload.",
+                        LogLevel.Error);
+                    this.HasPendingQuarantineRecovery = true;
+                    return false;
+                }
+                savedItems.Add(savedItem);
+            }
+
+            HarvestCargoRecoverySaveData state = HarvestCargoRecoveryState.Create(
+                Game1.uniqueIDForThisGame,
+                contract.Id.ToString("N"),
+                savedItems);
+            if (!HarvestCargoRecoveryState.IsValid(state, Game1.uniqueIDForThisGame))
+                return false;
+
+            string serialized = JsonSerializer.Serialize(state);
+            if (!HarvestCargoRecoveryState.IsSerializedPayloadValid(serialized))
+            {
+                this.Monitor.Log(
+                    $"Refusing to write a harvest quarantine recovery payload of {serialized.Length} "
+                    + $"characters; maximum is {HarvestCargoRecoveryState.MaximumSerializedPayloadLength}.",
+                    LogLevel.Error);
+                this.HasPendingQuarantineRecovery = true;
+                return false;
+            }
+            if (Game1.MasterPlayer.modData.TryGetValue(QuarantineRecoveryDataKey, out string? prior)
+                && !string.IsNullOrWhiteSpace(prior)
+                && !string.Equals(prior, serialized, StringComparison.Ordinal))
+            {
+                this.Monitor.Log(
+                    "Refusing to overwrite a different unresolved harvest quarantine record.",
+                    LogLevel.Error);
+                this.HasPendingQuarantineRecovery = true;
+                return false;
+            }
+
+            Game1.MasterPlayer.modData[QuarantineRecoveryDataKey] = serialized;
+            if (!Game1.MasterPlayer.modData.TryGetValue(QuarantineRecoveryDataKey, out string? verified)
+                || !string.Equals(verified, serialized, StringComparison.Ordinal))
+                return false;
+
+            foreach (HarvestCargoEntry entry in contract.Cargo.ToArray())
+            {
+                int stack = entry.Item.Stack;
+                contract.TransferLedger.TryApply(entry.TransferId, () => { });
+                if (contract.QuarantinedTransferIds.Add(entry.TransferId))
+                    contract.QuarantinedItems += stack;
+                contract.Cargo.Remove(entry);
+            }
+
+            this.HasPendingQuarantineRecovery = true;
+            this.QuarantineRecoveryRetryTicks = 0;
+            this.Monitor.Log(
+                $"Persisted {state.Items.Length} unresolved harvest stack(s) from contract {contract.Id:N} "
+                + "into the team quarantine recovery record.",
+                LogLevel.Error);
+            Game1.addHUDMessage(new HUDMessage(
+                this.Translation.Get("harvest.hud.quarantine-record", new
+                {
+                    count = HarvestCargoRecoveryState.CountItems(state)
+                }),
+                HUDMessage.error_type));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            this.HasPendingQuarantineRecovery = true;
+            this.Monitor.Log(
+                $"CRITICAL: unresolved harvest cargo could not be written to the quarantine recovery record: {ex}",
+                LogLevel.Error);
+            return false;
+        }
+    }
+
+    private bool TryRestoreQuarantineRecovery(bool showHud)
+    {
+        if (!Context.IsWorldReady || !Context.IsMainPlayer)
+            return false;
+        if (!Game1.MasterPlayer.modData.TryGetValue(QuarantineRecoveryDataKey, out string? serialized)
+            || string.IsNullOrWhiteSpace(serialized))
+        {
+            this.HasPendingQuarantineRecovery = false;
+            this.QuarantineRecoveryRetryTicks = 0;
+            return true;
+        }
+
+        this.HasPendingQuarantineRecovery = true;
+        NetMutex mutex = Game1.player.team.GetOrCreateGlobalInventoryMutex(QuarantineInventoryId);
+        try
+        {
+            if (!HarvestCargoRecoveryState.IsSerializedPayloadValid(serialized))
+            {
+                this.Monitor.Log(
+                    "The persisted harvest quarantine record exceeds its safe payload limit.",
+                    LogLevel.Error);
+                if (showHud)
+                {
+                    Game1.addHUDMessage(new HUDMessage(
+                        this.Translation.Get("harvest.hud.quarantine-pending"),
+                        HUDMessage.error_type));
+                }
+                return false;
+            }
+
+            HarvestCargoRecoverySaveData? state =
+                JsonSerializer.Deserialize<HarvestCargoRecoverySaveData>(serialized);
+            if (!HarvestCargoRecoveryState.IsValid(state, Game1.uniqueIDForThisGame)
+                || state is null)
+            {
+                this.Monitor.Log(
+                    "The persisted harvest quarantine record failed schema, save, or cargo validation.",
+                    LogLevel.Error);
+                if (showHud)
+                {
+                    Game1.addHUDMessage(new HUDMessage(
+                        this.Translation.Get("harvest.hud.quarantine-pending"),
+                        HUDMessage.error_type));
+                }
+                return false;
+            }
+            if (!this.TryAcquireOverflowLockImmediately(mutex))
+            {
+                this.Monitor.Log(
+                    "Harvest quarantine recovery is waiting for its persistent inventory lock.",
+                    LogLevel.Warn);
+                if (showHud)
+                {
+                    Game1.addHUDMessage(new HUDMessage(
+                        this.Translation.Get("quarantine.locked"),
+                        HUDMessage.error_type));
+                }
+                return false;
+            }
+
+            Inventory quarantine = Game1.player.team.GetOrCreateGlobalInventory(QuarantineInventoryId);
+            foreach (HarvestCargoRecoveryItemData saved in state.Items)
+            {
+                Item? existing = quarantine.FirstOrDefault(item => item is not null
+                    && item.modData.TryGetValue(QuarantineTransferDataKey, out string? transferId)
+                    && string.Equals(transferId, saved.TransferId, StringComparison.Ordinal));
+                if (existing is not null)
+                {
+                    if (existing.QualifiedItemId != saved.QualifiedItemId
+                        || existing.Quality != saved.Quality
+                        || existing.Stack != saved.Stack)
+                        throw new InvalidDataException(
+                            $"Recovered quarantine transfer {saved.TransferId} identifies different cargo.");
+                    continue;
+                }
+
+                Item restored = DeserializeRecoveryItem(saved);
+                string restoredType = restored.GetType().FullName ?? restored.GetType().Name;
+                if (!string.Equals(restoredType, saved.RuntimeType, StringComparison.Ordinal)
+                    || !string.Equals(
+                        restored.GetType().Assembly.GetName().Name,
+                        saved.RuntimeAssembly,
+                        StringComparison.Ordinal)
+                    || restored.QualifiedItemId != saved.QualifiedItemId
+                    || restored.Stack != saved.Stack
+                    || restored.Quality != saved.Quality)
+                {
+                    throw new InvalidDataException(
+                        $"Could not reconstruct exact quarantine transfer {saved.TransferId} safely.");
+                }
+
+                restored.modData.Clear();
+                foreach (KeyValuePair<string, string> pair in saved.ModData)
+                    restored.modData[pair.Key] = pair.Value;
+                restored.modData[QuarantineTransferDataKey] = saved.TransferId;
+                quarantine.Add(restored);
+                if (!quarantine.Any(item => ReferenceEquals(item, restored)))
+                    throw new InvalidDataException(
+                        $"Quarantine did not retain recovered transfer {saved.TransferId}.");
+            }
+
+            Game1.MasterPlayer.modData.Remove(QuarantineRecoveryDataKey);
+            this.HasPendingQuarantineRecovery = false;
+            this.QuarantineRecoveryRetryTicks = 0;
+            this.Monitor.Log(
+                $"Restored {state.Items.Length} quarantined harvest stack(s) from the persisted recovery record.",
+                LogLevel.Warn);
+            if (showHud)
+            {
+                Game1.addHUDMessage(new HUDMessage(
+                    this.Translation.Get("harvest.hud.quarantine-restored", new
+                    {
+                        count = HarvestCargoRecoveryState.CountItems(state)
+                    }),
+                    HUDMessage.newQuest_type));
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log(
+                $"Quarantine recovery remains fail-closed because its exact cargo could not be restored: {ex}",
+                LogLevel.Error);
+            if (showHud)
+            {
+                Game1.addHUDMessage(new HUDMessage(
+                    this.Translation.Get("harvest.hud.quarantine-pending"),
+                    HUDMessage.error_type));
+            }
+            return false;
+        }
+        finally
+        {
+            if (mutex.IsLockHeld())
+                mutex.ReleaseLock();
+        }
+    }
+
+    private bool HasStoredQuarantineRecovery()
+    {
+        return Context.IsWorldReady
+            && Game1.MasterPlayer.modData.TryGetValue(QuarantineRecoveryDataKey, out string? serialized)
+            && !string.IsNullOrWhiteSpace(serialized);
+    }
+
+    private bool TryForceQuarantineAtSaveBoundary(ActiveHarvestContract contract)
+    {
+        try
+        {
+            // Only this mod exposes this private inventory, and its retrieval command is
+            // host-only and blocked while a named contract is active. At the synchronous
+            // save boundary, retaining the exact Item instances in the team inventory is
+            // safer than allowing a cooperative mutex failure to strand transient cargo.
+            this.StoreCargoInQuarantine(contract);
+            return contract.Cargo.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log(
+                $"Forced save-boundary quarantine could not retain exact cargo: {ex}",
+                LogLevel.Error);
+            return false;
+        }
+    }
+
+    private static string SerializeRecoveryItem(Item item)
+    {
+        XmlSerializer serializer = new(item.GetType());
+        XmlSerializerNamespaces namespaces = new();
+        namespaces.Add("", "");
+        using StringWriter writer = new(CultureInfo.InvariantCulture);
+        serializer.Serialize(writer, item, namespaces);
+        return writer.ToString();
+    }
+
+    private static Item DeserializeRecoveryItem(HarvestCargoRecoveryItemData saved)
+    {
+        System.Reflection.Assembly? assembly = AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(candidate => string.Equals(
+                candidate.GetName().Name,
+                saved.RuntimeAssembly,
+                StringComparison.Ordinal));
+        Type? itemType = assembly?.GetType(saved.RuntimeType, throwOnError: false, ignoreCase: false);
+        if (itemType is null || !typeof(Item).IsAssignableFrom(itemType))
+            throw new InvalidDataException(
+                $"Quarantine item type '{saved.RuntimeType}' from '{saved.RuntimeAssembly}' is unavailable.");
+
+        XmlSerializer serializer = new(itemType);
+        XmlReaderSettings settings = new()
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null
+        };
+        using StringReader stringReader = new(saved.SerializedItemXml);
+        using XmlReader xmlReader = XmlReader.Create(stringReader, settings);
+        return serializer.Deserialize(xmlReader) as Item
+            ?? throw new InvalidDataException(
+                $"Quarantine transfer {saved.TransferId} did not deserialize as an item.");
     }
 
     private bool TryAcquireOverflowLockImmediately(NetMutex mutex)
@@ -1573,6 +2052,7 @@ internal sealed class HarvestingContractExecutionController
         TravelingToChest,
         WaitingForChestLock,
         WaitingForOverflowLock,
+        QuarantiningCargo,
         Returning,
         Returned,
         RecoveringLease
@@ -1614,6 +2094,7 @@ internal sealed class HarvestingContractExecutionController
         public HashSet<FarmBoundarySide> FailedArrivalSides { get; } = new();
         public TravelProgressWatchdog TravelWatchdog { get; } = new();
         public HarvestTransferLedger TransferLedger { get; } = new();
+        public HashSet<string> QuarantinedTransferIds { get; } = new(StringComparer.Ordinal);
         public List<HarvestCargoEntry> Cargo { get; } = new();
         public List<HarvestItemSnapshot> HarvestedItems { get; } = new();
         public HarvestContractPhase Phase { get; set; } = HarvestContractPhase.TravelingToTarget;
@@ -1631,6 +2112,7 @@ internal sealed class HarvestingContractExecutionController
         public int PlayerInventoryItems { get; set; }
         public int ChestDeliveredItems { get; set; }
         public int OverflowItems { get; set; }
+        public int QuarantinedItems { get; set; }
         public int DroppedItems { get; set; }
         public int ReturnReplanAttempts { get; set; }
         public int EntranceSwitches { get; set; }

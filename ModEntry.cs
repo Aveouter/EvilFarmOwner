@@ -43,6 +43,7 @@ public sealed class ModEntry : Mod
             this.Monitor.Log(helper.Translation.Get("hud.hotkey-conflict"), LogLevel.Warn);
 
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
+        helper.Events.GameLoop.SaveCreating += this.OnSaveCreating;
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
         helper.Events.GameLoop.DayEnding += this.OnDayEnding;
@@ -55,6 +56,7 @@ public sealed class ModEntry : Mod
 
         helper.ConsoleCommands.Add("efo_roster", helper.Translation.Get("cmd.roster"), (_, _) => this.OpenWorkerRoster());
         helper.ConsoleCommands.Add("efo_overflow", helper.Translation.Get("cmd.overflow"), (_, _) => this.OpenHarvestOverflow());
+        helper.ConsoleCommands.Add("efo_quarantine", helper.Translation.Get("cmd.quarantine"), (_, _) => this.OpenHarvestQuarantine());
         helper.ConsoleCommands.Add("efo_netstatus", helper.Translation.Get("cmd.netstatus"), (_, _) => this.ShowNetworkStatus());
     }
 
@@ -87,6 +89,7 @@ public sealed class ModEntry : Mod
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
+        this.HarvestingContracts?.OnSaveLoaded();
         this.MultiplayerContracts?.OnSaveLoaded();
         Game1.addHUDMessage(new HUDMessage(this.Helper.Translation.Get("hud.ready", new { key = this.Config.OpenMenuKey }), HUDMessage.newQuest_type));
 
@@ -186,8 +189,18 @@ public sealed class ModEntry : Mod
 
     private void OnSaving(object? sender, SavingEventArgs e)
     {
+        this.PrepareForSave();
+    }
+
+    private void OnSaveCreating(object? sender, SaveCreatingEventArgs e)
+    {
+        this.PrepareForSave();
+    }
+
+    private void PrepareForSave()
+    {
         this.WateringContracts?.OnDayEnding();
-        this.HarvestingContracts?.OnDayEnding();
+        this.HarvestingContracts?.OnSaving();
         this.MultiplayerContracts?.Update();
         this.MultiplayerContracts?.OnSaving();
     }
@@ -271,6 +284,63 @@ public sealed class ModEntry : Mod
             },
             () => Game1.addHUDMessage(new HUDMessage(
                 this.Helper.Translation.Get("overflow.locked"),
+                HUDMessage.error_type)));
+    }
+
+    private void OpenHarvestQuarantine()
+    {
+        if (!Context.IsWorldReady)
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("cmd.roster-world-not-ready"), LogLevel.Info);
+            return;
+        }
+
+        if (!Context.IsMainPlayer)
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("quarantine.host-only"),
+                HUDMessage.error_type));
+            return;
+        }
+
+        if (this.HasActiveNamedContract())
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("overflow.busy"),
+                HUDMessage.error_type));
+            return;
+        }
+
+        if (this.HarvestingContracts?.TryRecoverQuarantinedCargo() != true)
+            return;
+
+        NetMutex mutex = Game1.player.team.GetOrCreateGlobalInventoryMutex(
+            HarvestingContractExecutionController.QuarantineInventoryId);
+        mutex.RequestLock(
+            () =>
+            {
+                Chest proxy = new(playerChest: true, Vector2.Zero)
+                {
+                    GlobalInventoryId = HarvestingContractExecutionController.QuarantineInventoryId
+                };
+                proxy.ShowMenu();
+                if (Game1.activeClickableMenu is ItemGrabMenu menu)
+                {
+                    IClickableMenu.onExit? originalExit = menu.exitFunction;
+                    menu.exitFunction = () =>
+                    {
+                        originalExit?.Invoke();
+                        if (mutex.IsLockHeld())
+                            mutex.ReleaseLock();
+                    };
+                }
+                else if (mutex.IsLockHeld())
+                {
+                    mutex.ReleaseLock();
+                }
+            },
+            () => Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("quarantine.locked"),
                 HUDMessage.error_type)));
     }
 

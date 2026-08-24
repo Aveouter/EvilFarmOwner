@@ -32,6 +32,7 @@ List<(string Name, Action Test)> tests = new()
     ("harvest overflow fallback", TestHarvestOverflowFallback),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
     ("harvest placement conservation", TestHarvestPlacementConservation),
+    ("harvest quarantine recovery state", TestHarvestQuarantineRecoveryState),
     ("emergency drop tile ordering", TestEmergencyDropTileOrdering),
     ("multiplayer request authorization", TestMultiplayerRequestAuthorization),
     ("multiplayer request replay", TestMultiplayerRequestReplay),
@@ -461,13 +462,15 @@ static void TestHarvestPlacementConservation()
         playerInventory: 3,
         chest: 7,
         overflow: 4,
-        dropped: 3,
+        quarantine: 2,
+        dropped: 1,
         unresolved: 0));
     Equal(false, HarvestPlacementAudit.IsBalanced(
         harvested: 17,
         playerInventory: 3,
         chest: 7,
         overflow: 4,
+        quarantine: 2,
         dropped: 2,
         unresolved: 0));
     Equal(true, HarvestPlacementAudit.IsBalanced(
@@ -475,8 +478,122 @@ static void TestHarvestPlacementConservation()
         playerInventory: 3,
         chest: 7,
         overflow: 4,
-        dropped: 2,
+        quarantine: 1,
+        dropped: 1,
         unresolved: 1));
+}
+
+static void TestHarvestQuarantineRecoveryState()
+{
+    string contractId = Guid.NewGuid().ToString("N");
+    string firstTransfer = Guid.NewGuid().ToString("N");
+    string secondTransfer = Guid.NewGuid().ToString("N");
+    HarvestCargoRecoverySaveData state = HarvestCargoRecoveryState.Create(
+        445566,
+        contractId,
+        new[]
+        {
+            new HarvestCargoRecoveryItemData
+            {
+                TransferId = firstTransfer,
+                QualifiedItemId = "(O)24",
+                DisplayName = "Parsnip",
+                RuntimeType = "StardewValley.Object",
+                RuntimeAssembly = "Stardew Valley",
+                SerializedItemXml = "<Object />",
+                Quality = 2,
+                Stack = 3,
+                ModData = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["example/key"] = "value"
+                }
+            },
+            new HarvestCargoRecoveryItemData
+            {
+                TransferId = secondTransfer,
+                QualifiedItemId = "(O)188",
+                DisplayName = "Green Bean",
+                RuntimeType = "StardewValley.Object",
+                RuntimeAssembly = "Stardew Valley",
+                SerializedItemXml = "<Object />",
+                Stack = 2
+            }
+        });
+    Equal(true, HarvestCargoRecoveryState.IsValid(state, 445566));
+    Equal(5, HarvestCargoRecoveryState.CountItems(state));
+
+    string json = JsonSerializer.Serialize(state);
+    HarvestCargoRecoverySaveData? restored =
+        JsonSerializer.Deserialize<HarvestCargoRecoverySaveData>(json);
+    Equal(true, HarvestCargoRecoveryState.IsValid(restored, 445566));
+    Equal("value", restored!.Items[0].ModData["example/key"]);
+
+    restored.Items[1].TransferId = firstTransfer;
+    Equal(false, HarvestCargoRecoveryState.IsValid(restored, 445566));
+    restored.Items[1].TransferId = secondTransfer;
+    restored.Items[1].Stack = 0;
+    Equal(false, HarvestCargoRecoveryState.IsValid(restored, 445566));
+    restored.Items[1].Stack = 2;
+    Equal(false, HarvestCargoRecoveryState.IsValid(restored, 123));
+
+    Equal(true, HarvestCargoRecoveryState.IsSerializedPayloadValid("{}"));
+    Equal(false, HarvestCargoRecoveryState.IsSerializedPayloadValid(""));
+    Equal(false, HarvestCargoRecoveryState.IsSerializedPayloadValid(
+        new string('x', HarvestCargoRecoveryState.MaximumSerializedPayloadLength + 1)));
+
+    HarvestCargoRecoverySaveData excessiveModData = HarvestCargoRecoveryState.Create(
+        445566,
+        contractId,
+        new[]
+        {
+            new HarvestCargoRecoveryItemData
+            {
+                TransferId = Guid.NewGuid().ToString("N"),
+                QualifiedItemId = "(O)24",
+                DisplayName = "Parsnip",
+                RuntimeType = "StardewValley.Object",
+                RuntimeAssembly = "Stardew Valley",
+                SerializedItemXml = "<Object />",
+                Stack = 1,
+                ModData = Enumerable.Range(
+                        0,
+                        HarvestCargoRecoveryState.MaximumModDataEntriesPerItem + 1)
+                    .ToDictionary(index => $"key-{index}", index => $"value-{index}")
+            }
+        });
+    Equal(false, HarvestCargoRecoveryState.IsValid(excessiveModData, 445566));
+
+    HarvestCargoRecoverySaveData excessivePayload = HarvestCargoRecoveryState.Create(
+        445566,
+        contractId,
+        new[]
+        {
+            new HarvestCargoRecoveryItemData
+            {
+                TransferId = Guid.NewGuid().ToString("N"),
+                QualifiedItemId = "(O)24",
+                DisplayName = "Parsnip",
+                RuntimeType = "StardewValley.Object",
+                RuntimeAssembly = "Stardew Valley",
+                SerializedItemXml = new string(
+                    'x',
+                    HarvestCargoRecoveryState.MaximumSerializedPayloadLength / 2 + 1),
+                Stack = 1
+            },
+            new HarvestCargoRecoveryItemData
+            {
+                TransferId = Guid.NewGuid().ToString("N"),
+                QualifiedItemId = "(O)188",
+                DisplayName = "Green Bean",
+                RuntimeType = "StardewValley.Object",
+                RuntimeAssembly = "Stardew Valley",
+                SerializedItemXml = new string(
+                    'y',
+                    HarvestCargoRecoveryState.MaximumSerializedPayloadLength / 2 + 1),
+                Stack = 1
+            }
+        });
+    Equal(false, HarvestCargoRecoveryState.IsValid(excessivePayload, 445566));
 }
 
 static void TestEmergencyDropTileOrdering()
@@ -693,6 +810,15 @@ static void TestMultiplayerRestartRecoveryState()
     legacy.ProtocolSchemaVersion = 2;
     Equal(false, MultiplayerRecoveryState.IsValid(legacy, 445566));
 
+    MultiplayerRecoverySaveData legacyQuarantine =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json)!;
+    legacyQuarantine.ProtocolSchemaVersion = 4;
+    foreach (ContractStartResponseMessage legacyResponse in legacyQuarantine.ProcessedRequests)
+        legacyResponse.SchemaVersion = 4;
+    foreach (ContractResultMessage legacyResult in legacyQuarantine.RecentResults)
+        legacyResult.SchemaVersion = 4;
+    Equal(true, MultiplayerRecoveryState.IsValid(legacyQuarantine, 445566));
+
     MultiplayerRecoveryState.RebindResponse(
         restored!.ProcessedRequests[0],
         "new-host-session",
@@ -766,6 +892,12 @@ static void TestMultiplayerRestartRecoveryState()
     recoveredResult.ProducedItems = new[] { recoveredResult.ProducedItems[0] };
     recoveredResult.ChestItems = 1;
     Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+
+    recoveredResult.QuarantinedItems = 1;
+    Equal(true, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.QuarantinedItems = -1;
+    Equal(false, MultiplayerRecoveryState.IsValid(state, 445566));
+    recoveredResult.QuarantinedItems = 0;
 
     recoveredResult.ChestItems = 2;
     recoveredResult.ReasonKey = "contract.failure.unknown";
@@ -949,7 +1081,7 @@ static void TestMultiplayerSnapshotSerialization()
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(4, MultiplayerContractProtocol.SchemaVersion);
+    Equal(5, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
@@ -965,13 +1097,15 @@ static void TestMultiplayerResultSerialization()
         Succeeded = true,
         CompletedWork = 3,
         PlayerItems = 2,
-        ChestItems = 1
+        ChestItems = 1,
+        QuarantinedItems = 4
     };
 
     string json = JsonSerializer.Serialize(source);
     ContractResultMessage? restored = JsonSerializer.Deserialize<ContractResultMessage>(json);
     Equal(2, restored!.PlayerItems);
     Equal(1, restored.ChestItems);
+    Equal(4, restored.QuarantinedItems);
     Equal(13L, restored.StateVersion);
 }
 

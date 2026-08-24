@@ -13,7 +13,7 @@ This is the release-gate procedure for Issue #33. Split-screen alone is not acce
 
 Run `efo_netstatus` on each peer before every scenario. The host must report `role=host`; the farmhand must report `role=farmhand`; both must converge on the same non-empty session and active contract ID after acceptance.
 
-The host diagnostic must also report `recoveryHealthy=True`. The host persists a bounded processed-request ledger and the latest result for each requesting player at save time. A missing ledger is valid for a new save; an incompatible or internally inconsistent ledger disables new contracts instead of risking repeated world mutation.
+The host diagnostic must also report `recoveryHealthy=True` and `quarantineHealthy=True`. The host persists a bounded processed-request ledger and the latest result for each requesting player at save time. A missing ledger is valid for a new save; an incompatible or internally inconsistent ledger disables new contracts instead of risking repeated world mutation. A retained cargo recovery record sets `quarantineHealthy=False` and blocks later harvest contracts until exact quarantine reconstruction succeeds.
 
 ## Scenarios
 
@@ -36,7 +36,7 @@ The host diagnostic must also report `recoveryHealthy=True`. The host persists a
 5. Verify the NPC routes around trellises, kegs, chests, machines, and fences; no placed object is removed, moved, replaced, or loses state.
 6. Verify every exact output, quality, stack, and by-product appears once in the ranked chest route. When an eligible chest accepts the item, both player inventories and the shipping bin must remain unchanged.
 7. Make all eligible chests unable to accept one output while the requesting farmhand remains on the main farm with inventory capacity. Verify that exact output enters only the requesting farmhand's inventory once; the host inventory and shipping bin remain unchanged.
-8. Repeat with the requester off the farm or without inventory capacity. Verify the exact remainder appears once in `efo_overflow`; if emergency dropping is forced, verify an explicit warning and visible exact drop at the on-farm requester, otherwise at a collision-free farmhouse/selected-entrance delivery tile. It must not appear inside a blocked worker tile.
+8. Repeat with the requester off the farm or without inventory capacity. Verify the exact remainder appears once in `efo_overflow`; if emergency dropping is forced, verify an explicit warning and visible exact drop at the on-farm requester, otherwise at a collision-free farmhouse/selected-entrance delivery tile. It must not appear inside a blocked worker tile. Then force both overflow-lock failure and a ground-drop exception: verify the exact remainder appears once in `efo_quarantine`, carries one transfer ID, survives save/reload, and is reported in the quarantine destination count. If the quarantine write is also temporarily withheld, verify the host retains a recovery record, rejects new harvest contracts, and restores the exact stack once before clearing the record. Repeat at day end, ordinary save, and initial save creation with the recovery-record path withheld; verify the exact transient remainder is forced into `efo_quarantine` before the save completes and the NPC lease and wage settle once.
 9. Verify only the requesting farmhand pays the reported wage once.
 
 ### 3. Host request and simultaneous request ordering
@@ -61,7 +61,7 @@ The host diagnostic must also report `recoveryHealthy=True`. The host persists a
 3. Resend the exact saved request ID from the farmhand test harness. Verify the host returns the prior accepted response/result rebound to the new session, with no new lease, crop mutation, item transfer, charge, or refund.
 4. Repeat with a previously rejected request and verify it remains rejected without reevaluating into a new contract.
 5. In a disposable copy, corrupt or schema-mismatch the persisted recovery record. Include a duplicate transfer ID and a produced-item total which does not equal requester inventory plus chest, overflow, and visible-drop totals. Verify the host reports `recoveryHealthy=False` and rejects all new contracts without mutating money or world state.
-6. In a disposable copy created by the immediately preceding protocol-3 development build, retain a clean recovery ledger and load it with protocol 4. Verify the host validates and rebinds the prior response/result to the new session, reports `recoveryHealthy=True`, and an exact request replay causes no second contract, mutation, transfer, charge, or refund. A mixed or older-than-3 schema must still fail closed.
+6. In disposable copies created by the protocol-3 and protocol-4 development builds, retain a clean recovery ledger and load it with protocol 5. Verify the host validates and rebinds the prior response/result to the new session, reports `recoveryHealthy=True`, and an exact request replay causes no second contract, mutation, transfer, charge, or refund. A mixed or older-than-3 schema must still fail closed.
 
 ### 6. Rejection safety
 
