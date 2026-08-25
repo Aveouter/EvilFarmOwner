@@ -2,7 +2,7 @@ namespace EvilFarmOwner;
 
 internal static class MultiplayerContractProtocol
 {
-    public const int SchemaVersion = 8;
+    public const int SchemaVersion = 9;
     public const int ProcessedRequestCapacity = 256;
     public const string StartRequestType = "Contract/StartRequest";
     public const string StartResponseType = "Contract/StartResponse";
@@ -187,7 +187,7 @@ internal static class ContractRequestValidator
             return ContractRequestValidationFailure.InvalidRequestId;
         if (string.IsNullOrWhiteSpace(request.WorkerName) || request.WorkerName.Length > 100)
             return ContractRequestValidationFailure.InvalidWorker;
-        if (!Enum.IsDefined(request.Task))
+        if (!Enum.IsDefined(request.Task) || request.Task != NamedFarmTask.FarmWork)
             return ContractRequestValidationFailure.InvalidTask;
         if (!HarvestDestinationPolicy.IsValidForTask(request.Task, request.HarvestDestination))
             return ContractRequestValidationFailure.InvalidHarvestDestination;

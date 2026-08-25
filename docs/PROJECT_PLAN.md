@@ -47,7 +47,7 @@ Ship the first public version with the complete named-worker baseline.
 
 Focus:
 
-- Provide visible named watering and harvest contracts.
+- Provide one visible named-worker shift that completes all currently supported farm work.
 - Deliver harvest output without silent item loss.
 - Support host-authoritative network multiplayer requests and synchronization.
 - Improve packaging and release hygiene.

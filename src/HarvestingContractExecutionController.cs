@@ -79,6 +79,74 @@ internal sealed class HarvestingContractExecutionController
         return this.TryRestoreQuarantineRecovery(showHud: true);
     }
 
+    public bool TryStartManaged(FarmWorkShiftContext shift)
+    {
+        this.LastStartFailureKey = null;
+        if ((this.HasPendingQuarantineRecovery || this.HasStoredQuarantineRecovery())
+            && !this.TryRestoreQuarantineRecovery(showHud: false))
+            return this.FailStart("harvest.start.quarantine-pending");
+        if (this.ActiveContract is not null)
+            return this.FailStart("contract.start.already-active");
+
+        Farm farm = Game1.getFarm();
+        NPC worker = shift.Lease.Worker;
+        HarvestPlanResult planResult = this.TargetPlanner.TryCreate(farm, worker);
+        if (!planResult.IsSuccess || planResult.Plan is null)
+            return this.FailStart(this.GetPlanFailureTranslationKey(planResult.Failure));
+        if (shift.HarvestDestination == HarvestDestinationMode.ClassifiedChests
+            && !HarvestChestRouter.HasEligibleChest(farm))
+            return this.FailStart("harvest.start.no-storage-chest");
+
+        WorkContractPreview preview = ContractPreviewService.Create(
+            shift.Requester.getFriendshipHeartLevelForNPC(worker.Name),
+            Game1.dayOfMonth,
+            worker.Name,
+            NamedFarmTask.Harvesting);
+        ActiveHarvestContract contract = new(
+            shift.Id,
+            shift.RequestId,
+            shift.Requester,
+            shift.Lease,
+            preview,
+            farm,
+            planResult.Plan,
+            shift.HarvestDestination,
+            managedByShift: true);
+        this.ActiveContract = contract;
+
+        try
+        {
+            Game1.warpCharacter(worker, farm, new Vector2(
+                planResult.Plan.ArrivalTile.X,
+                planResult.Plan.ArrivalTile.Y));
+            worker.Position = FarmNavigationMap.GetAlignedCharacterPosition(planResult.Plan.ArrivalTile);
+            worker.Halt();
+            contract.Dispatched = true;
+            if (worker.TilePoint == planResult.Plan.FirstTarget.InteractionTile)
+            {
+                this.OnArrivedAtTarget(worker, farm);
+                return true;
+            }
+
+            PathFindController controller = this.CreatePathController(
+                contract,
+                planResult.Plan.FirstTarget.Path,
+                planResult.Plan.FirstTarget.InteractionTile,
+                planResult.Plan.FirstTarget.FacingDirection,
+                this.OnArrivedAtTarget);
+            contract.Controller = controller;
+            shift.Lease.AttachController(controller);
+            contract.TravelWatchdog.Reset(worker.Position.X, worker.Position.Y);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Failed to start managed harvest stage: {ex}", LogLevel.Error);
+            this.FinishContract(contract, false, "contract.failure.dispatch", mustFinalizeNow: true);
+            return false;
+        }
+    }
+
     public bool TryStart(
         long requestingPlayerId,
         string workerInternalName,
@@ -1466,7 +1534,49 @@ internal sealed class HarvestingContractExecutionController
             contract.PhaseTicks = 0;
         }
 
+        if (contract.ManagedByShift)
+        {
+            this.CompleteManagedStage(contract);
+            return;
+        }
+
         this.ContinueFinalization(contract, mustFinalizeNow);
+    }
+
+    private void CompleteManagedStage(ActiveHarvestContract contract)
+    {
+        this.ActiveContract = null;
+        this.LastCompletion = new NamedContractCompletionState(
+            contract.Id.ToString("N"),
+            contract.RequestId,
+            contract.Requester.UniqueMultiplayerID,
+            contract.Lease.Worker.Name,
+            NamedFarmTask.Harvesting,
+            contract.PendingSucceeded,
+            contract.PendingSucceeded
+                ? ""
+                : contract.PendingFailureTranslationKey ?? "contract.failure.unknown",
+            contract.HarvestedTargets,
+            contract.PlayerInventoryItems,
+            contract.ChestDeliveredItems,
+            contract.OverflowItems,
+            contract.QuarantinedItems,
+            contract.DroppedItems,
+            BillableHours: 0,
+            ChargedGold: 0,
+            RefundedGold: 0,
+            contract.HarvestedItems.Select(item => new NamedContractCargoState(
+                item.TransferId,
+                item.QualifiedItemId,
+                item.Name,
+                item.Quality,
+                item.Stack)).ToArray(),
+            contract.TransferLedger.GetCompletedTransferIds(),
+            Array.Empty<NamedContractTransferState>(),
+            Array.Empty<NamedContractTransferState>())
+        {
+            HarvestDestination = contract.DestinationMode
+        };
     }
 
     private void ContinueFinalization(ActiveHarvestContract contract, bool mustFinalizeNow)
@@ -2479,7 +2589,8 @@ internal sealed class HarvestingContractExecutionController
             WorkContractPreview preview,
             Farm farm,
             HarvestWorkPlan plan,
-            HarvestDestinationMode destinationMode)
+            HarvestDestinationMode destinationMode,
+            bool managedByShift = false)
         {
             this.Id = id;
             this.RequestId = requestId;
@@ -2494,6 +2605,7 @@ internal sealed class HarvestingContractExecutionController
             this.Plan = plan;
             this.DestinationMode = destinationMode;
             this.CurrentTarget = plan.FirstTarget;
+            this.ManagedByShift = managedByShift;
         }
 
         public Guid Id { get; }
@@ -2506,6 +2618,7 @@ internal sealed class HarvestingContractExecutionController
         public HarvestDestinationMode DestinationMode { get; }
         public HarvestWorkPlan Plan { get; set; }
         public HarvestTargetPlan CurrentTarget { get; set; }
+        public bool ManagedByShift { get; }
         public HashSet<Point> CompletedTargets { get; } = new();
         public HashSet<FarmTaskRouteEdge> FailedEdges { get; } = new();
         public HashSet<FarmBoundarySide> FailedArrivalSides { get; } = new();

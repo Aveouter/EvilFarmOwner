@@ -188,9 +188,7 @@ internal sealed class RecurringContractAuthorizationMenu : IClickableMenu
         batch.DrawString(Game1.smallFont, subtitle, new Vector2(x, y), Color.DimGray);
         y += 64;
 
-        string task = this.Translation.Get(this.Task == NamedFarmTask.Watering
-            ? "contract.task.watering"
-            : "contract.task.harvesting");
+        string task = this.Translation.Get("contract.task.farm-work");
         string substituteList = this.SubstituteNames.Count == 0
             ? this.Translation.Get("recurring.value.none")
             : string.Join(", ", this.SubstituteNames.Select(this.GetDisplayName));

@@ -181,6 +181,67 @@ internal sealed class WateringContractExecutionController
         }
     }
 
+    public bool TryStartManaged(FarmWorkShiftContext shift)
+    {
+        this.LastStartFailureKey = null;
+        if (this.ActiveContract is not null)
+            return this.FailStart("contract.start.already-active");
+
+        Farm farm = Game1.getFarm();
+        NPC worker = shift.Lease.Worker;
+        WateringPlanResult planResult = this.TargetPlanner.TryCreate(farm, worker);
+        if (!planResult.IsSuccess || planResult.Plan is null)
+            return this.FailStart(this.GetPlanFailureTranslationKey(planResult.Failure));
+
+        WorkContractPreview preview = ContractPreviewService.Create(
+            shift.Requester.getFriendshipHeartLevelForNPC(worker.Name),
+            Game1.dayOfMonth,
+            worker.Name,
+            NamedFarmTask.Watering);
+        ActiveWateringContract contract = new(
+            shift.Id,
+            shift.RequestId,
+            shift.Requester,
+            shift.Lease,
+            preview,
+            farm,
+            planResult.Plan,
+            managedByShift: true);
+        this.ActiveContract = contract;
+
+        try
+        {
+            Game1.warpCharacter(worker, farm, new Vector2(
+                planResult.Plan.ArrivalTile.X,
+                planResult.Plan.ArrivalTile.Y));
+            worker.Position = FarmNavigationMap.GetAlignedCharacterPosition(planResult.Plan.ArrivalTile);
+            worker.Halt();
+            contract.Dispatched = true;
+            if (worker.TilePoint == planResult.Plan.FirstTarget.InteractionTile)
+            {
+                this.OnArrivedAtTarget(worker, farm);
+                return true;
+            }
+
+            PathFindController controller = this.CreatePathController(
+                contract,
+                planResult.Plan.FirstTarget.Path,
+                planResult.Plan.FirstTarget.InteractionTile,
+                planResult.Plan.FirstTarget.FacingDirection,
+                this.OnArrivedAtTarget);
+            contract.Controller = controller;
+            shift.Lease.AttachController(controller);
+            contract.TravelWatchdog.Reset(worker.Position.X, worker.Position.Y);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Failed to start managed watering stage: {ex}", LogLevel.Error);
+            this.FinishContract(contract, false, "contract.failure.dispatch", mustFinalizeNow: true);
+            return false;
+        }
+    }
+
     public void Update()
     {
         ActiveWateringContract? contract = this.ActiveContract;
@@ -877,7 +938,41 @@ internal sealed class WateringContractExecutionController
             contract.PhaseTicks = 0;
         }
 
+        if (contract.ManagedByShift)
+        {
+            this.CompleteManagedStage(contract);
+            return;
+        }
+
         this.ContinueFinalization(contract, mustFinalizeNow);
+    }
+
+    private void CompleteManagedStage(ActiveWateringContract contract)
+    {
+        this.ActiveContract = null;
+        this.LastCompletion = new NamedContractCompletionState(
+            contract.Id.ToString("N"),
+            contract.RequestId,
+            contract.Requester.UniqueMultiplayerID,
+            contract.Lease.Worker.Name,
+            NamedFarmTask.Watering,
+            contract.PendingSucceeded,
+            contract.PendingSucceeded
+                ? ""
+                : contract.PendingFailureTranslationKey ?? "contract.failure.unknown",
+            contract.WateredTargets,
+            PlayerItems: 0,
+            ChestItems: 0,
+            OverflowItems: 0,
+            QuarantinedItems: 0,
+            DroppedItems: 0,
+            BillableHours: 0,
+            ChargedGold: 0,
+            RefundedGold: 0,
+            Array.Empty<NamedContractCargoState>(),
+            Array.Empty<string>(),
+            Array.Empty<NamedContractTransferState>(),
+            Array.Empty<NamedContractTransferState>());
     }
 
     private void ContinueFinalization(ActiveWateringContract contract, bool mustFinalizeNow)
@@ -1051,7 +1146,8 @@ internal sealed class WateringContractExecutionController
             NpcWorkLease lease,
             WorkContractPreview preview,
             Farm farm,
-            WateringWorkPlan plan)
+            WateringWorkPlan plan,
+            bool managedByShift = false)
         {
             this.Id = id;
             this.RequestId = requestId;
@@ -1065,6 +1161,7 @@ internal sealed class WateringContractExecutionController
             this.Farm = farm;
             this.Plan = plan;
             this.CurrentTarget = plan.FirstTarget;
+            this.ManagedByShift = managedByShift;
         }
 
         public Guid Id { get; }
@@ -1081,6 +1178,7 @@ internal sealed class WateringContractExecutionController
         public TravelProgressWatchdog TravelWatchdog { get; } = new();
         public TravelReplanBudget ReplanBudget { get; } = new();
         public WateringTargetPlan CurrentTarget { get; set; }
+        public bool ManagedByShift { get; }
         public WateringContractPhase Phase { get; set; } = WateringContractPhase.TravelingToTarget;
         public PathFindController? Controller { get; set; }
         public int PhaseTicks { get; set; }

@@ -46,6 +46,7 @@ internal sealed class RecurringContractCoordinator
             RecurringContractSaveData? saved = this.Helper.Data.ReadSaveData<RecurringContractSaveData>(SaveDataKey);
             if (saved is null)
                 return;
+            saved = RecurringContractPolicy.Upgrade(saved);
             if (!RecurringContractPolicy.IsValid(saved))
             {
                 this.PersistenceHealthy = false;
@@ -107,7 +108,7 @@ internal sealed class RecurringContractCoordinator
         if (!Context.IsWorldReady
             || !Context.IsMainPlayer
             || !this.PersistenceHealthy
-            || task == NamedFarmTask.StorageSorting
+            || task != NamedFarmTask.FarmWork
             || approvedSubstituteNames is null
             || !WorkerEfficiencyProfiles.HasExplicitProfile(preferredWorkerName))
             return false;
@@ -342,9 +343,7 @@ internal sealed class RecurringContractCoordinator
             this.Translation.Get("recurring.hud.started", new
             {
                 worker = GetDisplayName(selected.WorkerName),
-                task = this.Translation.Get(template.Task == NamedFarmTask.Watering
-                    ? "contract.task.watering"
-                    : "contract.task.harvesting"),
+                task = this.Translation.Get("contract.task.farm-work"),
                 gold = selected.MaximumAuthorizedWage
             }),
             HUDMessage.newQuest_type));

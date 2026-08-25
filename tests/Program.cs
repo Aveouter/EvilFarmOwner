@@ -1,4 +1,5 @@
 using EvilFarmOwner;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 List<(string Name, Action Test)> tests = new()
@@ -11,12 +12,14 @@ List<(string Name, Action Test)> tests = new()
     ("worker efficiency fallback", TestWorkerEfficiencyFallback),
     ("worker efficiency timing", TestWorkerEfficiencyTiming),
     ("worker efficiency contract snapshot", TestWorkerEfficiencyContractSnapshot),
+    ("farm-work stage order", TestFarmWorkStageOrder),
     ("recurring contract state validation", TestRecurringContractStateValidation),
     ("recurring contract candidate pool", TestRecurringContractCandidatePool),
     ("recurring contract ranking", TestRecurringContractRanking),
     ("recurring contract budget gates", TestRecurringContractBudgetGates),
     ("recurring contract daily idempotency", TestRecurringContractDailyIdempotency),
     ("recurring contract persistence", TestRecurringContractPersistence),
+    ("recurring contract legacy upgrade", TestRecurringContractLegacyUpgrade),
     ("pre-dispatch settlement", TestPreDispatchSettlement),
     ("dispatched one-hour settlement", TestDispatchedSettlement),
     ("elapsed multi-hour settlement", TestElapsedMultiHourSettlement),
@@ -206,6 +209,26 @@ static void TestWorkerEfficiencyContractSnapshot()
     Equal(first.MaximumAuthorizedWage, sorting.MaximumAuthorizedWage);
 }
 
+static void TestFarmWorkStageOrder()
+{
+    Equal(FarmWorkStage.Harvesting, FarmWorkStagePolicy.GetNext(null));
+    Equal(FarmWorkStage.Watering, FarmWorkStagePolicy.GetNext(FarmWorkStage.Harvesting));
+    Equal(FarmWorkStage.StorageSorting, FarmWorkStagePolicy.GetNext(FarmWorkStage.Watering));
+    Equal(FarmWorkStage.Complete, FarmWorkStagePolicy.GetNext(FarmWorkStage.StorageSorting));
+    Equal(true, FarmWorkStagePolicy.IsEmptyStageFailure(
+        FarmWorkStage.Harvesting,
+        "harvest.start.no-mature-crop"));
+    Equal(true, FarmWorkStagePolicy.IsEmptyStageFailure(
+        FarmWorkStage.Watering,
+        "contract.start.no-dry-crop"));
+    Equal(true, FarmWorkStagePolicy.IsEmptyStageFailure(
+        FarmWorkStage.StorageSorting,
+        "storage-sort.start.no-work"));
+    Equal(false, FarmWorkStagePolicy.IsEmptyStageFailure(
+        FarmWorkStage.Harvesting,
+        "harvest.start.no-reachable-crop"));
+}
+
 static void TestRecurringContractStateValidation()
 {
     RecurringContractSaveData valid = NewRecurringContractState();
@@ -322,9 +345,26 @@ static void TestRecurringContractPersistence()
     RecurringContractSaveData? restored = JsonSerializer.Deserialize<RecurringContractSaveData>(json);
     Equal(true, RecurringContractPolicy.IsValid(restored));
     Equal("Alex", restored!.Template!.PreferredWorkerName);
-    Equal(NamedFarmTask.Harvesting, restored.Template.Task);
+    Equal(NamedFarmTask.FarmWork, restored.Template.Task);
     Equal(2, restored.Template.ApprovedSubstituteNames.Length);
     Equal(2160, restored.Template.MaximumRestDayGold);
+}
+
+static void TestRecurringContractLegacyUpgrade()
+{
+    RecurringContractSaveData legacy = NewRecurringContractState();
+    legacy.SchemaVersion = 1;
+    legacy.Template!.Task = NamedFarmTask.Harvesting;
+
+    RecurringContractSaveData upgraded = RecurringContractPolicy.Upgrade(legacy);
+    Equal(RecurringContractPolicy.SchemaVersion, upgraded.SchemaVersion);
+    Equal(NamedFarmTask.FarmWork, upgraded.Template!.Task);
+    Equal(true, RecurringContractPolicy.IsValid(upgraded));
+
+    RecurringContractSaveData empty = new() { SchemaVersion = 1 };
+    upgraded = RecurringContractPolicy.Upgrade(empty);
+    Equal(RecurringContractPolicy.SchemaVersion, upgraded.SchemaVersion);
+    Equal(true, RecurringContractPolicy.IsValid(upgraded));
 }
 
 static void TestPreDispatchSettlement()
@@ -1821,7 +1861,7 @@ static void TestMultiplayerRequestAuthorization()
     valid.TotalDays = 12;
     valid.Task = NamedFarmTask.StorageSorting;
     Equal(
-        ContractRequestValidationFailure.None,
+        ContractRequestValidationFailure.InvalidTask,
         ContractRequestValidator.Validate(valid, playerId, context));
 
     valid.Task = (NamedFarmTask)999;
@@ -1829,15 +1869,15 @@ static void TestMultiplayerRequestAuthorization()
         ContractRequestValidationFailure.InvalidTask,
         ContractRequestValidator.Validate(valid, playerId, context));
 
-    valid.Task = NamedFarmTask.Watering;
+    valid.Task = NamedFarmTask.FarmWork;
     valid.HarvestDestination = HarvestDestinationMode.RequesterInventory;
     Equal(
-        ContractRequestValidationFailure.InvalidHarvestDestination,
+        ContractRequestValidationFailure.None,
         ContractRequestValidator.Validate(valid, playerId, context));
 
     valid.Task = NamedFarmTask.Harvesting;
     Equal(
-        ContractRequestValidationFailure.None,
+        ContractRequestValidationFailure.InvalidTask,
         ContractRequestValidator.Validate(valid, playerId, context));
 }
 
@@ -1906,7 +1946,7 @@ static void TestMultiplayerRestartRecoveryState()
         RequestId = requestId,
         RequestingPlayerId = 55,
         WorkerName = "Leah",
-        Task = NamedFarmTask.Watering,
+        Task = NamedFarmTask.FarmWork,
         Succeeded = true,
         CompletedWork = 3,
         BillableHours = 1,
@@ -1931,7 +1971,10 @@ static void TestMultiplayerRestartRecoveryState()
     foreach (ContractStartResponseMessage legacyResponse in legacy.ProcessedRequests)
         legacyResponse.SchemaVersion = 3;
     foreach (ContractResultMessage legacyResult in legacy.RecentResults)
+    {
         legacyResult.SchemaVersion = 3;
+        legacyResult.Task = NamedFarmTask.Watering;
+    }
     Equal(true, MultiplayerRecoveryState.IsValid(legacy, 445566));
     legacy.ProcessedRequests[0].SchemaVersion = MultiplayerContractProtocol.SchemaVersion;
     Equal(false, MultiplayerRecoveryState.IsValid(legacy, 445566));
@@ -1945,7 +1988,10 @@ static void TestMultiplayerRestartRecoveryState()
     foreach (ContractStartResponseMessage legacyResponse in legacyQuarantine.ProcessedRequests)
         legacyResponse.SchemaVersion = 4;
     foreach (ContractResultMessage legacyResult in legacyQuarantine.RecentResults)
+    {
         legacyResult.SchemaVersion = 4;
+        legacyResult.Task = NamedFarmTask.Watering;
+    }
     Equal(true, MultiplayerRecoveryState.IsValid(legacyQuarantine, 445566));
 
     MultiplayerRecoverySaveData legacyPlacement =
@@ -1954,7 +2000,10 @@ static void TestMultiplayerRestartRecoveryState()
     foreach (ContractStartResponseMessage legacyResponse in legacyPlacement.ProcessedRequests)
         legacyResponse.SchemaVersion = 5;
     foreach (ContractResultMessage legacyResult in legacyPlacement.RecentResults)
+    {
         legacyResult.SchemaVersion = 5;
+        legacyResult.Task = NamedFarmTask.Watering;
+    }
     Equal(true, MultiplayerRecoveryState.IsValid(legacyPlacement, 445566));
 
     MultiplayerRecoverySaveData legacyEfficiency =
@@ -1963,7 +2012,10 @@ static void TestMultiplayerRestartRecoveryState()
     foreach (ContractStartResponseMessage legacyResponse in legacyEfficiency.ProcessedRequests)
         legacyResponse.SchemaVersion = 6;
     foreach (ContractResultMessage legacyResult in legacyEfficiency.RecentResults)
+    {
         legacyResult.SchemaVersion = 6;
+        legacyResult.Task = NamedFarmTask.Watering;
+    }
     Equal(true, MultiplayerRecoveryState.IsValid(legacyEfficiency, 445566));
 
     MultiplayerRecoverySaveData legacyDestination =
@@ -1972,7 +2024,10 @@ static void TestMultiplayerRestartRecoveryState()
     foreach (ContractStartResponseMessage legacyResponse in legacyDestination.ProcessedRequests)
         legacyResponse.SchemaVersion = 7;
     foreach (ContractResultMessage legacyResult in legacyDestination.RecentResults)
+    {
         legacyResult.SchemaVersion = 7;
+        legacyResult.Task = NamedFarmTask.Watering;
+    }
     Equal(true, MultiplayerRecoveryState.IsValid(legacyDestination, 445566));
     legacyDestination.RecentResults[0].Task = NamedFarmTask.StorageSorting;
     Equal(false, MultiplayerRecoveryState.IsValid(legacyDestination, 445566));
@@ -2104,7 +2159,7 @@ static void TestMultiplayerStaleSnapshotRejection()
         HostSessionId = "host-b",
         ContractId = "contract-1",
         Sequence = 2,
-        Task = NamedFarmTask.Watering
+        Task = NamedFarmTask.FarmWork
     };
     Equal(true, tracker.TryAccept(result, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
     Equal(false, tracker.TryAccept(result, MultiplayerContractProtocol.SchemaVersion, expectedSaveId: 445566));
@@ -2199,10 +2254,10 @@ static void TestMultiplayerSnapshotSerialization()
         RequestId = "request-1",
         RequestingPlayerId = 55,
         WorkerName = "Leah",
-        Task = NamedFarmTask.Harvesting,
+        Task = NamedFarmTask.FarmWork,
         HarvestDestination = HarvestDestinationMode.RequesterInventory,
         EfficiencyMultiplier = 1.10m,
-        Phase = "TravelingToChest",
+        Phase = "Harvesting/TravelingToChest",
         ArrivalX = 78,
         ArrivalY = 15,
         ArrivalSide = FarmBoundarySide.East,
@@ -2229,7 +2284,7 @@ static void TestMultiplayerSnapshotSerialization()
     ContractSnapshotMessage? restored = JsonSerializer.Deserialize<ContractSnapshotMessage>(json);
     Equal("contract-1", restored!.ContractId);
     Equal(12L, restored.StateVersion);
-    Equal(NamedFarmTask.Harvesting, restored.Task);
+    Equal(NamedFarmTask.FarmWork, restored.Task);
     Equal(HarvestDestinationMode.RequesterInventory, restored.HarvestDestination);
     Equal(1.10m, restored.EfficiencyMultiplier);
     Equal(78, restored.ArrivalX);
@@ -2243,7 +2298,7 @@ static void TestMultiplayerSnapshotSerialization()
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(8, MultiplayerContractProtocol.SchemaVersion);
+    Equal(9, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
@@ -2255,7 +2310,7 @@ static void TestMultiplayerResultSerialization()
         RequestId = "request-1",
         RequestingPlayerId = 55,
         WorkerName = "Leah",
-        Task = NamedFarmTask.Harvesting,
+        Task = NamedFarmTask.FarmWork,
         HarvestDestination = HarvestDestinationMode.RequesterInventory,
         Succeeded = true,
         CompletedWork = 3,
@@ -2289,7 +2344,7 @@ static void TestMultiplayerStorageResultValidation()
         RequestId = requestId,
         RequestingPlayerId = 55,
         WorkerName = "Leah",
-        Task = NamedFarmTask.StorageSorting,
+        Task = NamedFarmTask.FarmWork,
         Succeeded = true,
         CompletedWork = 1,
         ChestItems = 10,
@@ -2331,13 +2386,13 @@ static void TestMultiplayerStorageResultValidation()
 
     ContractResultMessage restored = JsonSerializer.Deserialize<ContractResultMessage>(
         JsonSerializer.Serialize(result))!;
-    Equal(NamedFarmTask.StorageSorting, restored.Task);
+    Equal(NamedFarmTask.FarmWork, restored.Task);
     Equal(1, restored.CompletedTransfers.Length);
     Equal(-75, restored.CompletedTransfers[0].Category);
     Equal(4, restored.CompletedTransfers[0].SourceX);
     Equal(10, restored.CompletedTransfers[0].DestinationX);
 
-    result.CompletedTransfers[0].Quantity = 9;
+    result.CompletedTransfers[0].Quantity = 0;
     Equal(false, MultiplayerRecoveryState.IsValidResult(
         result,
         445566,
@@ -2415,7 +2470,7 @@ static ContractStartRequestMessage NewMultiplayerRequest(long playerId)
         RequestId = Guid.NewGuid().ToString("N"),
         RequestingPlayerId = playerId,
         WorkerName = "Leah",
-        Task = NamedFarmTask.Watering,
+        Task = NamedFarmTask.FarmWork,
         HarvestDestination = HarvestDestinationMode.ClassifiedChests
     };
 }
@@ -2428,7 +2483,7 @@ static RecurringContractSaveData NewRecurringContractState()
         Template = new RecurringContractTemplateData
         {
             Enabled = true,
-            Task = NamedFarmTask.Harvesting,
+            Task = NamedFarmTask.FarmWork,
             PreferredWorkerName = "Alex",
             WorkerMode = RecurringWorkerMode.PreferredWithApprovedSubstitutes,
             ApprovedSubstituteNames = new[] { "Leah", "Robin" },
@@ -2467,13 +2522,13 @@ static ContractSnapshotMessage NewSnapshot(string session, long sequence)
         HostSessionId = session,
         ContractId = "contract-1",
         Sequence = sequence,
-        Task = NamedFarmTask.Watering
+        Task = NamedFarmTask.FarmWork
     };
 }
 
-static void Equal<T>(T expected, T actual)
+static void Equal<T>(T expected, T actual, [CallerLineNumber] int line = 0)
     where T : notnull
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
-        throw new InvalidOperationException($"expected={expected}, actual={actual}");
+        throw new InvalidOperationException($"line={line}, expected={expected}, actual={actual}");
 }

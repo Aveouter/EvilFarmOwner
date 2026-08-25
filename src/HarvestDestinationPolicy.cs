@@ -24,7 +24,7 @@ internal static class HarvestDestinationPolicy
         if (!Enum.IsDefined(mode))
             return false;
 
-        return task == NamedFarmTask.Harvesting
+        return task is NamedFarmTask.FarmWork or NamedFarmTask.Harvesting
             || mode == HarvestDestinationMode.ClassifiedChests;
     }
 

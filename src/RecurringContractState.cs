@@ -75,7 +75,7 @@ internal sealed record RecurringWorkerCandidate(
 
 internal static class RecurringContractPolicy
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
     public const int MaximumStoredWorkers = 27;
     public const int MaximumStoredGold = 1_000_000;
     public const int EvaluationWindowStart = 610;
@@ -92,7 +92,7 @@ internal static class RecurringContractPolicy
     public static bool IsValid(RecurringContractTemplateData template)
     {
         if (!Enum.IsDefined(template.Task)
-            || template.Task == NamedFarmTask.StorageSorting
+            || template.Task != NamedFarmTask.FarmWork
             || !Enum.IsDefined(template.WorkerMode)
             || !WorkerEfficiencyProfiles.HasExplicitProfile(template.PreferredWorkerName)
             || template.ApprovedSubstituteNames is null
@@ -127,6 +127,18 @@ internal static class RecurringContractPolicy
 
         return template.WorkerMode == RecurringWorkerMode.PreferredWithApprovedSubstitutes
             || substitutes.Count == 0;
+    }
+
+    public static RecurringContractSaveData Upgrade(RecurringContractSaveData state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.SchemaVersion != 1)
+            return state;
+
+        if (state.Template?.Task is NamedFarmTask.Watering or NamedFarmTask.Harvesting)
+            state.Template.Task = NamedFarmTask.FarmWork;
+        state.SchemaVersion = SchemaVersion;
+        return state;
     }
 
     public static RecurringWorkerCandidate? SelectCandidate(

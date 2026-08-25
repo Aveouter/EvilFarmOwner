@@ -32,12 +32,12 @@
 
 工人不会瞬间完成任务。他们会从农场入口走进来，在田地和箱子之间移动，完成工作后再离开。正在参加节日、执行剧情或忙于其他事情的 NPC 不会出现在名单中，因此不会被强行打断。
 
-目前可以安排：
+每次雇佣会自动按顺序处理：
 
 - 浇灌所有能够安全到达的缺水作物；
 - 收获所有能够安全到达的成熟作物，以及树上已经就绪的普通或重型树液采集器产物；
 - 按箱子里已有的物品整理普通箱子；
-- 设置每天自动尝试执行的浇水或收获合同。
+- 设置每天自动尝试执行的完整农活班次。
 
 ### 主要特点
 
@@ -65,9 +65,9 @@
 1. 载入存档并站在主农场。
 2. 按 `K` 打开工人名单。
 3. 选择一位绿色显示、当前可以雇佣的 NPC。
-4. 选择浇水、收获或箱子整理。
-5. 查看工资和工作内容，确认合同。
-6. 等待工人完成任务并返回。
+4. 查看工资、收获物目的地和完整工作范围，确认雇佣。
+5. 工人会依次收获、浇水、整理箱子；当前没有工作的阶段会自动跳过。
+6. 等待工人完成整个班次并返回。
 
 同一时间只能执行一份合同。合同最迟需要在下午 4:00 前开始，并会在晚上 10:00 前安全结束。
 
@@ -75,7 +75,7 @@
 
 ### 收获物会放到哪里？
 
-收获合同时可以选择：
+确认雇佣时可以为本班次的收获物选择：
 
 - **分类箱**：默认选项。工人会根据箱子里已经存放的内容寻找合适位置。
 - **玩家背包**：适合玩家仍在农场、并且背包有足够空间的情况。
@@ -90,13 +90,13 @@
 
 开始前会先确认整个整理计划能够完成。工人只移动完整的一组物品；如果箱子内容在途中发生变化，或没有足够空间，合同会停止，而不是猜测应该把物品放到哪里。
 
-当前只提供手动箱子整理，不提供每日自动整理。
+箱子整理是完整班次的最后一个阶段；没有可执行的整理计划时会自动跳过。
 
 ### 自动合同
 
 主机可以在工人名单底部选择“自动合同”，设置一份每天使用的授权：
 
-- 选择首选工人和任务；
+- 选择首选工人；
 - 决定是否允许名单中的其他成年 NPC 作为替补；
 - 设置工资预算；
 - 决定休息日是否允许三倍工资。
@@ -133,7 +133,7 @@ Mods/EvilFarmOwner/config.json
 
 - 暂不支持清理杂物、播种、施肥、照顾动物、补充普通生产机器或自动出售；收获合同仅额外支持树上的普通与重型树液采集器。
 - 暂不支持特殊箱子和其他 Mod 添加的箱子。
-- 自动合同支持浇水和收获，不支持自动箱子整理。
+- 自动合同与手动雇佣执行同一套完整班次，包括当前可执行的箱子整理。
 - 个别农场布局可能没有安全路线；这种情况下合同会拒绝开始或提前停止。
 - v0.1.0 是维护者决定提前发布的首个正式版本；强制储存故障的全部场景、真实双进程多人和最终游戏内发布包测试尚未完整验证。重要存档请先备份。
 
@@ -147,12 +147,12 @@ Evil Farm Owner lets you pay available adult townspeople to help with farm chore
 
 Workers do not finish jobs instantly. They enter through a farm boundary, walk between crops and chests, do the visible work, and leave when the contract ends. NPCs who are busy with festivals, events, or protected schedules are left alone and do not appear in the hiring list.
 
-Available jobs:
+Each hire automatically works through these stages in order:
 
 - water every safely reachable dry crop;
 - harvest every safely reachable mature crop and every ready normal or heavy tree tapper;
 - organize ordinary farm chests based on their existing contents;
-- set up a daily automatic watering or harvesting contract.
+- set up a daily automatic complete farm-work shift.
 
 ### Highlights
 
@@ -176,17 +176,17 @@ Requires Stardew Valley 1.6+ and SMAPI 4.0+.
 
 ### Play
 
-Stand on the main farm, press `K`, choose a green available worker, select a job, review the wage, and confirm.
+Stand on the main farm, press `K`, choose a green available worker, review the wage and harvest destination, then confirm. The worker harvests, waters, and sorts ordinary farm chests in that order; stages with no ready work are skipped automatically.
 
 Only one named contract can run at a time. Contracts must start by 4:00 PM and stop safely before 10:00 PM.
 
 For harvesting, classified chests are the default. You can instead choose the requester inventory when that player is on the farm and has enough room. The shipping bin is never used as a fallback.
 
-Chest sorting only supports ordinary player-owned chests on the main farm. It groups matching items and similar categories, and stops if the complete plan is no longer safe or possible. Automatic chest sorting is not available yet.
+Chest sorting only supports ordinary player-owned chests on the main farm. It groups matching items and similar categories, and stops if the complete plan is no longer safe or possible. It is the final stage of both manual and automatic shifts.
 
 ### Automatic contracts
 
-The host can create one daily authorization from the bottom of the worker list. Choose a preferred worker, allowed substitutes, task, budget, and whether rest-day triple pay is allowed.
+The host can create one daily authorization from the bottom of the worker list. Choose a preferred worker, allowed substitutes, budget, and whether rest-day triple pay is allowed. Automatic hiring runs the same complete farm-work shift as manual hiring.
 
 Starting the next day, the mod tries once when the host enters the farm between 6:10 AM and 4:00 PM. It skips the day if the worker, budget, crops, route, or storage is unsuitable.
 
@@ -212,7 +212,7 @@ Most players only need the `K` key. The extra commands help inspect recent work 
 
 - No debris clearing, planting, fertilizing, animal care, ordinary machine collection/refilling, or automatic shipping. Harvest contracts additionally support only normal and heavy tappers attached to trees.
 - No special or modded chest support.
-- Automatic contracts support watering and harvesting, but not chest sorting.
+- Automatic contracts use the same harvest, watering, and chest-sorting sequence as manual hiring.
 - Some farm layouts may not provide a safe route; the contract will refuse or stop instead of breaking objects.
 - v0.1.0 was released early by maintainer decision. The full forced-storage matrix, real two-process multiplayer, and final in-game published-package smoke test remain incomplete. Back up important saves.
 
