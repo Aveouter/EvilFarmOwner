@@ -227,6 +227,35 @@ static void TestFarmWorkStageOrder()
     Equal(false, FarmWorkStagePolicy.IsEmptyStageFailure(
         FarmWorkStage.Harvesting,
         "harvest.start.no-reachable-crop"));
+
+    Equal(FarmWorkPassPolicy.MaximumPasses, 2);
+    Equal(true, FarmWorkPassPolicy.TryGetNext(
+        FarmWorkPass.Initial,
+        out FarmWorkPass reconciliation));
+    Equal(FarmWorkPass.Reconciliation, reconciliation);
+    Equal(false, FarmWorkPassPolicy.TryGetNext(
+        FarmWorkPass.Reconciliation,
+        out FarmWorkPass terminal));
+    Equal(FarmWorkPass.Reconciliation, terminal);
+    Equal(6, FarmWorkPassPolicy.OrderedSteps.Count);
+    Equal(
+        (FarmWorkPass.Initial, FarmWorkStage.Harvesting),
+        FarmWorkPassPolicy.OrderedSteps[0]);
+    Equal(
+        (FarmWorkPass.Initial, FarmWorkStage.StorageSorting),
+        FarmWorkPassPolicy.OrderedSteps[2]);
+    Equal(
+        (FarmWorkPass.Reconciliation, FarmWorkStage.Harvesting),
+        FarmWorkPassPolicy.OrderedSteps[3]);
+    Equal(
+        (FarmWorkPass.Reconciliation, FarmWorkStage.StorageSorting),
+        FarmWorkPassPolicy.OrderedSteps[5]);
+    Equal(
+        "Watering/Reconciliation/Acting",
+        FarmWorkPassPolicy.FormatRuntimePhase(
+            FarmWorkStage.Watering,
+            FarmWorkPass.Reconciliation,
+            "Acting"));
 }
 
 static void TestRecurringContractStateValidation()

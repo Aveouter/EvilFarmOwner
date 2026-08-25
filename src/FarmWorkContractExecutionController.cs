@@ -185,7 +185,10 @@ internal sealed class FarmWorkContractExecutionController
         return stage with
         {
             Task = NamedFarmTask.FarmWork,
-            Phase = $"{shift.CurrentStage}/{stage.Phase}",
+            Phase = FarmWorkPassPolicy.FormatRuntimePhase(
+                shift.CurrentStage,
+                shift.CurrentPass,
+                stage.Phase),
             ReservedGold = shift.Context.BillingPreview.MaximumAuthorizedWage,
             StartTime = shift.Context.Lease.StartTime,
             CompletedWork = shift.StageCompletions.Sum(result => result.CompletedWork) + stage.CompletedWork
@@ -237,6 +240,17 @@ internal sealed class FarmWorkContractExecutionController
 
             shift.LastFinishedStage = stage;
             stage = FarmWorkStagePolicy.GetNext(stage);
+        }
+
+        if (FarmWorkPassPolicy.TryGetNext(shift.CurrentPass, out FarmWorkPass nextPass))
+        {
+            shift.CurrentPass = nextPass;
+            shift.LastFinishedStage = null;
+            this.Monitor.Log(
+                $"Farm-work shift {shift.Context.Id:N} is starting its bounded reconciliation pass.",
+                LogLevel.Debug);
+            this.BeginNextAvailableStage(shift);
+            return;
         }
 
         bool completedAnyWork = shift.StageCompletions.Any(result => result.CompletedWork > 0);
@@ -377,6 +391,7 @@ internal sealed class FarmWorkContractExecutionController
         public FarmWorkShiftContext Context { get; }
         public List<NamedContractCompletionState> StageCompletions { get; } = new();
         public FarmWorkStage CurrentStage { get; set; } = FarmWorkStage.Harvesting;
+        public FarmWorkPass CurrentPass { get; set; } = FarmWorkPass.Initial;
         public FarmWorkStage? LastFinishedStage { get; set; }
         public bool Dispatched { get; set; }
         public bool Finalizing { get; set; }
