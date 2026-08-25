@@ -33,3 +33,15 @@ internal static class ContractHarvestSemantics
         return capturedItemCount > 0;
     }
 }
+
+internal static class TapperHarvestSemantics
+{
+    public static bool IsReadyTarget(
+        bool isTapper,
+        bool attachedToTree,
+        bool hasOutput,
+        bool readyForHarvest)
+    {
+        return isTapper && attachedToTree && hasOutput && readyForHarvest;
+    }
+}

@@ -11,11 +11,18 @@ internal enum HarvestPlanFailure
     None,
     UnsupportedFarmMap,
     NoSafeArrivalTile,
-    NoMatureCrop,
-    NoReachableCrop
+    NoHarvestTarget,
+    NoReachableTarget
+}
+
+internal enum HarvestTargetKind
+{
+    Crop,
+    Tapper
 }
 
 internal sealed record HarvestTargetPlan(
+    HarvestTargetKind Kind,
     Point TargetTile,
     Point InteractionTile,
     int FacingDirection,
@@ -72,7 +79,7 @@ internal sealed class HarvestTargetPlanner
 
         bool foundSafeArrival = false;
         Dictionary<FarmBoundarySide, int> checkedPathsBySide = new();
-        HarvestPlanFailure lastFailure = HarvestPlanFailure.NoReachableCrop;
+        HarvestPlanFailure lastFailure = HarvestPlanFailure.NoReachableTarget;
         foreach (GridPoint candidate in FarmEntranceSelection.OrderBoundaryArrivalCandidates(
                      width,
                      height,
@@ -123,7 +130,7 @@ internal sealed class HarvestTargetPlanner
             }
 
             lastFailure = firstTarget.Failure;
-            if (lastFailure == HarvestPlanFailure.NoMatureCrop)
+            if (lastFailure == HarvestPlanFailure.NoHarvestTarget)
                 break;
         }
 
@@ -148,12 +155,12 @@ internal sealed class HarvestTargetPlanner
         {
             return new HarvestTargetSearchResult(
                 null,
-                HarvestPlanFailure.NoReachableCrop,
-                CountRemainingMatureCrops(farm, completedTargets));
+                HarvestPlanFailure.NoReachableTarget,
+                CountRemainingHarvestTargets(farm, completedTargets));
         }
 
         List<FarmTaskRouteOption> reachable = new();
-        HashSet<Point> candidateTargets = new();
+        Dictionary<Point, HarvestTargetKind> candidateTargets = new();
 
         for (int x = 0; x < width; x++)
         {
@@ -161,10 +168,11 @@ internal sealed class HarvestTargetPlanner
             {
                 Vector2 target = new(x, y);
                 Point targetPoint = new(x, y);
-                if (completedTargets.Contains(targetPoint) || !IsMatureSupportedCrop(farm, target))
+                HarvestTargetKind? targetKind = GetSupportedTargetKind(farm, target);
+                if (completedTargets.Contains(targetPoint) || targetKind is null)
                     continue;
 
-                candidateTargets.Add(targetPoint);
+                candidateTargets[targetPoint] = targetKind.Value;
                 foreach (Point offset in InteractionOffsets)
                 {
                     Point interaction = new(x + offset.X, y + offset.Y);
@@ -183,7 +191,7 @@ internal sealed class HarvestTargetPlanner
         }
 
         if (candidateTargets.Count == 0)
-            return new HarvestTargetSearchResult(null, HarvestPlanFailure.NoMatureCrop, 0);
+            return new HarvestTargetSearchResult(null, HarvestPlanFailure.NoHarvestTarget, 0);
 
         IReadOnlyList<FarmTaskRouteOption> ordered = FarmTaskRouteSelection.Order(
             reachable);
@@ -191,7 +199,7 @@ internal sealed class HarvestTargetPlanner
         {
             return new HarvestTargetSearchResult(
                 null,
-                HarvestPlanFailure.NoReachableCrop,
+                HarvestPlanFailure.NoReachableTarget,
                 candidateTargets.Count);
         }
 
@@ -200,7 +208,7 @@ internal sealed class HarvestTargetPlanner
         {
             return new HarvestTargetSearchResult(
                 null,
-                HarvestPlanFailure.NoReachableCrop,
+                HarvestPlanFailure.NoReachableTarget,
                 candidateTargets.Count);
         }
         Stack<Point> bestPath = FarmNavigationMap.ToPath(gridPath);
@@ -208,6 +216,7 @@ internal sealed class HarvestTargetPlanner
         Point bestInteraction = new(best.Interaction.X, best.Interaction.Y);
         return new HarvestTargetSearchResult(
             new HarvestTargetPlan(
+                candidateTargets[bestTarget],
                 bestTarget,
                 bestInteraction,
                 GetFacingDirection(bestInteraction, bestTarget),
@@ -227,7 +236,31 @@ internal sealed class HarvestTargetPlanner
             && dirt.readyForHarvest();
     }
 
-    public static int CountRemainingMatureCrops(
+    public static bool IsReadySupportedTapper(GameLocation location, Vector2 tile)
+    {
+        bool attachedToTree = location.terrainFeatures.TryGetValue(tile, out TerrainFeature? feature)
+            && feature is Tree;
+        bool isTapper = location.objects.TryGetValue(tile, out StardewValley.Object? tapper)
+            && tapper.IsTapper();
+        bool hasOutput = tapper?.heldObject.Value is not null;
+        bool readyForHarvest = tapper?.readyForHarvest.Value == true;
+        return TapperHarvestSemantics.IsReadyTarget(
+            isTapper,
+            attachedToTree,
+            hasOutput,
+            readyForHarvest);
+    }
+
+    public static HarvestTargetKind? GetSupportedTargetKind(GameLocation location, Vector2 tile)
+    {
+        if (IsMatureSupportedCrop(location, tile))
+            return HarvestTargetKind.Crop;
+        if (IsReadySupportedTapper(location, tile))
+            return HarvestTargetKind.Tapper;
+        return null;
+    }
+
+    public static int CountRemainingHarvestTargets(
         Farm farm,
         IReadOnlySet<Point> completedTargets)
     {
@@ -240,7 +273,7 @@ internal sealed class HarvestTargetPlanner
             {
                 Point target = new(x, y);
                 if (!completedTargets.Contains(target)
-                    && IsMatureSupportedCrop(farm, new Vector2(x, y)))
+                    && GetSupportedTargetKind(farm, new Vector2(x, y)) is not null)
                     count++;
             }
         }

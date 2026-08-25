@@ -606,14 +606,14 @@ internal sealed class HarvestingContractExecutionController
             return;
         }
 
-        int remaining = HarvestTargetPlanner.CountRemainingMatureCrops(
+        int remaining = HarvestTargetPlanner.CountRemainingHarvestTargets(
             contract.Farm,
             contract.CompletedTargets);
         contract.UnreachableTargets += remaining;
         this.Monitor.Log(
             $"Harvest worker '{contract.Lease.Worker.Name}' exhausted "
-            + $"{decision.MaximumStalledTargets} stalled crops from {origin}; "
-            + $"returning with {remaining} mature crop(s) marked unreachable.",
+            + $"{decision.MaximumStalledTargets} stalled harvest targets from {origin}; "
+            + $"returning with {remaining} harvest target(s) marked unreachable.",
             LogLevel.Warn);
         this.BeginReturn(contract, depositOverflowOnReturn: false);
     }
@@ -681,7 +681,7 @@ internal sealed class HarvestingContractExecutionController
             this.FinishContract(
                 contract,
                 succeeded: false,
-                replacement.Failure == HarvestPlanFailure.NoMatureCrop
+                replacement.Failure == HarvestPlanFailure.NoHarvestTarget
                     ? "harvest.failure.target-invalidated"
                     : "contract.failure.entrance-stalled");
             return true;
@@ -816,10 +816,22 @@ internal sealed class HarvestingContractExecutionController
 
     private bool TryApplyHarvest(ActiveHarvestContract contract)
     {
+        if (contract.Lease.Worker.currentLocation != contract.Farm
+            || contract.Lease.Worker.TilePoint != contract.CurrentTarget.InteractionTile)
+            return false;
+
+        return contract.CurrentTarget.Kind switch
+        {
+            HarvestTargetKind.Crop => this.TryApplyCropHarvest(contract),
+            HarvestTargetKind.Tapper => this.TryApplyTapperHarvest(contract),
+            _ => false
+        };
+    }
+
+    private bool TryApplyCropHarvest(ActiveHarvestContract contract)
+    {
         Vector2 targetTile = new(contract.CurrentTarget.TargetTile.X, contract.CurrentTarget.TargetTile.Y);
         if (!HarvestTargetPlanner.IsMatureSupportedCrop(contract.Farm, targetTile)
-            || contract.Lease.Worker.currentLocation != contract.Farm
-            || contract.Lease.Worker.TilePoint != contract.CurrentTarget.InteractionTile
             || !contract.Farm.terrainFeatures.TryGetValue(targetTile, out TerrainFeature? feature)
             || feature is not HoeDirt dirt
             || dirt.crop is not { } crop)
@@ -840,23 +852,61 @@ internal sealed class HarvestingContractExecutionController
             dirt.destroyCrop(showAnimation: false);
 
         foreach (Item item in collector.Items)
-        {
-            string transferId = Guid.NewGuid().ToString("N");
-            contract.Cargo.Add(new HarvestCargoEntry(transferId, item));
-            contract.HarvestedItems.Add(new HarvestItemSnapshot(
-                transferId,
-                item.QualifiedItemId,
-                item.DisplayName,
-                item.Quality,
-                item.Stack));
-            this.Monitor.Log(
-                $"Captured harvest '{item.QualifiedItemId}' q{item.Quality} x{item.Stack} "
-                + $"from crop {contract.CurrentTarget.TargetTile}; transfer={transferId}.",
-                LogLevel.Debug);
-        }
+            this.CaptureHarvestItem(contract, item, "crop");
 
         this.ShowHarvestedItem(contract, collector.Items[0]);
         return true;
+    }
+
+    private bool TryApplyTapperHarvest(ActiveHarvestContract contract)
+    {
+        Vector2 targetTile = new(contract.CurrentTarget.TargetTile.X, contract.CurrentTarget.TargetTile.Y);
+        if (!HarvestTargetPlanner.IsReadySupportedTapper(contract.Farm, targetTile)
+            || !contract.Farm.terrainFeatures.TryGetValue(targetTile, out TerrainFeature? feature)
+            || feature is not Tree tree
+            || !contract.Farm.objects.TryGetValue(targetTile, out StardewValley.Object? tapper)
+            || tapper.heldObject.Value is not { } output)
+            return false;
+
+        Item collected = output.getOne();
+        collected.Stack = output.Stack;
+        int previousMinutesUntilReady = tapper.MinutesUntilReady;
+        try
+        {
+            tapper.heldObject.Value = null;
+            tapper.readyForHarvest.Value = false;
+            tree.UpdateTapperProduct(tapper, output, false);
+        }
+        catch (Exception ex)
+        {
+            tapper.heldObject.Value = output;
+            tapper.readyForHarvest.Value = true;
+            tapper.MinutesUntilReady = previousMinutesUntilReady;
+            this.Monitor.Log(
+                $"Could not reschedule tapper at {contract.CurrentTarget.TargetTile}; restored its exact output: {ex}",
+                LogLevel.Error);
+            return false;
+        }
+
+        this.CaptureHarvestItem(contract, collected, "tapper");
+        this.ShowHarvestedItem(contract, collected);
+        return true;
+    }
+
+    private void CaptureHarvestItem(ActiveHarvestContract contract, Item item, string source)
+    {
+        string transferId = Guid.NewGuid().ToString("N");
+        contract.Cargo.Add(new HarvestCargoEntry(transferId, item));
+        contract.HarvestedItems.Add(new HarvestItemSnapshot(
+            transferId,
+            item.QualifiedItemId,
+            item.DisplayName,
+            item.Quality,
+            item.Stack));
+        this.Monitor.Log(
+            $"Captured harvest '{item.QualifiedItemId}' q{item.Quality} x{item.Stack} "
+            + $"from {source} {contract.CurrentTarget.TargetTile}; transfer={transferId}.",
+            LogLevel.Debug);
     }
 
     private void BeginDeliveryOrReturn(ActiveHarvestContract contract)
@@ -1208,7 +1258,7 @@ internal sealed class HarvestingContractExecutionController
 
         if (Game1.timeOfDay >= StopAcquiringTime)
         {
-            contract.RemainingTargets = HarvestTargetPlanner.CountRemainingMatureCrops(
+            contract.RemainingTargets = HarvestTargetPlanner.CountRemainingHarvestTargets(
                 contract.Farm,
                 contract.CompletedTargets);
             this.BeginReturn(contract, depositOverflowOnReturn: false);
@@ -1224,14 +1274,14 @@ internal sealed class HarvestingContractExecutionController
             contract.FailedEdges);
         if (!next.IsSuccess || next.Target is null)
         {
-            if (next.Failure == HarvestPlanFailure.NoReachableCrop)
+            if (next.Failure == HarvestPlanFailure.NoReachableTarget)
             {
                 contract.UnreachableTargets += next.CandidateTargetCount;
                 this.Monitor.Log(
-                    $"Harvest routing found {next.CandidateTargetCount} mature crop(s) but no safe interaction path "
+                    $"Harvest routing found {next.CandidateTargetCount} target(s) but no safe interaction path "
                     + $"from {contract.Lease.Worker.TilePoint}; completed={contract.CompletedTargets.Count}, "
                     + $"failedEdges={contract.FailedEdges.Count}, entrance={contract.Plan.ArrivalTile}. "
-                    + "Remaining crops are isolated by live collision, raised-seed trellises, or previously failed edges.",
+                    + "Remaining targets are isolated by live collision, raised-seed trellises, placed objects, or previously failed edges.",
                     LogLevel.Warn);
             }
             this.BeginReturn(contract, depositOverflowOnReturn: false);
@@ -1693,12 +1743,12 @@ internal sealed class HarvestingContractExecutionController
         {
             contract.StorageUnavailable = true;
             contract.StorageFailureTranslationKey = failureTranslationKey;
-            contract.RemainingTargets = HarvestTargetPlanner.CountRemainingMatureCrops(
+            contract.RemainingTargets = HarvestTargetPlanner.CountRemainingHarvestTargets(
                 contract.Farm,
                 contract.CompletedTargets);
             this.Monitor.Log(
                 $"Stopping harvest contract {contract.Id:N}: {detail}. "
-                + $"Remaining mature crops={contract.RemainingTargets}; existing cargo will be preserved "
+                + $"Remaining harvest targets={contract.RemainingTargets}; existing cargo will be preserved "
                 + "through emergency storage before the worker returns.",
                 LogLevel.Warn);
         }
@@ -2372,7 +2422,7 @@ internal sealed class HarvestingContractExecutionController
         {
             HarvestPlanFailure.UnsupportedFarmMap => "contract.start.unsupported-map",
             HarvestPlanFailure.NoSafeArrivalTile => "contract.start.no-arrival",
-            HarvestPlanFailure.NoMatureCrop => "harvest.start.no-mature-crop",
+            HarvestPlanFailure.NoHarvestTarget => "harvest.start.no-mature-crop",
             _ => "harvest.start.no-reachable-crop"
         };
     }

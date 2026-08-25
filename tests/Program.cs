@@ -65,6 +65,7 @@ List<(string Name, Action Test)> tests = new()
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("harvest chest release deferral", TestHarvestChestReleaseDeferral),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
+    ("ready tapper target semantics", TestReadyTapperTargetSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
     ("harvest placement conservation", TestHarvestPlacementConservation),
@@ -1548,6 +1549,19 @@ static void TestRegrowingHarvestCaptureSemantics()
     Equal(false, ContractHarvestSemantics.HasCapturedOutput(
         vanillaRequestsCropRemoval: true,
         capturedItemCount: 0));
+}
+
+static void TestReadyTapperTargetSemantics()
+{
+    Equal(true, TapperHarvestSemantics.IsReadyTarget(
+        isTapper: true,
+        attachedToTree: true,
+        hasOutput: true,
+        readyForHarvest: true));
+    Equal(false, TapperHarvestSemantics.IsReadyTarget(false, true, true, true));
+    Equal(false, TapperHarvestSemantics.IsReadyTarget(true, false, true, true));
+    Equal(false, TapperHarvestSemantics.IsReadyTarget(true, true, false, true));
+    Equal(false, TapperHarvestSemantics.IsReadyTarget(true, true, true, false));
 }
 
 static void TestHarvestPlacementConservation()
