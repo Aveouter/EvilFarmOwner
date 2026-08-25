@@ -13,6 +13,10 @@ List<(string Name, Action Test)> tests = new()
     ("worker efficiency timing", TestWorkerEfficiencyTiming),
     ("worker efficiency contract snapshot", TestWorkerEfficiencyContractSnapshot),
     ("farm-work stage order", TestFarmWorkStageOrder),
+    ("deterministic workforce partition", TestDeterministicWorkforcePartition),
+    ("workforce claim ownership", TestWorkforceClaimOwnership),
+    ("workforce final reconciliation", TestWorkforceFinalReconciliation),
+    ("workforce settlement aggregation", TestWorkforceSettlementAggregation),
     ("recurring contract state validation", TestRecurringContractStateValidation),
     ("recurring contract candidate pool", TestRecurringContractCandidatePool),
     ("recurring contract ranking", TestRecurringContractRanking),
@@ -261,6 +265,96 @@ static void TestFarmWorkStageOrder()
         FarmWorkStage.Harvesting,
         FarmWorkPass.Initial,
         " "));
+}
+
+static void TestDeterministicWorkforcePartition()
+{
+    SchedulableWorker[] workers =
+    {
+        new("Leah", 1m),
+        new("Alex", 2m)
+    };
+    SchedulableWorkTarget[] targets =
+    {
+        new(new("Harvest", "Farm", "C"), 10),
+        new(new("Harvest", "Farm", "A"), 10),
+        new(new("Water", "Farm", "B"), 10)
+    };
+
+    IReadOnlyList<WorkerTargetAssignment> first =
+        DeterministicWorkforceScheduler.Partition(workers, targets);
+    IReadOnlyList<WorkerTargetAssignment> second =
+        DeterministicWorkforceScheduler.Partition(workers.Reverse(), targets.Reverse());
+
+    Equal("Alex", first[0].WorkerId);
+    Equal("Leah", first[1].WorkerId);
+    Equal(string.Join(",", first[0].Targets.Select(target => target.TargetId)),
+        string.Join(",", second[0].Targets.Select(target => target.TargetId)));
+    Equal(string.Join(",", first[1].Targets.Select(target => target.TargetId)),
+        string.Join(",", second[1].Targets.Select(target => target.TargetId)));
+    Equal(3, first.Sum(assignment => assignment.Targets.Count));
+
+    IReadOnlyList<WorkerTargetAssignment> single =
+        DeterministicWorkforceScheduler.Partition(new[] { workers[0] }, targets);
+    Equal(3, single[0].Targets.Count);
+}
+
+static void TestWorkforceClaimOwnership()
+{
+    WorkTargetIdentity first = new("Harvest", "Farm", "crop-1");
+    WorkTargetIdentity second = new("Water", "Farm", "crop-2");
+    DeterministicWorkClaimLedger ledger = new();
+
+    Equal(true, ledger.TryClaim(first, "Alex"));
+    Equal(false, ledger.TryClaim(first, "Leah"));
+    Equal(true, ledger.TryCommit(first, "Alex"));
+    Equal(true, ledger.TryClaim(second, "Alex"));
+    Equal(1, ledger.ReleaseUncommitted("Alex"));
+    Equal(1, ledger.Snapshot().Count);
+    Equal(WorkClaimState.Committed, ledger.Snapshot()[0].State);
+    Equal(false, ledger.TryClaim(first, "Leah"));
+    Equal(true, ledger.TryClaim(second, "Leah"));
+}
+
+static void TestWorkforceFinalReconciliation()
+{
+    WorkTargetIdentity committed = new("Harvest", "Farm", "crop-1");
+    WorkTargetIdentity interrupted = new("Water", "Farm", "crop-2");
+    DeterministicWorkClaimLedger ledger = new();
+    Equal(true, ledger.TryClaim(committed, "Alex"));
+    Equal(true, ledger.TryCommit(committed, "Alex"));
+    Equal(true, ledger.TryClaim(interrupted, "Alex"));
+    Equal(1, ledger.ReleaseUncommitted("Alex"));
+
+    SchedulableWorkTarget[] discovered =
+    {
+        new(committed, 10),
+        new(interrupted, 10)
+    };
+    SchedulableWorkTarget[] available = discovered
+        .Where(target => !ledger.IsClaimed(target.Identity))
+        .ToArray();
+    IReadOnlyList<WorkerTargetAssignment> reconciled =
+        DeterministicWorkforceScheduler.Partition(
+            new[] { new SchedulableWorker("Leah", 1m) },
+            available);
+
+    Equal(1, reconciled[0].Targets.Count);
+    Equal("crop-2", reconciled[0].Targets[0].TargetId);
+}
+
+static void TestWorkforceSettlementAggregation()
+{
+    Equal(900, WorkforceSettlementPolicy.GetAggregateCharge(new[]
+    {
+        new WorkerWageSettlement("Alex", 700, 600),
+        new WorkerWageSettlement("Leah", 400, 300)
+    }));
+    Throws<ArgumentException>(() => WorkforceSettlementPolicy.GetAggregateCharge(new[]
+    {
+        new WorkerWageSettlement("Alex", 700, 600),
+        new WorkerWageSettlement("Alex", 400, 300)
+    }));
 }
 
 static void TestRecurringContractStateValidation()
