@@ -256,6 +256,10 @@ static void TestFarmWorkStageOrder()
             FarmWorkStage.Watering,
             FarmWorkPass.Reconciliation,
             "Acting"));
+    Throws<ArgumentException>(() => FarmWorkPassPolicy.FormatRuntimePhase(
+        FarmWorkStage.Harvesting,
+        FarmWorkPass.Initial,
+        " "));
 }
 
 static void TestRecurringContractStateValidation()
@@ -2560,4 +2564,20 @@ static void Equal<T>(T expected, T actual, [CallerLineNumber] int line = 0)
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
         throw new InvalidOperationException($"line={line}, expected={expected}, actual={actual}");
+}
+
+static void Throws<TException>(Action action, [CallerLineNumber] int line = 0)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException(
+        $"line={line}, expected exception={typeof(TException).Name}");
 }
