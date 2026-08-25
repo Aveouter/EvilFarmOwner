@@ -1,6 +1,6 @@
 # Vanilla animal-operation matrix
 
-Outdoor main-farm petting now participates in complete shifts with stable animal IDs, host-owned mutation, non-destructive routes, and final reconciliation. Barn/coop interiors and the remaining rows stay disabled until each has a location-aware route, commit check, and recovery path. This matrix records the vanilla state that must be preserved.
+Outdoor and barn/coop petting now participate in complete shifts with stable animal IDs, host-owned mutation, non-destructive routes, and final reconciliation. Workers use each building's human door and original interior warp, then return through the same entrance. Empty troughs are filled one at a time from real silo hay with rollback on placement failure. Product rows stay disabled until each has a commit check and lossless recovery path.
 
 | Operation | Eligibility | Required state transition | Product/storage rule |
 | --- | --- | --- | --- |

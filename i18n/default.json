@@ -154,7 +154,7 @@
   "contract.confirm.rest-day.farm-work": "Authorize triple pay · all farm work",
   "farm-work.start.too-late": "Complete farm-work shifts must start by 4:00 PM.",
   "farm-work.start.no-work": "There is no supported harvest, watering, animal-petting, or chest-sorting work ready on the main farm.",
-  "animal-care.start.no-work": "There are no awake, unpetted animals outdoors on the main farm.",
+  "animal-care.start.no-work": "There are no awake, unpetted animals or empty troughs available for this shift.",
   "farm-work.hud.completed": "{{worker}} completed the farm-work shift: {{stages}} active stage(s), {{work}} action(s). Paid {{paid}}g / {{hours}}h; refunded {{refunded}}g.",
   "farm-work.hud.stopped": "{{worker}} stopped the farm-work shift: {{reason}} Completed {{stages}} stage(s), {{work}} action(s). Paid {{paid}}g / {{hours}}h; refunded {{refunded}}g.",
   "contract.start.host-only": "Only the host player can start an NPC work contract.",
