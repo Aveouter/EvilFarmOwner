@@ -54,3 +54,17 @@ Every multiplayer peer must install the exact same version.
 - Source tree: `{{SOURCE_TREE}}`
 - Downloaded-asset SHA-256: `{{DOWNLOADED_ZIP_SHA256}}`
 - License: MIT
+
+After publishing, download the public asset into an otherwise clean directory
+and run:
+
+```bash
+./scripts/verify-release-asset.sh \
+  "EvilFarmOwner 0.1.0.zip" \
+  "{{ZIP_SHA256}}" \
+  "0.1.0"
+```
+
+The command must pass against the downloaded bytes before the release Issue is
+closed. It verifies the filename, checksum, package allowlist, embedded manifest,
+license, and absence of development-only or acceptance-test commands.
