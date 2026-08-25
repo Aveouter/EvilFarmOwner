@@ -91,3 +91,31 @@ internal static class MachineHarvestSemantics
             && !hasOutputCollectedRule;
     }
 }
+
+internal static class CrabPotHarvestSemantics
+{
+    public static bool IsReadyTarget(
+        bool showingCatch,
+        bool readyForHarvest,
+        bool hasOutput)
+    {
+        return showingCatch && readyForHarvest && hasOutput;
+    }
+
+    public static int GetOutputStack(
+        int baseStack,
+        bool hasCrabbingBook,
+        double deterministicRoll,
+        bool destinationAcceptsDouble)
+    {
+        if (baseStack <= 0)
+            throw new ArgumentOutOfRangeException(nameof(baseStack));
+        if (deterministicRoll < 0 || deterministicRoll >= 1)
+            throw new ArgumentOutOfRangeException(nameof(deterministicRoll));
+        return hasCrabbingBook
+            && deterministicRoll < 0.25
+            && destinationAcceptsDouble
+                ? checked(baseStack * 2)
+                : baseStack;
+    }
+}

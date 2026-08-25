@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added lossless crab-pot collection with the original deterministic Crabbing Book bonus, fish records, fishing experience, bait/readiness reset, and no automatic rebaiting.
 - Added conservative collection for simple ready vanilla machines, preserving exact output, harvest stats, experience, sprite/reset state, and lossless destinations while excluding collect-time recalculation and continuation machines.
 - Added lossless collection of eggs and other resident-animal loose products plus tool-ready milk and wool, with exact vanilla produce state, locked deterministic destinations, rollback on failed commits, and auto-grabber exclusion.
 - Added safe barn/coop human-door transitions, indoor animal petting, and finite-silo-hay trough feeding to complete shifts.

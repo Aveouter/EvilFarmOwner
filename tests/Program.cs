@@ -82,6 +82,7 @@ List<(string Name, Action Test)> tests = new()
     ("ready tapper target semantics", TestReadyTapperTargetSemantics),
     ("ready fruit-tree target semantics", TestReadyFruitTreeTargetSemantics),
     ("ready machine target semantics", TestReadyMachineTargetSemantics),
+    ("ready crab-pot target semantics", TestReadyCrabPotTargetSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
     ("harvest placement conservation", TestHarvestPlacementConservation),
@@ -1894,6 +1895,22 @@ static void TestReadyMachineTargetSemantics()
         true, true, true, true, true, true, false, false, true, false));
     Equal(false, MachineHarvestSemantics.IsReadyTarget(
         true, true, true, true, true, true, false, false, false, true));
+}
+
+static void TestReadyCrabPotTargetSemantics()
+{
+    Equal(true, CrabPotHarvestSemantics.IsReadyTarget(true, true, true));
+    Equal(false, CrabPotHarvestSemantics.IsReadyTarget(false, true, true));
+    Equal(false, CrabPotHarvestSemantics.IsReadyTarget(true, false, true));
+    Equal(false, CrabPotHarvestSemantics.IsReadyTarget(true, true, false));
+    Equal(2, CrabPotHarvestSemantics.GetOutputStack(1, true, 0.10, true));
+    Equal(1, CrabPotHarvestSemantics.GetOutputStack(1, false, 0.10, true));
+    Equal(1, CrabPotHarvestSemantics.GetOutputStack(1, true, 0.25, true));
+    Equal(1, CrabPotHarvestSemantics.GetOutputStack(1, true, 0.10, false));
+    Throws<ArgumentOutOfRangeException>(() =>
+        CrabPotHarvestSemantics.GetOutputStack(0, true, 0.10, true));
+    Throws<ArgumentOutOfRangeException>(() =>
+        CrabPotHarvestSemantics.GetOutputStack(1, true, 1, true));
 }
 
 static void TestHarvestPlacementConservation()

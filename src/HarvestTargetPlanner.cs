@@ -3,6 +3,7 @@ using StardewModdingAPI;
 using StardewValley;
 using StardewValley.GameData.Machines;
 using StardewValley.Locations;
+using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
 
 namespace EvilFarmOwner;
@@ -21,7 +22,8 @@ internal enum HarvestTargetKind
     Crop,
     Tapper,
     FruitTree,
-    Machine
+    Machine,
+    CrabPot
 }
 
 internal sealed record HarvestTargetPlan(
@@ -292,6 +294,16 @@ internal sealed class HarvestTargetPlanner
             hasOutputCollectedRule);
     }
 
+    public static bool IsReadySupportedCrabPot(GameLocation location, Vector2 tile)
+    {
+        return location.objects.TryGetValue(tile, out StardewValley.Object? value)
+            && value is CrabPot pot
+            && CrabPotHarvestSemantics.IsReadyTarget(
+                pot.tileIndexToShow == 714,
+                pot.readyForHarvest.Value,
+                pot.heldObject.Value is not null);
+    }
+
     public static HarvestTargetKind? GetSupportedTargetKind(GameLocation location, Vector2 tile)
     {
         if (IsMatureSupportedCrop(location, tile))
@@ -300,6 +312,8 @@ internal sealed class HarvestTargetPlanner
             return HarvestTargetKind.Tapper;
         if (IsReadySupportedFruitTree(location, tile))
             return HarvestTargetKind.FruitTree;
+        if (IsReadySupportedCrabPot(location, tile))
+            return HarvestTargetKind.CrabPot;
         if (IsReadySupportedMachine(location, tile))
             return HarvestTargetKind.Machine;
         return null;
