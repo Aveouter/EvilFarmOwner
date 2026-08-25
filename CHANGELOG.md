@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Reserved deterministic multi-worker scheduling with stable target identities, exclusive host-owned claims, efficiency-aware partitioning, and checked per-worker wage aggregation; concurrent dispatch remains disabled pending runtime safety coverage.
+- Defined the vanilla-safe eligibility and conservation rules for daily petting, finite-hay feeding, loose animal products, and tool-harvested milk/wool before animal care joins complete shifts.
 - Added lossless collection of all ready fruit-tree fruit, including vanilla coal conversion for lightning-struck trees.
 - Added one bounded final reconciliation pass across harvest, watering, and chest sorting before a complete shift settles, so work that becomes ready during the initial pass is checked once without allowing an infinite loop.
 - Replaced manual task selection with one complete farm-work shift per hire: harvest ready crops and tappers, water dry crops, then sort ordinary farm chests, skipping empty stages.
