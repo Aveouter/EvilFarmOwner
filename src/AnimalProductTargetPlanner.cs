@@ -135,6 +135,38 @@ internal sealed class AnimalProductTargetPlanner
         return house.objects.Values.Any(item => item.QualifiedItemId == "(BC)165");
     }
 
+    public static bool HasEligibleWork(AnimalHouse house)
+    {
+        if (HasAutoGrabber(house))
+            return false;
+
+        HashSet<string> looseIds = GetLooseProductIds(house);
+        bool hasLooseProduct = house.objects.Values.Any(item =>
+            AnimalProductSourcePolicy.IsEligibleLooseProduct(
+                item.QualifiedItemId,
+                item.bigCraftable.Value,
+                item.CanBeSetDown,
+                looseIds));
+        if (hasLooseProduct)
+            return true;
+
+        return house.animals.Values.Any(animal =>
+        {
+            FarmAnimalData? data = animal.GetAnimalData();
+            return ReferenceEquals(animal.currentLocation, house)
+                && AnimalProducePolicy.TryCreateToolHarvestPlan(
+                    Context.IsMainPlayer,
+                    animal.isAdult(),
+                    animal.currentProduce.Value,
+                    data?.HarvestType == FarmAnimalHarvestType.HarvestWithTool,
+                    data?.HarvestTool,
+                    animal.hasEatenAnimalCracker.Value,
+                    animal.produceQuality.Value,
+                    autoGrabberOwnsProduce: false,
+                    out _) == AnimalCareSkipReason.None;
+        });
+    }
+
     private static HashSet<string> GetLooseProductIds(AnimalHouse house)
     {
         HashSet<string> ids = new(StringComparer.Ordinal);

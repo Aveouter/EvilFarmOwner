@@ -23,6 +23,7 @@ List<(string Name, Action Test)> tests = new()
     ("animal tool produce readiness", TestAnimalToolProduceReadiness),
     ("animal loose product ownership", TestAnimalLooseProductOwnership),
     ("animal product route ordering", TestAnimalProductRouteOrdering),
+    ("animal product commit preflight", TestAnimalProductCommitPreflight),
     ("recurring contract state validation", TestRecurringContractStateValidation),
     ("recurring contract candidate pool", TestRecurringContractCandidatePool),
     ("recurring contract ranking", TestRecurringContractRanking),
@@ -459,6 +460,20 @@ static void TestAnimalProductRouteOrdering()
     Equal("loose:c", ordered[0].StableKey);
     Equal("tool:a", ordered[1].StableKey);
     Equal("tool:b", ordered[2].StableKey);
+}
+
+static void TestAnimalProductCommitPreflight()
+{
+    Equal(AnimalProductTransferFailure.None,
+        AnimalProductCommitPolicy.EvaluatePreflight(true, true, 2, 2));
+    Equal(AnimalProductTransferFailure.SourceChanged,
+        AnimalProductCommitPolicy.EvaluatePreflight(false, true, 99, 1));
+    Equal(AnimalProductTransferFailure.DestinationChanged,
+        AnimalProductCommitPolicy.EvaluatePreflight(true, false, 99, 1));
+    Equal(AnimalProductTransferFailure.InsufficientCapacity,
+        AnimalProductCommitPolicy.EvaluatePreflight(true, true, 1, 2));
+    Throws<ArgumentOutOfRangeException>(() =>
+        AnimalProductCommitPolicy.EvaluatePreflight(true, true, 0, 0));
 }
 
 static void TestRecurringContractStateValidation()
