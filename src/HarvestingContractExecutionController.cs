@@ -612,7 +612,7 @@ internal sealed class HarvestingContractExecutionController
         contract.UnreachableTargets += remaining;
         this.Monitor.Log(
             $"Harvest worker '{contract.Lease.Worker.Name}' exhausted "
-            + $"{decision.MaximumStalledTargets} stalled crops from {origin}; "
+            + $"{decision.MaximumStalledTargets} stalled harvest targets from {origin}; "
             + $"returning with {remaining} harvest target(s) marked unreachable.",
             LogLevel.Warn);
         this.BeginReturn(contract, depositOverflowOnReturn: false);
