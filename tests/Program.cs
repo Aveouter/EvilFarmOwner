@@ -83,6 +83,7 @@ List<(string Name, Action Test)> tests = new()
     ("ready fruit-tree target semantics", TestReadyFruitTreeTargetSemantics),
     ("ready machine target semantics", TestReadyMachineTargetSemantics),
     ("ready crab-pot target semantics", TestReadyCrabPotTargetSemantics),
+    ("ready fish-pond target semantics", TestReadyFishPondTargetSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
     ("harvest placement conservation", TestHarvestPlacementConservation),
@@ -1911,6 +1912,17 @@ static void TestReadyCrabPotTargetSemantics()
         CrabPotHarvestSemantics.GetOutputStack(0, true, 0.10, true));
     Throws<ArgumentOutOfRangeException>(() =>
         CrabPotHarvestSemantics.GetOutputStack(1, true, 1, true));
+}
+
+static void TestReadyFishPondTargetSemantics()
+{
+    Equal(true, FishPondHarvestSemantics.IsReadyTarget(true, true, true));
+    Equal(false, FishPondHarvestSemantics.IsReadyTarget(false, true, true));
+    Equal(false, FishPondHarvestSemantics.IsReadyTarget(true, false, true));
+    Equal(false, FishPondHarvestSemantics.IsReadyTarget(true, true, false));
+    Equal(10, FishPondHarvestSemantics.GetFishingExperience(null));
+    Equal(14, FishPondHarvestSemantics.GetFishingExperience(100));
+    Equal(33, FishPondHarvestSemantics.GetFishingExperience(599));
 }
 
 static void TestHarvestPlacementConservation()

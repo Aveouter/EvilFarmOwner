@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Buildings;
 using StardewValley.GameData.Machines;
 using StardewValley.Locations;
 using StardewValley.Objects;
@@ -23,7 +24,8 @@ internal enum HarvestTargetKind
     Tapper,
     FruitTree,
     Machine,
-    CrabPot
+    CrabPot,
+    FishPond
 }
 
 internal sealed record HarvestTargetPlan(
@@ -304,6 +306,21 @@ internal sealed class HarvestTargetPlanner
                 pot.heldObject.Value is not null);
     }
 
+    public static bool IsReadySupportedFishPond(GameLocation location, Vector2 tile)
+    {
+        if (location is not Farm farm)
+            return false;
+
+        Point point = new((int)tile.X, (int)tile.Y);
+        FishPond? pond = farm.buildings.OfType<FishPond>()
+            .FirstOrDefault(candidate => candidate.GetItemBucketTile().ToPoint() == point);
+        return pond is not null
+            && FishPondHarvestSemantics.IsReadyTarget(
+                pond.daysOfConstructionLeft.Value <= 0,
+                pond.daysUntilUpgrade.Value <= 0,
+                pond.output.Value is not null);
+    }
+
     public static HarvestTargetKind? GetSupportedTargetKind(GameLocation location, Vector2 tile)
     {
         if (IsMatureSupportedCrop(location, tile))
@@ -314,6 +331,8 @@ internal sealed class HarvestTargetPlanner
             return HarvestTargetKind.FruitTree;
         if (IsReadySupportedCrabPot(location, tile))
             return HarvestTargetKind.CrabPot;
+        if (IsReadySupportedFishPond(location, tile))
+            return HarvestTargetKind.FishPond;
         if (IsReadySupportedMachine(location, tile))
             return HarvestTargetKind.Machine;
         return null;
