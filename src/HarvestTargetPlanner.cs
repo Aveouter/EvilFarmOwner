@@ -25,7 +25,8 @@ internal enum HarvestTargetKind
     FruitTree,
     Machine,
     CrabPot,
-    FishPond
+    FishPond,
+    Bush
 }
 
 internal sealed record HarvestTargetPlan(
@@ -321,6 +322,20 @@ internal sealed class HarvestTargetPlanner
                 pond.output.Value is not null);
     }
 
+    public static bool IsReadySupportedBush(GameLocation location, Vector2 tile)
+    {
+        Bush? bush = location.largeTerrainFeatures.OfType<Bush>()
+            .FirstOrDefault(candidate => candidate.Tile == tile);
+        return bush is not null
+            && BushHarvestSemantics.IsReadyTarget(
+                location is Farm,
+                bush.townBush.Value,
+                bush.size.Value,
+                bush.readyForHarvest(),
+                bush.inBloom(),
+                bush.GetShakeOffItem() is not null);
+    }
+
     public static HarvestTargetKind? GetSupportedTargetKind(GameLocation location, Vector2 tile)
     {
         if (IsMatureSupportedCrop(location, tile))
@@ -333,6 +348,8 @@ internal sealed class HarvestTargetPlanner
             return HarvestTargetKind.CrabPot;
         if (IsReadySupportedFishPond(location, tile))
             return HarvestTargetKind.FishPond;
+        if (IsReadySupportedBush(location, tile))
+            return HarvestTargetKind.Bush;
         if (IsReadySupportedMachine(location, tile))
             return HarvestTargetKind.Machine;
         return null;
