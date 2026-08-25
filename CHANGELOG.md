@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added deterministic, non-mutating discovery for loose and tool-harvested animal products, excluding auto-grabber-owned rooms and player-placeable lookalikes until lossless delivery is ready.
 - Added safe barn/coop human-door transitions, indoor animal petting, and finite-silo-hay trough feeding to complete shifts.
 - Added host-owned, non-destructive outdoor animal petting to complete shifts, with stable animal identities, daily idempotency, worker movement, and final reconciliation.
 - Reserved deterministic multi-worker scheduling with stable target identities, exclusive host-owned claims, efficiency-aware partitioning, and checked per-worker wage aggregation; concurrent dispatch remains disabled pending runtime safety coverage.

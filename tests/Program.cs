@@ -21,6 +21,8 @@ List<(string Name, Action Test)> tests = new()
     ("animal petting route ordering", TestAnimalPettingRouteOrdering),
     ("animal finite hay conservation", TestAnimalFiniteHayConservation),
     ("animal tool produce readiness", TestAnimalToolProduceReadiness),
+    ("animal loose product ownership", TestAnimalLooseProductOwnership),
+    ("animal product route ordering", TestAnimalProductRouteOrdering),
     ("recurring contract state validation", TestRecurringContractStateValidation),
     ("recurring contract candidate pool", TestRecurringContractCandidatePool),
     ("recurring contract ranking", TestRecurringContractRanking),
@@ -427,6 +429,36 @@ static void TestAnimalToolProduceReadiness()
         true, true, "184", false, "Milk Pail", false, 0, false, out _));
     Equal(AnimalCareSkipReason.AutoGrabberOwned, AnimalProducePolicy.TryCreateToolHarvestPlan(
         true, true, "184", true, "Milk Pail", false, 0, true, out _));
+}
+
+static void TestAnimalLooseProductOwnership()
+{
+    IReadOnlySet<string> allowed = new HashSet<string> { "(O)176", "(O)174" };
+    Equal(true, AnimalProductSourcePolicy.IsEligibleLooseProduct(
+        "(O)176", false, false, allowed));
+    Equal(false, AnimalProductSourcePolicy.IsEligibleLooseProduct(
+        "(O)176", false, true, allowed));
+    Equal(false, AnimalProductSourcePolicy.IsEligibleLooseProduct(
+        "(O)178", false, false, allowed));
+    Equal(false, AnimalProductSourcePolicy.IsEligibleLooseProduct(
+        "(BC)165", true, false, allowed));
+    Equal(false, AnimalProductSourcePolicy.IsEligibleLooseProduct(
+        "(O)390", false, false, allowed));
+}
+
+static void TestAnimalProductRouteOrdering()
+{
+    AnimalProductRouteOption[] options =
+    {
+        new("tool:b", new(5, 5), new(5, 6), 8),
+        new("tool:a", new(5, 5), new(5, 6), 8),
+        new("loose:c", new(8, 8), new(8, 9), 2)
+    };
+    IReadOnlyList<AnimalProductRouteOption> ordered =
+        AnimalProductTargetPlanner.OrderOptions(options.Reverse());
+    Equal("loose:c", ordered[0].StableKey);
+    Equal("tool:a", ordered[1].StableKey);
+    Equal("tool:b", ordered[2].StableKey);
 }
 
 static void TestRecurringContractStateValidation()
