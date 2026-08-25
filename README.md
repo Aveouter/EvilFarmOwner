@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.1.0-beta.1
+  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.1.0
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 
 `Evil Farm Owner` is a Stardew Valley mod for players who want to turn repetitive farm chores into paid labor.
 
-`v0.1.0-beta.1` is the current public test release. The development branch also includes manually confirmed named chest sorting, but it is not a released or verified feature until its disposable-save acceptance gate passes. Multiplayer uses a host-authoritative protocol, while the real remote host/farmhand matrix and forced storage-recovery matrix remain explicitly unverified. Back up the save before testing and report issues with both peers' SMAPI logs.
+`v0.1.0-beta.1` remains the current public test release. This source branch prepares the stable `v0.1.0` candidate, including manually confirmed named chest sorting, but the candidate must not be merged, tagged, or published until its disposable-save sorting gate, forced storage-recovery matrix, real remote host/farmhand matrix, and final-artifact smoke test all pass. Back up the save before testing and report issues with both peers' SMAPI logs.
 
 Press one key to review only the named adult NPCs who are currently available for hire. NPCs in protected vanilla activities such as chores, exercise, scripted animation, or movement pauses are omitted instead of being interrupted. An available adult NPC can be assigned a visible watering, harvest, or manual chest-sorting contract with an itemized wage, lossless item handling, and a protected return to their original schedule position.
 
@@ -123,7 +123,7 @@ Mods/EvilFarmOwner/config.json
 
 `邪恶农场主` 是一个《星露谷物语》SMAPI Mod。它的核心玩法是：你花钱雇佣农工，把重复农活交给他们处理。
 
-`v0.1.0-beta.1` 是当前公开测试版本。开发分支还加入了手动确认的具名箱子整理，但在一次性存档验收通过前，它还不是已发布或已验证功能。多人协议采用主机权威模式，真实远程主机/农场工矩阵和强制储存恢复矩阵仍明确标记为“未验证”。测试前请备份存档；反馈问题时请同时提供两端 SMAPI 日志。
+`v0.1.0-beta.1` 仍是当前公开测试版本。本源码分支用于准备稳定版 `v0.1.0` 候选，包含手动确认的具名箱子整理；但在一次性存档整理门禁、强制储存恢复矩阵、真实远程主机/农场工矩阵和最终安装包烟雾测试全部通过前，不得合并、打标签或发布。测试前请备份存档；反馈问题时请同时提供两端 SMAPI 日志。
 
 当前名单只显示此刻可以雇佣的具名成年 NPC。正在做家务、锻炼、脚本动画或处于移动暂停等原版活动的 NPC 会直接从名单中隐藏，不会被强行中断。有空的成年 NPC 可以接受可见执行的浇水、收获或手动箱子整理合同；工资会逐项显示，物品会无损处理，NPC 完成后安全返回原位置并恢复日程。
 
@@ -168,7 +168,7 @@ K
 
 具名合同最迟必须在下午 4:00 开始，并受晚上 10:00 安全停止时间约束；同一时间只能执行一份。发布构建不提供瞬时全局工作命令：所有生产环境农场变更都必须经过具名合同。
 
-多人游戏中，主机和已连接的农场工都可以请求浇水、收获或手动箱子整理合同。农场工确认后只会向主机发送带版本的请求，本地绝不会直接改动金币、NPC、作物、货物或箱子。主机会重新检查玩家、工人、资金、作物目标或箱子计划、路线以及存档、日期和版本身份，再把已接受合同、阶段、货物与转移状态、动作和最终结果同步给其他玩家。协议 7 还会验证并保存箱子整理中已完成与已跳过的转移报告。主机会随存档保存有界请求账本和每位请求者的最近结果，重启后把它们绑定到新的网络会话；重试只返回原结果，不会重复扣钱或出工。若恢复记录不兼容、内部不一致或保存时仍有未收尾合同，模组会禁用新合同，而不是猜测恢复。箱子整理仍须通过真实远程多人验收，才能标记为已验证。
+多人游戏中，主机和已连接的农场工都可以请求浇水、收获或手动箱子整理合同。农场工确认后只会向主机发送带版本的请求，本地绝不会直接改动金币、NPC、作物、货物或箱子。主机会重新检查玩家、工人、资金、作物目标或箱子计划、路线以及存档、日期和版本身份，再把已接受合同、阶段、货物与转移状态、动作和最终结果同步给其他玩家。协议 8 还会验证并保存箱子整理中已完成与已跳过的转移报告。主机会随存档保存有界请求账本和每位请求者的最近结果，重启后把它们绑定到新的网络会话；重试只返回原结果，不会重复扣钱或出工。若恢复记录不兼容、内部不一致或保存时仍有未收尾合同，模组会禁用新合同，而不是猜测恢复。箱子整理仍须通过真实远程多人验收，才能标记为已验证。
 
 新配置默认使用 `K`。如果旧配置仍使用 `H` 且安装了 UI Info Suite 2，模组会显示冲突警告；请把 `OpenMenuKey` 改成 `K`，或使用 `efo_roster`。
 
@@ -230,7 +230,7 @@ Mods/EvilFarmOwner/config.json
 
 - Host-authoritative multiplayer is implemented but still requires the release-gate test with a real remote host/farmhand session; split-screen alone is not accepted as proof.
 - Manual named chest sorting is implemented on the development branch but still requires disposable-save single-player and real remote multiplayer acceptance; recurring sorting remains disabled.
-- This beta is not the stable `v0.1.0`; use a backed-up save until the remaining multiplayer and forced-recovery gates pass.
+- Stable `v0.1.0` publication remains blocked until the live sorting, forced-recovery, real multiplayer, and final-artifact smoke gates pass; use a backed-up save with the public beta.
 - Named watering and multi-crop harvest contracts are visible; debris cleanup, fertilizing, planting, and automatic shipping are not part of v0.1.0.
 - Every peer must install the same Evil Farm Owner version; mismatched protocol/save/day/player/task messages are rejected without mutation.
 - Named harvest supports content-classified ordinary player-owned main-farm chests. Persistent overflow is emergency preservation after a storage-triggered stop; special or modded chest subclasses are excluded for safety.
