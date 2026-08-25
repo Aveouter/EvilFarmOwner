@@ -101,3 +101,19 @@ internal static class AnimalProducePolicy
         return AnimalCareSkipReason.None;
     }
 }
+
+internal static class AnimalProductSourcePolicy
+{
+    public static bool IsEligibleLooseProduct(
+        string qualifiedItemId,
+        bool isBigCraftable,
+        bool canBeSetDown,
+        IReadOnlySet<string> allowedProductIds)
+    {
+        return !string.IsNullOrWhiteSpace(qualifiedItemId)
+            && !isBigCraftable
+            && !canBeSetDown
+            && qualifiedItemId != "(O)178"
+            && allowedProductIds.Contains(qualifiedItemId);
+    }
+}

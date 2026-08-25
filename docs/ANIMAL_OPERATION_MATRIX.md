@@ -2,6 +2,8 @@
 
 Outdoor and barn/coop petting now participate in complete shifts with stable animal IDs, host-owned mutation, non-destructive routes, and final reconciliation. Workers use each building's human door and original interior warp, then return through the same entrance. Empty troughs are filled one at a time from real silo hay with rollback on placement failure. Product rows stay disabled until each has a commit check and lossless recovery path.
 
+Product discovery now fails closed around auto-grabbers and recognizes only vanilla-owned sources: tool-ready adult animals, or non-placeable loose objects whose IDs appear in resident drop-over-night animal data. This discovery layer does not remove or deliver products yet.
+
 | Operation | Eligibility | Required state transition | Product/storage rule |
 | --- | --- | --- | --- |
 | Pet | Host, awake animal, `wasPet == false` | Use the normal manual-pet effects once, including the reduced gain after auto-petting, mood/friendship caps, profession effects, farming XP, texture/emote state, and `wasPet` | No item output. A repeated or replayed target is skipped. |
