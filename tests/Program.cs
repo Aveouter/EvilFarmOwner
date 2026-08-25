@@ -17,6 +17,9 @@ List<(string Name, Action Test)> tests = new()
     ("workforce claim ownership", TestWorkforceClaimOwnership),
     ("workforce final reconciliation", TestWorkforceFinalReconciliation),
     ("workforce settlement aggregation", TestWorkforceSettlementAggregation),
+    ("animal petting idempotency", TestAnimalPettingIdempotency),
+    ("animal finite hay conservation", TestAnimalFiniteHayConservation),
+    ("animal tool produce readiness", TestAnimalToolProduceReadiness),
     ("recurring contract state validation", TestRecurringContractStateValidation),
     ("recurring contract candidate pool", TestRecurringContractCandidatePool),
     ("recurring contract ranking", TestRecurringContractRanking),
@@ -355,6 +358,47 @@ static void TestWorkforceSettlementAggregation()
         new WorkerWageSettlement("Alex", 700, 600),
         new WorkerWageSettlement("Alex", 400, 300)
     }));
+}
+
+static void TestAnimalPettingIdempotency()
+{
+    Equal(AnimalCareSkipReason.None,
+        AnimalPettingPolicy.GetSkipReason(true, false, false));
+    Equal(AnimalCareSkipReason.AlreadyPet,
+        AnimalPettingPolicy.GetSkipReason(true, true, false));
+    Equal(AnimalCareSkipReason.Sleeping,
+        AnimalPettingPolicy.GetSkipReason(true, false, true));
+    Equal(AnimalCareSkipReason.NotHost,
+        AnimalPettingPolicy.GetSkipReason(false, false, false));
+}
+
+static void TestAnimalFiniteHayConservation()
+{
+    Equal(0, AnimalFeedingPolicy.GetFillCount(0, 20));
+    Equal(2, AnimalFeedingPolicy.GetFillCount(8, 2));
+    Equal(8, AnimalFeedingPolicy.GetFillCount(8, 20));
+    Throws<ArgumentOutOfRangeException>(() => AnimalFeedingPolicy.GetFillCount(1, -1));
+}
+
+static void TestAnimalToolProduceReadiness()
+{
+    AnimalCareSkipReason ready = AnimalProducePolicy.TryCreateToolHarvestPlan(
+        true, true, "184", true, "Milk Pail", true, 2, false,
+        out AnimalProducePlan? plan);
+    Equal(AnimalCareSkipReason.None, ready);
+    Equal("(O)184", plan!.QualifiedItemId);
+    Equal(2, plan.Stack);
+    Equal(2, plan.Quality);
+    Equal("Milk Pail", plan.RequiredTool);
+
+    Equal(AnimalCareSkipReason.Baby, AnimalProducePolicy.TryCreateToolHarvestPlan(
+        true, false, "184", true, "Milk Pail", false, 0, false, out _));
+    Equal(AnimalCareSkipReason.NoProduce, AnimalProducePolicy.TryCreateToolHarvestPlan(
+        true, true, null, true, "Milk Pail", false, 0, false, out _));
+    Equal(AnimalCareSkipReason.WrongHarvestType, AnimalProducePolicy.TryCreateToolHarvestPlan(
+        true, true, "184", false, "Milk Pail", false, 0, false, out _));
+    Equal(AnimalCareSkipReason.AutoGrabberOwned, AnimalProducePolicy.TryCreateToolHarvestPlan(
+        true, true, "184", true, "Milk Pail", false, 0, true, out _));
 }
 
 static void TestRecurringContractStateValidation()
