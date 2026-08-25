@@ -119,3 +119,21 @@ internal static class CrabPotHarvestSemantics
                 : baseStack;
     }
 }
+
+internal static class FishPondHarvestSemantics
+{
+    public static bool IsReadyTarget(
+        bool constructionComplete,
+        bool upgradeComplete,
+        bool hasOutput)
+    {
+        return constructionComplete && upgradeComplete && hasOutput;
+    }
+
+    public static int GetFishingExperience(int? storeSellPrice)
+    {
+        return 10 + (storeSellPrice.HasValue
+            ? (int)(storeSellPrice.Value * 0.04f)
+            : 0);
+    }
+}

@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Xml;
 using System.Xml.Serialization;
 using StardewValley;
+using StardewValley.Buildings;
 using StardewValley.GameData.Machines;
 using StardewValley.Inventories;
 using StardewValley.ItemTypeDefinitions;
@@ -898,6 +899,7 @@ internal sealed class HarvestingContractExecutionController
             HarvestTargetKind.FruitTree => this.TryApplyFruitTreeHarvest(contract),
             HarvestTargetKind.Machine => this.TryApplyMachineHarvest(contract),
             HarvestTargetKind.CrabPot => this.TryApplyCrabPotHarvest(contract),
+            HarvestTargetKind.FishPond => this.TryApplyFishPondHarvest(contract),
             _ => false
         };
     }
@@ -1138,6 +1140,35 @@ internal sealed class HarvestingContractExecutionController
             item,
             new HashSet<Point>(),
             new HashSet<HarvestChestRouteKey>()) is not null;
+    }
+
+    private bool TryApplyFishPondHarvest(ActiveHarvestContract contract)
+    {
+        Point target = contract.CurrentTarget.TargetTile;
+        FishPond? pond = contract.Farm.buildings.OfType<FishPond>()
+            .FirstOrDefault(candidate => candidate.GetItemBucketTile().ToPoint() == target);
+        if (pond is null
+            || !FishPondHarvestSemantics.IsReadyTarget(
+                pond.daysOfConstructionLeft.Value <= 0,
+                pond.daysUntilUpgrade.Value <= 0,
+                pond.output.Value is not null)
+            || pond.output.Value is not { } output)
+            return false;
+
+        Item collected = output.getOne();
+        collected.Stack = output.Stack;
+        collected.Quality = output.Quality;
+        int? price = collected is StardewValley.Object obj
+            ? obj.sellToStorePrice(-1L)
+            : null;
+        int experience = FishPondHarvestSemantics.GetFishingExperience(price);
+
+        pond.output.Value = null;
+        contract.Requester.gainExperience(1, experience);
+        contract.Farm.playSound("coin", target.ToVector2());
+        this.CaptureHarvestItem(contract, collected, "fish pond");
+        this.ShowHarvestedItem(contract, collected);
+        return true;
     }
 
     private void CaptureHarvestItem(ActiveHarvestContract contract, Item item, string source)
