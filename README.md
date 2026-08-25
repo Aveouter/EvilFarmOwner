@@ -36,6 +36,7 @@
 
 - 浇灌所有能够安全到达的缺水作物；
 - 收获所有能够安全到达的成熟作物，以及树上已经就绪的普通或重型树液采集器产物；
+- 收取能够安全完成原版状态重置的普通生产机器成品；
 - 进入畜棚和鸡舍，抚摸动物、用自有干草补满食槽，并收集鸡蛋、牛奶和羊毛；
 - 按箱子里已有的物品整理普通箱子；
 - 设置每天自动尝试执行的完整农活班次。
@@ -132,7 +133,7 @@ Mods/EvilFarmOwner/config.json
 
 ### 当前限制
 
-- 暂不支持清理杂物、播种、施肥、补充普通生产机器或自动出售；动物自动采集器的内部箱子也不会被本 Mod 接管。
+- 暂不支持清理杂物、播种、施肥、自动补充机器原料或自动出售；需要在收取时重新计算或自动续产的机器，以及动物自动采集器内部箱子，不会被本 Mod 接管。
 - 暂不支持特殊箱子和其他 Mod 添加的箱子。
 - 自动合同与手动雇佣执行同一套完整班次，包括当前可执行的箱子整理。
 - 个别农场布局可能没有安全路线；这种情况下合同会拒绝开始或提前停止。
@@ -152,6 +153,7 @@ Each hire automatically works through these stages in order:
 
 - water every safely reachable dry crop;
 - harvest every safely reachable mature crop and every ready normal or heavy tree tapper;
+- collect outputs from simple ready vanilla machines whose collection state can be preserved safely;
 - enter barns and coops to pet animals, fill troughs from owned silo hay, and collect eggs, milk, and wool;
 - organize ordinary farm chests based on their existing contents;
 - set up a daily automatic complete farm-work shift.
@@ -212,7 +214,7 @@ Most players only need the `K` key. The extra commands help inspect recent work 
 
 ### Current limitations
 
-- No debris clearing, planting, fertilizing, ordinary machine collection/refilling, or automatic shipping. Auto-grabber contents are deliberately excluded from livestock collection.
+- No debris clearing, planting, fertilizing, automatic machine refilling, or automatic shipping. Machines which recalculate or restart on collection and auto-grabber contents are deliberately excluded.
 - No special or modded chest support.
 - Automatic contracts use the same harvest, watering, and chest-sorting sequence as manual hiring.
 - Some farm layouts may not provide a safe route; the contract will refuse or stop instead of breaking objects.

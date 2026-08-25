@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.GameData.Machines;
 using StardewValley.Locations;
 using StardewValley.TerrainFeatures;
 
@@ -19,7 +20,8 @@ internal enum HarvestTargetKind
 {
     Crop,
     Tapper,
-    FruitTree
+    FruitTree,
+    Machine
 }
 
 internal sealed record HarvestTargetPlan(
@@ -265,6 +267,31 @@ internal sealed class HarvestTargetPlanner
             fruitSlots);
     }
 
+    public static bool IsReadySupportedMachine(GameLocation location, Vector2 tile)
+    {
+        if (!location.objects.TryGetValue(tile, out StardewValley.Object? machine))
+            return false;
+
+        MachineData? data = machine.GetMachineData();
+        bool hasRecalculateOnCollectRule = data?.OutputRules?.Any(
+            rule => rule.RecalculateOnCollect) == true;
+        bool hasOutputCollectedRule = data?.OutputRules?.Any(rule =>
+            rule.Triggers?.Any(trigger =>
+                trigger.Trigger.HasFlag(MachineOutputTrigger.OutputCollected)) == true) == true;
+        return MachineHarvestSemantics.IsReadyTarget(
+            machine.GetType() == typeof(StardewValley.Object),
+            int.TryParse(machine.ItemId, out _),
+            machine.bigCraftable.Value,
+            machine.readyForHarvest.Value,
+            machine.heldObject.Value is StardewValley.Object
+                and not StardewValley.Objects.Chest,
+            data is not null,
+            data?.IsIncubator == true,
+            machine.IsTapper(),
+            hasRecalculateOnCollectRule,
+            hasOutputCollectedRule);
+    }
+
     public static HarvestTargetKind? GetSupportedTargetKind(GameLocation location, Vector2 tile)
     {
         if (IsMatureSupportedCrop(location, tile))
@@ -273,6 +300,8 @@ internal sealed class HarvestTargetPlanner
             return HarvestTargetKind.Tapper;
         if (IsReadySupportedFruitTree(location, tile))
             return HarvestTargetKind.FruitTree;
+        if (IsReadySupportedMachine(location, tile))
+            return HarvestTargetKind.Machine;
         return null;
     }
 

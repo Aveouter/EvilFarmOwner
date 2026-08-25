@@ -64,3 +64,30 @@ internal static class FruitTreeHarvestSemantics
         return struckByLightning;
     }
 }
+
+internal static class MachineHarvestSemantics
+{
+    public static bool IsReadyTarget(
+        bool isExactVanillaObject,
+        bool hasNumericVanillaId,
+        bool isBigCraftable,
+        bool isReady,
+        bool hasPlainObjectOutput,
+        bool hasMachineData,
+        bool isIncubator,
+        bool isTapper,
+        bool recalculatesOnCollect,
+        bool hasOutputCollectedRule)
+    {
+        return isExactVanillaObject
+            && hasNumericVanillaId
+            && isBigCraftable
+            && isReady
+            && hasPlainObjectOutput
+            && hasMachineData
+            && !isIncubator
+            && !isTapper
+            && !recalculatesOnCollect
+            && !hasOutputCollectedRule;
+    }
+}
