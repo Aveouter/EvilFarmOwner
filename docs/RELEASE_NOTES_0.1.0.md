@@ -52,7 +52,7 @@ Every multiplayer peer must install the exact same version.
 
 ## Integrity / 完整性
 
-- Asset: `EvilFarmOwner 0.1.0.zip`
+- GitHub asset: `EvilFarmOwner.0.1.0.zip` (the local build output uses spaces; GitHub normalizes them to dots).
 - SHA-256: recorded in the published GitHub Release after upload and download verification.
 - Source commit and tree: recorded in the published GitHub Release.
 - Downloaded-asset SHA-256: must exactly match the uploaded-asset SHA-256.
@@ -60,6 +60,7 @@ Every multiplayer peer must install the exact same version.
 
 After publishing, download the public asset into an otherwise clean directory
 and run `scripts/verify-release-asset.sh` with the checksum recorded in the
-GitHub Release. The command verifies the filename, checksum, package allowlist,
-embedded manifest, license, and absence of development-only or acceptance-test
-commands.
+GitHub Release. The verifier accepts both the local space-separated build name
+and GitHub's normalized dotted download name, and verifies the checksum, package
+allowlist, embedded manifest, license, and absence of development-only or
+acceptance-test commands.
