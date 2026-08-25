@@ -14,6 +14,7 @@ internal sealed class FarmWorkContractExecutionController
     private readonly WorkerRosterService WorkerRoster;
     private readonly HarvestingContractExecutionController Harvesting;
     private readonly WateringContractExecutionController Watering;
+    private readonly AnimalCareContractExecutionController AnimalCare;
     private readonly StorageSortContractExecutionController StorageSorting;
     private ActiveFarmWorkShift? ActiveShift;
     private NamedContractCompletionState? LastCompletion;
@@ -24,6 +25,7 @@ internal sealed class FarmWorkContractExecutionController
         WorkerRosterService workerRoster,
         HarvestingContractExecutionController harvesting,
         WateringContractExecutionController watering,
+        AnimalCareContractExecutionController animalCare,
         StorageSortContractExecutionController storageSorting)
     {
         this.Translation = translation;
@@ -31,6 +33,7 @@ internal sealed class FarmWorkContractExecutionController
         this.WorkerRoster = workerRoster;
         this.Harvesting = harvesting;
         this.Watering = watering;
+        this.AnimalCare = animalCare;
         this.StorageSorting = storageSorting;
     }
 
@@ -177,6 +180,7 @@ internal sealed class FarmWorkContractExecutionController
         {
             FarmWorkStage.Harvesting => this.Harvesting.GetRuntimeState(),
             FarmWorkStage.Watering => this.Watering.GetRuntimeState(),
+            FarmWorkStage.AnimalCare => this.AnimalCare.GetRuntimeState(),
             FarmWorkStage.StorageSorting => this.StorageSorting.GetRuntimeState(),
             _ => null
         };
@@ -212,6 +216,7 @@ internal sealed class FarmWorkContractExecutionController
             {
                 FarmWorkStage.Harvesting => this.Harvesting.TryStartManaged(shift.Context),
                 FarmWorkStage.Watering => this.Watering.TryStartManaged(shift.Context),
+                FarmWorkStage.AnimalCare => this.AnimalCare.TryStartManaged(shift.Context),
                 FarmWorkStage.StorageSorting => this.StorageSorting.TryStartManaged(shift.Context),
                 _ => false
             };
@@ -268,6 +273,7 @@ internal sealed class FarmWorkContractExecutionController
         {
             FarmWorkStage.Harvesting => this.Harvesting.LastStartFailureKey,
             FarmWorkStage.Watering => this.Watering.LastStartFailureKey,
+            FarmWorkStage.AnimalCare => this.AnimalCare.LastStartFailureKey,
             FarmWorkStage.StorageSorting => this.StorageSorting.LastStartFailureKey,
             _ => null
         };
@@ -279,6 +285,7 @@ internal sealed class FarmWorkContractExecutionController
         {
             FarmWorkStage.Harvesting => this.Harvesting.ConsumeCompletion(),
             FarmWorkStage.Watering => this.Watering.ConsumeCompletion(),
+            FarmWorkStage.AnimalCare => this.AnimalCare.ConsumeCompletion(),
             FarmWorkStage.StorageSorting => this.StorageSorting.ConsumeCompletion(),
             _ => null
         };

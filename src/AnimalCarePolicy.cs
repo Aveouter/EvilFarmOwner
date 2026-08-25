@@ -19,6 +19,8 @@ internal sealed record AnimalProducePlan(
     int Quality,
     string RequiredTool);
 
+internal sealed record ManualPetGains(int Friendship, int Happiness);
+
 internal static class AnimalPettingPolicy
 {
     public static AnimalCareSkipReason GetSkipReason(
@@ -33,6 +35,17 @@ internal static class AnimalPettingPolicy
         if (isSleeping)
             return AnimalCareSkipReason.Sleeping;
         return AnimalCareSkipReason.None;
+    }
+
+    public static ManualPetGains GetManualPetGains(
+        bool wasAutoPet,
+        bool hasHappinessProfession,
+        int happinessDrain)
+    {
+        int baseHappiness = Math.Max(5, 30 + happinessDrain);
+        return new ManualPetGains(
+            (wasAutoPet ? 7 : 15) + (hasHappinessProfession ? 15 : 0),
+            baseHappiness * (hasHappinessProfession ? 2 : 1));
     }
 }
 

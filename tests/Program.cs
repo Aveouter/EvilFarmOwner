@@ -18,6 +18,7 @@ List<(string Name, Action Test)> tests = new()
     ("workforce final reconciliation", TestWorkforceFinalReconciliation),
     ("workforce settlement aggregation", TestWorkforceSettlementAggregation),
     ("animal petting idempotency", TestAnimalPettingIdempotency),
+    ("animal petting route ordering", TestAnimalPettingRouteOrdering),
     ("animal finite hay conservation", TestAnimalFiniteHayConservation),
     ("animal tool produce readiness", TestAnimalToolProduceReadiness),
     ("recurring contract state validation", TestRecurringContractStateValidation),
@@ -221,7 +222,8 @@ static void TestFarmWorkStageOrder()
 {
     Equal(FarmWorkStage.Harvesting, FarmWorkStagePolicy.GetNext(null));
     Equal(FarmWorkStage.Watering, FarmWorkStagePolicy.GetNext(FarmWorkStage.Harvesting));
-    Equal(FarmWorkStage.StorageSorting, FarmWorkStagePolicy.GetNext(FarmWorkStage.Watering));
+    Equal(FarmWorkStage.AnimalCare, FarmWorkStagePolicy.GetNext(FarmWorkStage.Watering));
+    Equal(FarmWorkStage.StorageSorting, FarmWorkStagePolicy.GetNext(FarmWorkStage.AnimalCare));
     Equal(FarmWorkStage.Complete, FarmWorkStagePolicy.GetNext(FarmWorkStage.StorageSorting));
     Equal(true, FarmWorkStagePolicy.IsEmptyStageFailure(
         FarmWorkStage.Harvesting,
@@ -229,6 +231,9 @@ static void TestFarmWorkStageOrder()
     Equal(true, FarmWorkStagePolicy.IsEmptyStageFailure(
         FarmWorkStage.Watering,
         "contract.start.no-dry-crop"));
+    Equal(true, FarmWorkStagePolicy.IsEmptyStageFailure(
+        FarmWorkStage.AnimalCare,
+        "animal-care.start.no-work"));
     Equal(true, FarmWorkStagePolicy.IsEmptyStageFailure(
         FarmWorkStage.StorageSorting,
         "storage-sort.start.no-work"));
@@ -245,19 +250,19 @@ static void TestFarmWorkStageOrder()
         FarmWorkPass.Reconciliation,
         out FarmWorkPass terminal));
     Equal(FarmWorkPass.Reconciliation, terminal);
-    Equal(6, FarmWorkPassPolicy.OrderedSteps.Count);
+    Equal(8, FarmWorkPassPolicy.OrderedSteps.Count);
     Equal(
         (FarmWorkPass.Initial, FarmWorkStage.Harvesting),
         FarmWorkPassPolicy.OrderedSteps[0]);
     Equal(
         (FarmWorkPass.Initial, FarmWorkStage.StorageSorting),
-        FarmWorkPassPolicy.OrderedSteps[2]);
-    Equal(
-        (FarmWorkPass.Reconciliation, FarmWorkStage.Harvesting),
         FarmWorkPassPolicy.OrderedSteps[3]);
     Equal(
+        (FarmWorkPass.Reconciliation, FarmWorkStage.Harvesting),
+        FarmWorkPassPolicy.OrderedSteps[4]);
+    Equal(
         (FarmWorkPass.Reconciliation, FarmWorkStage.StorageSorting),
-        FarmWorkPassPolicy.OrderedSteps[5]);
+        FarmWorkPassPolicy.OrderedSteps[7]);
     Equal(
         "Watering/Reconciliation/Acting",
         FarmWorkPassPolicy.FormatRuntimePhase(
@@ -370,6 +375,29 @@ static void TestAnimalPettingIdempotency()
         AnimalPettingPolicy.GetSkipReason(true, false, true));
     Equal(AnimalCareSkipReason.NotHost,
         AnimalPettingPolicy.GetSkipReason(false, false, false));
+    Equal(new ManualPetGains(15, 30),
+        AnimalPettingPolicy.GetManualPetGains(false, false, 0));
+    Equal(new ManualPetGains(7, 30),
+        AnimalPettingPolicy.GetManualPetGains(true, false, 0));
+    Equal(new ManualPetGains(30, 60),
+        AnimalPettingPolicy.GetManualPetGains(false, true, 0));
+    Equal(new ManualPetGains(30, 10),
+        AnimalPettingPolicy.GetManualPetGains(false, true, -40));
+}
+
+static void TestAnimalPettingRouteOrdering()
+{
+    AnimalPettingRouteOption[] options =
+    {
+        new(9, new(5, 5), new(5, 6), 8),
+        new(8, new(5, 5), new(5, 6), 8),
+        new(7, new(8, 8), new(8, 9), 2)
+    };
+    IReadOnlyList<AnimalPettingRouteOption> ordered =
+        AnimalPettingTargetPlanner.OrderOptions(options.Reverse());
+    Equal(7L, ordered[0].AnimalId);
+    Equal(8L, ordered[1].AnimalId);
+    Equal(9L, ordered[2].AnimalId);
 }
 
 static void TestAnimalFiniteHayConservation()

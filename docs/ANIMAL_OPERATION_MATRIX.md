@@ -1,6 +1,6 @@
 # Vanilla animal-operation matrix
 
-Animal care will become a complete-shift stage only after each row below has a location-aware route, stable identity, host-owned mutation, commit check, and recovery path. This matrix records the vanilla state that must be preserved.
+Outdoor main-farm petting now participates in complete shifts with stable animal IDs, host-owned mutation, non-destructive routes, and final reconciliation. Barn/coop interiors and the remaining rows stay disabled until each has a location-aware route, commit check, and recovery path. This matrix records the vanilla state that must be preserved.
 
 | Operation | Eligibility | Required state transition | Product/storage rule |
 | --- | --- | --- | --- |

@@ -15,6 +15,7 @@ public sealed class ModEntry : Mod
     private WorkerRosterService? WorkerRoster;
     private WateringContractExecutionController? WateringContracts;
     private HarvestingContractExecutionController? HarvestingContracts;
+    private AnimalCareContractExecutionController? AnimalCareContracts;
     private StorageSortRecoveryManager? StorageSortRecovery;
     private StorageSortContractExecutionController? StorageSortContracts;
     private FarmWorkContractExecutionController? FarmWorkContracts;
@@ -37,6 +38,7 @@ public sealed class ModEntry : Mod
             this.Monitor,
             this.WorkerRoster,
             this.AcceptanceFaults);
+        this.AnimalCareContracts = new AnimalCareContractExecutionController(this.Monitor);
         this.StorageSortRecovery = new StorageSortRecoveryManager(this.Monitor);
         this.StorageSortContracts = new StorageSortContractExecutionController(
             helper.Translation,
@@ -49,6 +51,7 @@ public sealed class ModEntry : Mod
             this.WorkerRoster,
             this.HarvestingContracts,
             this.WateringContracts,
+            this.AnimalCareContracts,
             this.StorageSortContracts);
         this.MultiplayerContracts = new MultiplayerContractCoordinator(
             helper,
@@ -273,6 +276,7 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.Update();
         this.HarvestingContracts?.Update();
+        this.AnimalCareContracts?.Update();
         this.StorageSortContracts?.Update();
         this.FarmWorkContracts?.Update();
         this.StorageSortRecovery?.Update();
@@ -284,6 +288,7 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.OnDayEnding();
         this.HarvestingContracts?.OnDayEnding();
+        this.AnimalCareContracts?.OnDayEnding();
         this.StorageSortContracts?.OnSaving();
         this.FarmWorkContracts?.OnDayEnding();
         this.MultiplayerContracts?.Update();
@@ -303,6 +308,7 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.OnDayEnding();
         this.HarvestingContracts?.OnSaving();
+        this.AnimalCareContracts?.OnDayEnding();
         this.StorageSortContracts?.OnSaving();
         this.FarmWorkContracts?.OnDayEnding();
         this.MultiplayerContracts?.Update();
@@ -314,6 +320,7 @@ public sealed class ModEntry : Mod
     {
         this.WateringContracts?.OnReturnedToTitle();
         this.HarvestingContracts?.OnReturnedToTitle();
+        this.AnimalCareContracts?.OnReturnedToTitle();
         this.StorageSortContracts?.OnReturnedToTitle();
         this.FarmWorkContracts?.OnReturnedToTitle();
         this.StorageSortRecovery?.OnReturnedToTitle();

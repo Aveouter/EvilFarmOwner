@@ -6,6 +6,7 @@ internal enum FarmWorkStage
 {
     Harvesting,
     Watering,
+    AnimalCare,
     StorageSorting,
     Complete
 }
@@ -30,6 +31,7 @@ internal static class FarmWorkStagePolicy
     {
         FarmWorkStage.Harvesting,
         FarmWorkStage.Watering,
+        FarmWorkStage.AnimalCare,
         FarmWorkStage.StorageSorting
     };
 
@@ -52,6 +54,7 @@ internal static class FarmWorkStagePolicy
         {
             FarmWorkStage.Harvesting => failureKey == "harvest.start.no-mature-crop",
             FarmWorkStage.Watering => failureKey == "contract.start.no-dry-crop",
+            FarmWorkStage.AnimalCare => failureKey == "animal-care.start.no-work",
             FarmWorkStage.StorageSorting => failureKey is "storage-sort.start.no-work"
                 or "storage-sort.start.no-chest",
             _ => false
