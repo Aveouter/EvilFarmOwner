@@ -1,15 +1,19 @@
 # Evil Farm Owner v0.1.0
 
-> **Stable release candidate / 稳定版候选**
+> **Maintainer-forced stable release / 维护者强制正式发布**
 >
-> Do not publish this candidate until the linked single-player sorting, forced
-> storage-recovery, real two-process multiplayer, and final packaged-artifact
-> smoke gates are complete. Replace the integrity placeholders only with hashes
-> from the audited merge commit and the asset downloaded from GitHub Releases.
+> The maintainer explicitly authorized publishing v0.1.0 before every manual
+> gate was complete. Deterministic source checks, tests, a clean Release build,
+> package allowlist verification, and a downloaded-asset checksum audit still
+> must pass. Forced storage-recovery scenarios B/C, real two-process
+> multiplayer, and the final in-game exact-artifact smoke test remain
+> unverified. This is an explicit release-risk acceptance, not evidence that
+> those gates passed.
 >
-> 在具名单机箱子整理、强制储存恢复、真实双进程多人及最终发布包烟雾门禁全部
-> 完成前，不得发布此候选。完整性占位符只能替换为审计后合并提交生成、并从
-> GitHub Releases 回下载验证的实际值。
+> 维护者已明确授权在全部人工门禁完成前发布 v0.1.0。确定性源码检查、测试、
+> 干净 Release 构建、发布包白名单校验和回下载哈希审计仍必须通过。强制储存
+> 恢复场景 B/C、真实双进程多人及最终游戏内精确发布包烟雾测试仍未验证。
+> 这是明确接受发布风险，不代表这些门禁已经通过。
 
 ## 中文
 
@@ -49,22 +53,13 @@ Every multiplayer peer must install the exact same version.
 ## Integrity / 完整性
 
 - Asset: `EvilFarmOwner 0.1.0.zip`
-- SHA-256: `{{ZIP_SHA256}}`
-- Source commit: `{{SOURCE_COMMIT}}`
-- Source tree: `{{SOURCE_TREE}}`
-- Downloaded-asset SHA-256: `{{DOWNLOADED_ZIP_SHA256}}`
+- SHA-256: recorded in the published GitHub Release after upload and download verification.
+- Source commit and tree: recorded in the published GitHub Release.
+- Downloaded-asset SHA-256: must exactly match the uploaded-asset SHA-256.
 - License: MIT
 
 After publishing, download the public asset into an otherwise clean directory
-and run:
-
-```bash
-./scripts/verify-release-asset.sh \
-  "EvilFarmOwner 0.1.0.zip" \
-  "{{ZIP_SHA256}}" \
-  "0.1.0"
-```
-
-The command must pass against the downloaded bytes before the release Issue is
-closed. It verifies the filename, checksum, package allowlist, embedded manifest,
-license, and absence of development-only or acceptance-test commands.
+and run `scripts/verify-release-asset.sh` with the checksum recorded in the
+GitHub Release. The command verifies the filename, checksum, package allowlist,
+embedded manifest, license, and absence of development-only or acceptance-test
+commands.
