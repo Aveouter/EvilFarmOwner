@@ -70,4 +70,3 @@ Warnings occupy one contextual line above the buttons and appear only when confi
 - Keyboard/controller: default focus is the first worker row on the roster and Confirm on an affordable confirmation; directional neighbors follow the screen order.
 - Page changes rebuild row hit boxes and focus the first row on the new page.
 - Escape/controller Back returns one level without starting work.
-
