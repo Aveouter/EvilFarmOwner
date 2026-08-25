@@ -892,6 +892,7 @@ internal sealed class HarvestingContractExecutionController
         {
             HarvestTargetKind.Crop => this.TryApplyCropHarvest(contract),
             HarvestTargetKind.Tapper => this.TryApplyTapperHarvest(contract),
+            HarvestTargetKind.FruitTree => this.TryApplyFruitTreeHarvest(contract),
             _ => false
         };
     }
@@ -958,6 +959,43 @@ internal sealed class HarvestingContractExecutionController
 
         this.CaptureHarvestItem(contract, collected, "tapper");
         this.ShowHarvestedItem(contract, collected);
+        return true;
+    }
+
+    private bool TryApplyFruitTreeHarvest(ActiveHarvestContract contract)
+    {
+        Vector2 targetTile = new(contract.CurrentTarget.TargetTile.X, contract.CurrentTarget.TargetTile.Y);
+        if (!HarvestTargetPlanner.IsReadySupportedFruitTree(contract.Farm, targetTile)
+            || !contract.Farm.terrainFeatures.TryGetValue(targetTile, out TerrainFeature? feature)
+            || feature is not FruitTree tree)
+            return false;
+
+        bool producesCoal = FruitTreeHarvestSemantics.ProducesCoal(
+            tree.struckByLightningCountdown.Value > 0);
+        List<Item> collected = new();
+        foreach (Item? fruit in tree.fruit)
+        {
+            if (fruit is null)
+                continue;
+
+            if (producesCoal)
+            {
+                collected.Add(ItemRegistry.Create("(O)382"));
+                continue;
+            }
+
+            Item exactFruit = fruit.getOne();
+            exactFruit.Stack = fruit.Stack;
+            collected.Add(exactFruit);
+        }
+
+        if (collected.Count == 0)
+            return false;
+
+        tree.fruit.Clear();
+        foreach (Item item in collected)
+            this.CaptureHarvestItem(contract, item, producesCoal ? "lightning-struck fruit tree" : "fruit tree");
+        this.ShowHarvestedItem(contract, collected[0]);
         return true;
     }
 

@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using StardewValley;
 using StardewValley.Characters;
+using StardewValley.TerrainFeatures;
 
 namespace EvilFarmOwner;
 
@@ -43,5 +44,23 @@ internal static class TapperHarvestSemantics
         bool readyForHarvest)
     {
         return isTapper && attachedToTree && hasOutput && readyForHarvest;
+    }
+}
+
+internal static class FruitTreeHarvestSemantics
+{
+    public static bool IsReadyTarget(
+        int growthStage,
+        bool isStump,
+        int fruitSlots)
+    {
+        return growthStage >= FruitTree.treeStage
+            && !isStump
+            && fruitSlots > 0;
+    }
+
+    public static bool ProducesCoal(bool struckByLightning)
+    {
+        return struckByLightning;
     }
 }

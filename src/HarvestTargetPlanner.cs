@@ -18,7 +18,8 @@ internal enum HarvestPlanFailure
 internal enum HarvestTargetKind
 {
     Crop,
-    Tapper
+    Tapper,
+    FruitTree
 }
 
 internal sealed record HarvestTargetPlan(
@@ -251,12 +252,27 @@ internal sealed class HarvestTargetPlanner
             readyForHarvest);
     }
 
+    public static bool IsReadySupportedFruitTree(GameLocation location, Vector2 tile)
+    {
+        if (!location.terrainFeatures.TryGetValue(tile, out TerrainFeature? feature)
+            || feature is not FruitTree tree)
+            return false;
+
+        int fruitSlots = tree.fruit.Count(item => item is not null);
+        return FruitTreeHarvestSemantics.IsReadyTarget(
+            tree.growthStage.Value,
+            tree.stump.Value,
+            fruitSlots);
+    }
+
     public static HarvestTargetKind? GetSupportedTargetKind(GameLocation location, Vector2 tile)
     {
         if (IsMatureSupportedCrop(location, tile))
             return HarvestTargetKind.Crop;
         if (IsReadySupportedTapper(location, tile))
             return HarvestTargetKind.Tapper;
+        if (IsReadySupportedFruitTree(location, tile))
+            return HarvestTargetKind.FruitTree;
         return null;
     }
 

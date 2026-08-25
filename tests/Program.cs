@@ -69,6 +69,7 @@ List<(string Name, Action Test)> tests = new()
     ("harvest chest release deferral", TestHarvestChestReleaseDeferral),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("ready tapper target semantics", TestReadyTapperTargetSemantics),
+    ("ready fruit-tree target semantics", TestReadyFruitTreeTargetSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
     ("harvest placement conservation", TestHarvestPlacementConservation),
@@ -1635,6 +1636,32 @@ static void TestReadyTapperTargetSemantics()
     Equal(false, TapperHarvestSemantics.IsReadyTarget(true, false, true, true));
     Equal(false, TapperHarvestSemantics.IsReadyTarget(true, true, false, true));
     Equal(false, TapperHarvestSemantics.IsReadyTarget(true, true, true, false));
+}
+
+static void TestReadyFruitTreeTargetSemantics()
+{
+    Equal(true, FruitTreeHarvestSemantics.IsReadyTarget(
+        growthStage: 4,
+        isStump: false,
+        fruitSlots: 1));
+    Equal(true, FruitTreeHarvestSemantics.IsReadyTarget(
+        growthStage: 4,
+        isStump: false,
+        fruitSlots: 3));
+    Equal(false, FruitTreeHarvestSemantics.IsReadyTarget(
+        growthStage: 3,
+        isStump: false,
+        fruitSlots: 1));
+    Equal(false, FruitTreeHarvestSemantics.IsReadyTarget(
+        growthStage: 4,
+        isStump: true,
+        fruitSlots: 1));
+    Equal(false, FruitTreeHarvestSemantics.IsReadyTarget(
+        growthStage: 4,
+        isStump: false,
+        fruitSlots: 0));
+    Equal(false, FruitTreeHarvestSemantics.ProducesCoal(struckByLightning: false));
+    Equal(true, FruitTreeHarvestSemantics.ProducesCoal(struckByLightning: true));
 }
 
 static void TestHarvestPlacementConservation()
