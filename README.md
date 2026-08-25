@@ -37,6 +37,7 @@
 - 浇灌所有能够安全到达的缺水作物；
 - 收获所有能够安全到达的成熟作物，以及树上已经就绪的普通或重型树液采集器产物；
 - 收取能够安全完成原版状态重置的普通生产机器成品；
+- 收取已就绪蟹笼的产物并保留原版收集加成，但不会自动补饵；
 - 进入畜棚和鸡舍，抚摸动物、用自有干草补满食槽，并收集鸡蛋、牛奶和羊毛；
 - 按箱子里已有的物品整理普通箱子；
 - 设置每天自动尝试执行的完整农活班次。
@@ -154,6 +155,7 @@ Each hire automatically works through these stages in order:
 - water every safely reachable dry crop;
 - harvest every safely reachable mature crop and every ready normal or heavy tree tapper;
 - collect outputs from simple ready vanilla machines whose collection state can be preserved safely;
+- collect ready crab pots with vanilla catch bonuses and records, without automatic rebaiting;
 - enter barns and coops to pet animals, fill troughs from owned silo hay, and collect eggs, milk, and wool;
 - organize ordinary farm chests based on their existing contents;
 - set up a daily automatic complete farm-work shift.

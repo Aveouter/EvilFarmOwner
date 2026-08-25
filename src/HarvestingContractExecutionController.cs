@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using System.Globalization;
+using System.Reflection;
 using System.Text.Json;
 using System.Xml;
 using System.Xml.Serialization;
@@ -10,6 +11,7 @@ using StardewValley.Inventories;
 using StardewValley.ItemTypeDefinitions;
 using StardewValley.Locations;
 using StardewValley.Network;
+using StardewValley.Objects;
 using StardewValley.Pathfinding;
 using StardewValley.TerrainFeatures;
 
@@ -895,6 +897,7 @@ internal sealed class HarvestingContractExecutionController
             HarvestTargetKind.Tapper => this.TryApplyTapperHarvest(contract),
             HarvestTargetKind.FruitTree => this.TryApplyFruitTreeHarvest(contract),
             HarvestTargetKind.Machine => this.TryApplyMachineHarvest(contract),
+            HarvestTargetKind.CrabPot => this.TryApplyCrabPotHarvest(contract),
             _ => false
         };
     }
@@ -1043,6 +1046,98 @@ internal sealed class HarvestingContractExecutionController
             if (skill >= 0 && int.TryParse(fields[index + 1], out int amount))
                 requester.gainExperience(skill, amount);
         }
+    }
+
+    private bool TryApplyCrabPotHarvest(ActiveHarvestContract contract)
+    {
+        Vector2 targetTile = contract.CurrentTarget.TargetTile.ToVector2();
+        if (!HarvestTargetPlanner.IsReadySupportedCrabPot(contract.Farm, targetTile)
+            || !contract.Farm.objects.TryGetValue(targetTile, out StardewValley.Object? value)
+            || value is not CrabPot pot
+            || pot.heldObject.Value is not { } output)
+            return false;
+
+        Item collected = output.getOne();
+        collected.Stack = output.Stack;
+        collected.Quality = output.Quality;
+        FieldInfo? ignoreRemovalTimer = typeof(CrabPot).GetField(
+            "ignoreRemovalTimer",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        if (ignoreRemovalTimer is null)
+            return false;
+
+        bool hasBook = contract.Requester.stats.Get("Book_Crabbing") != 0;
+        double roll = Utility.CreateDaySaveRandom(
+            Game1.uniqueIDForThisGame,
+            Game1.stats.DaysPlayed * 77,
+            targetTile.X * 777f + targetTile.Y).NextDouble();
+        Item doubled = collected.getOne();
+        doubled.Stack = checked(collected.Stack * 2);
+        bool destinationAcceptsDouble = this.CanHarvestDestinationAccept(
+            contract,
+            doubled);
+        collected.Stack = CrabPotHarvestSemantics.GetOutputStack(
+            collected.Stack,
+            hasBook,
+            roll,
+            destinationAcceptsDouble);
+
+        int? caughtLength = null;
+        if (DataLoader.Fish(Game1.content).TryGetValue(collected.ItemId, out string? fishData))
+        {
+            string[] fields = fishData.Split('/');
+            int minimumLength = fields.Length <= 5 ? 1 : Convert.ToInt32(fields[5]);
+            int maximumLength = fields.Length > 5 ? Convert.ToInt32(fields[6]) : 10;
+            caughtLength = Game1.random.Next(minimumLength, maximumLength + 1);
+        }
+
+        ignoreRemovalTimer.SetValue(pot, 750);
+        pot.heldObject.Value = null;
+        pot.readyForHarvest.Value = false;
+        pot.tileIndexToShow = 710;
+        pot.lidFlapping = true;
+        pot.lidFlapTimer = 60f;
+        pot.bait.Value = null;
+        pot.shake = Vector2.Zero;
+        pot.shakeTimer = 0f;
+        if (caughtLength.HasValue)
+        {
+            contract.Requester.caughtFish(
+                collected.QualifiedItemId,
+                caughtLength.Value,
+                from_fish_pond: false,
+                collected.Stack);
+        }
+        contract.Requester.gainExperience(1, 5);
+        contract.Farm.playSound("fishingRodBend", targetTile);
+        this.CaptureHarvestItem(contract, collected, "crab pot");
+        this.ShowHarvestedItem(contract, collected);
+        return true;
+    }
+
+    private bool CanHarvestDestinationAccept(
+        ActiveHarvestContract contract,
+        Item item)
+    {
+        if (contract.DestinationMode == HarvestDestinationMode.RequesterInventory)
+        {
+            Farmer? requester = Game1.GetPlayer(
+                contract.Requester.UniqueMultiplayerID,
+                onlyOnline: true);
+            return requester is not null
+                && ReferenceEquals(requester.currentLocation, contract.Farm)
+                && AnimalProductTransferService.CanInventoryAcceptCompleteStack(
+                    requester,
+                    item);
+        }
+
+        return this.ChestRouter.FindBestRoute(
+            contract.Farm,
+            contract.Lease.Worker,
+            contract.Lease.Worker.TilePoint,
+            item,
+            new HashSet<Point>(),
+            new HashSet<HarvestChestRouteKey>()) is not null;
     }
 
     private void CaptureHarvestItem(ActiveHarvestContract contract, Item item, string source)
