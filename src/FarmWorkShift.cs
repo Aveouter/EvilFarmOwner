@@ -10,6 +10,12 @@ internal enum FarmWorkStage
     Complete
 }
 
+internal enum FarmWorkPass
+{
+    Initial,
+    Reconciliation
+}
+
 internal sealed record FarmWorkShiftContext(
     Guid Id,
     string RequestId,
@@ -50,5 +56,36 @@ internal static class FarmWorkStagePolicy
                 or "storage-sort.start.no-chest",
             _ => false
         };
+    }
+}
+
+internal static class FarmWorkPassPolicy
+{
+    public const int MaximumPasses = 2;
+
+    public static IReadOnlyList<(FarmWorkPass Pass, FarmWorkStage Stage)> OrderedSteps { get; } =
+        new[] { FarmWorkPass.Initial, FarmWorkPass.Reconciliation }
+            .SelectMany(pass => FarmWorkStagePolicy.Order.Select(stage => (pass, stage)))
+            .ToArray();
+
+    public static bool TryGetNext(FarmWorkPass current, out FarmWorkPass next)
+    {
+        if (current == FarmWorkPass.Initial)
+        {
+            next = FarmWorkPass.Reconciliation;
+            return true;
+        }
+
+        next = current;
+        return false;
+    }
+
+    public static string FormatRuntimePhase(
+        FarmWorkStage stage,
+        FarmWorkPass pass,
+        string childPhase)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(childPhase);
+        return $"{stage}/{pass}/{childPhase}";
     }
 }
