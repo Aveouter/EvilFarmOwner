@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Xml;
 using System.Xml.Serialization;
 using StardewValley;
+using StardewValley.GameData.Machines;
 using StardewValley.Inventories;
 using StardewValley.ItemTypeDefinitions;
 using StardewValley.Locations;
@@ -893,6 +894,7 @@ internal sealed class HarvestingContractExecutionController
             HarvestTargetKind.Crop => this.TryApplyCropHarvest(contract),
             HarvestTargetKind.Tapper => this.TryApplyTapperHarvest(contract),
             HarvestTargetKind.FruitTree => this.TryApplyFruitTreeHarvest(contract),
+            HarvestTargetKind.Machine => this.TryApplyMachineHarvest(contract),
             _ => false
         };
     }
@@ -997,6 +999,50 @@ internal sealed class HarvestingContractExecutionController
             this.CaptureHarvestItem(contract, item, producesCoal ? "lightning-struck fruit tree" : "fruit tree");
         this.ShowHarvestedItem(contract, collected[0]);
         return true;
+    }
+
+    private bool TryApplyMachineHarvest(ActiveHarvestContract contract)
+    {
+        Vector2 targetTile = contract.CurrentTarget.TargetTile.ToVector2();
+        if (!HarvestTargetPlanner.IsReadySupportedMachine(contract.Farm, targetTile)
+            || !contract.Farm.objects.TryGetValue(
+                targetTile,
+                out StardewValley.Object? machine)
+            || machine.heldObject.Value is not { } output
+            || machine.GetMachineData() is not { } data)
+            return false;
+
+        Item collected = output.getOne();
+        collected.Stack = output.Stack;
+        collected.Quality = output.Quality;
+
+        machine.heldObject.Value = null;
+        machine.readyForHarvest.Value = false;
+        machine.showNextIndex.Value = false;
+        machine.ResetParentSheetIndex();
+
+        MachineDataUtility.UpdateStats(
+            data.StatsToIncrementWhenHarvested,
+            collected,
+            collected.Stack);
+        ApplyMachineHarvestExperience(data.ExperienceGainOnHarvest, contract.Requester);
+        this.CaptureHarvestItem(contract, collected, $"machine {machine.QualifiedItemId}");
+        this.ShowHarvestedItem(contract, collected);
+        return true;
+    }
+
+    private static void ApplyMachineHarvestExperience(string? experience, Farmer requester)
+    {
+        if (string.IsNullOrWhiteSpace(experience))
+            return;
+
+        string[] fields = experience.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (int index = 0; index + 1 < fields.Length; index += 2)
+        {
+            int skill = Farmer.getSkillNumberFromName(fields[index]);
+            if (skill >= 0 && int.TryParse(fields[index + 1], out int amount))
+                requester.gainExperience(skill, amount);
+        }
     }
 
     private void CaptureHarvestItem(ActiveHarvestContract contract, Item item, string source)

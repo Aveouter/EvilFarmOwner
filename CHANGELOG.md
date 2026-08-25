@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added conservative collection for simple ready vanilla machines, preserving exact output, harvest stats, experience, sprite/reset state, and lossless destinations while excluding collect-time recalculation and continuation machines.
 - Added lossless collection of eggs and other resident-animal loose products plus tool-ready milk and wool, with exact vanilla produce state, locked deterministic destinations, rollback on failed commits, and auto-grabber exclusion.
 - Added safe barn/coop human-door transitions, indoor animal petting, and finite-silo-hay trough feeding to complete shifts.
 - Added host-owned, non-destructive outdoor animal petting to complete shifts, with stable animal identities, daily idempotency, worker movement, and final reconciliation.
