@@ -46,7 +46,7 @@
 
 ### 主要特点
 
-- 按 `K` 打开工人名单，查看好感度、今日时薪和最高授权工资。
+- 按 `K` 打开工人名单，查看好感度和今日最高授权工资。
 - 工资会受到好感度影响；休息日工作需要明确同意三倍工资。
 - 工人会绕开箱子、木桶、机器、栅栏和棚架作物，不会为了赶路破坏农场摆设。
 - 遇到临时障碍时会尝试换路；个别目标无法到达时会跳过并继续其他工作。
@@ -166,7 +166,7 @@ Each hire automatically works through these stages in order:
 
 ### Highlights
 
-- Press `K` to see available workers, friendship, today's hourly wage, and the maximum authorization.
+- Press `K` to see available workers, friendship, and today's maximum authorization.
 - Friendship affects pay. Rest-day work requires explicit approval for triple wages.
 - Workers route around chests, machines, fences, kegs, and trellis crops without destroying placed objects.
 - Harvest output can go to classified farm chests or directly to the requesting player's inventory.

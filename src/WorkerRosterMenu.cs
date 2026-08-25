@@ -9,13 +9,13 @@ namespace EvilFarmOwner;
 
 internal sealed class WorkerRosterMenu : IClickableMenu
 {
-    private const int MaximumWidth = 960;
-    private const int MaximumHeight = 760;
+    private const int MaximumWidth = 860;
+    private const int MaximumHeight = 720;
     private const int ScreenMargin = 64;
     private const int HorizontalPadding = 56;
-    private const int HeaderHeight = 108;
+    private const int HeaderHeight = 92;
     private const int FooterHeight = 64;
-    private const int RowHeight = 92;
+    private const int RowHeight = 88;
     private const int ButtonWidth = 144;
     private const int ButtonHeight = 44;
 
@@ -26,6 +26,7 @@ internal sealed class WorkerRosterMenu : IClickableMenu
     private readonly ClickableComponent PreviousButton;
     private readonly ClickableComponent NextButton;
     private readonly ClickableComponent RecurringButton;
+    private readonly List<ClickableComponent> RowButtons = new();
     private readonly int PageSize;
     private int CurrentPage;
 
@@ -65,23 +66,9 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             translation.Get("roster.recurring"));
 
         this.PreviousButton.myID = 100;
-        this.PreviousButton.rightNeighborID = 101;
         this.NextButton.myID = 101;
-        this.NextButton.leftNeighborID = 100;
         this.RecurringButton.myID = 102;
-
-        this.allClickableComponents = new List<ClickableComponent>
-        {
-            this.PreviousButton,
-            this.NextButton
-        };
-        if (this.OpenRecurringContracts is not null)
-            this.allClickableComponents.Add(this.RecurringButton);
-
-        if (this.upperRightCloseButton is not null)
-            this.allClickableComponents.Add(this.upperRightCloseButton);
-
-        this.populateClickableComponentList();
+        this.RebuildClickableComponents();
         this.snapToDefaultClickableComponent();
     }
 
@@ -89,11 +76,11 @@ internal sealed class WorkerRosterMenu : IClickableMenu
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
-        WorkerRosterEntry? selectedEntry = this.GetEligibleEntryAt(x, y);
-        if (selectedEntry is not null)
+        int selectedRow = this.RowButtons.FindIndex(button => button.containsPoint(x, y));
+        if (selectedRow >= 0)
         {
             Game1.playSound("smallSelect");
-            this.OpenContractPreview(selectedEntry, this.CurrentPage);
+            this.OpenContractPreview(this.GetEntryForRow(selectedRow), this.CurrentPage);
             return;
         }
 
@@ -146,8 +133,11 @@ internal sealed class WorkerRosterMenu : IClickableMenu
 
     public override void snapToDefaultClickableComponent()
     {
-        this.currentlySnappedComponent = this.getComponentWithID(
-            this.PageCount > 1 ? this.NextButton.myID : this.PreviousButton.myID);
+        this.currentlySnappedComponent = this.RowButtons.Count > 0
+            ? this.RowButtons[0]
+            : this.OpenRecurringContracts is not null
+                ? this.RecurringButton
+                : this.upperRightCloseButton;
         this.snapCursorToCurrentSnappedComponent();
     }
 
@@ -182,9 +172,13 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         }
         else
         {
+            int rowIndex = 0;
             foreach (WorkerRosterEntry entry in this.Entries.Skip(this.CurrentPage * this.PageSize).Take(this.PageSize))
             {
-                this.DrawRow(batch, entry, contentX, rowY, contentWidth);
+                ClickableComponent rowButton = this.RowButtons[rowIndex++];
+                bool selected = rowButton == this.currentlySnappedComponent
+                    || rowButton.containsPoint(Game1.getMouseX(), Game1.getMouseY());
+                this.DrawRow(batch, entry, contentX, rowY, contentWidth, selected);
                 rowY += RowHeight;
             }
         }
@@ -217,7 +211,7 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         this.drawMouse(batch);
     }
 
-    private void DrawRow(SpriteBatch batch, WorkerRosterEntry entry, int x, int y, int width)
+    private void DrawRow(SpriteBatch batch, WorkerRosterEntry entry, int x, int y, int width, bool selected)
     {
         IClickableMenu.drawTextureBox(
             batch,
@@ -227,7 +221,7 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             y + 4,
             width,
             RowHeight - 8,
-            Color.White,
+            selected ? new Color(255, 245, 190) : Color.White,
             0.8f,
             drawShadow: false);
 
@@ -239,19 +233,20 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             Color.White);
 
         int textX = x + 88;
-        int textWidth = width - 106;
         batch.DrawString(Game1.smallFont, entry.DisplayName, new Vector2(textX, y + 14), Game1.textColor);
 
-        string employmentText = Game1.parseText(
-            this.Translation.Get("roster.worker.employment", new
-            {
-                hearts = entry.WagePreview.FriendshipHearts,
-                hourly = entry.WagePreview.MinimumCalloutWage,
-                maximum = entry.WagePreview.MaximumAuthorizedWage
-            }),
-            Game1.smallFont,
-            textWidth);
-        batch.DrawString(Game1.smallFont, employmentText, new Vector2(textX, y + 48), Color.DimGray);
+        string friendship = this.Translation.Get("roster.worker.friendship", new
+        {
+            hearts = entry.WagePreview.FriendshipHearts
+        });
+        batch.DrawString(Game1.smallFont, friendship, new Vector2(textX, y + 48), Color.DimGray);
+
+        string wage = this.Translation.Get("roster.worker.wage", new
+        {
+            gold = entry.WagePreview.MaximumAuthorizedWage
+        });
+        Vector2 wageSize = Game1.smallFont.MeasureString(wage);
+        batch.DrawString(Game1.smallFont, wage, new Vector2(x + width - wageSize.X - 20, y + 31), new Color(35, 110, 45));
     }
 
     private void DrawButton(SpriteBatch batch, ClickableComponent button)
@@ -282,31 +277,66 @@ internal sealed class WorkerRosterMenu : IClickableMenu
     {
         this.CurrentPage = Math.Clamp(this.CurrentPage + offset, 0, this.PageCount - 1);
         Game1.playSound("shwip");
+        this.RebuildClickableComponents();
+        this.snapToDefaultClickableComponent();
     }
 
-    private WorkerRosterEntry? GetEligibleEntryAt(int x, int y)
+    private WorkerRosterEntry GetEntryForRow(int row)
     {
+        return this.Entries[this.CurrentPage * this.PageSize + row];
+    }
+
+    private void RebuildClickableComponents()
+    {
+        this.RowButtons.Clear();
+        int visibleRows = Math.Min(this.PageSize, this.Entries.Count - this.CurrentPage * this.PageSize);
+        int footerFocusId = this.OpenRecurringContracts is not null
+            ? 102
+            : this.CurrentPage > 0
+                ? 100
+                : this.CurrentPage < this.PageCount - 1
+                    ? 101
+                    : -1;
         int contentX = this.xPositionOnScreen + HorizontalPadding;
         int contentWidth = this.width - HorizontalPadding * 2;
-        int firstRowY = this.yPositionOnScreen + HeaderHeight;
-        Rectangle rowsBounds = new(
-            contentX,
-            firstRowY,
-            contentWidth,
-            this.PageSize * RowHeight);
+        for (int row = 0; row < visibleRows; row++)
+        {
+            this.RowButtons.Add(new ClickableComponent(
+                new Rectangle(contentX, this.yPositionOnScreen + HeaderHeight + row * RowHeight + 4, contentWidth, RowHeight - 8),
+                this.GetEntryForRow(row).DisplayName)
+            {
+                myID = row,
+                upNeighborID = row == 0 ? -1 : row - 1,
+                downNeighborID = row == visibleRows - 1
+                    ? footerFocusId
+                    : row + 1
+            });
+        }
 
-        if (!rowsBounds.Contains(x, y))
-            return null;
+        int lastRowId = this.RowButtons.Count > 0 ? this.RowButtons[^1].myID : -1;
+        this.PreviousButton.leftNeighborID = -1;
+        this.PreviousButton.rightNeighborID = this.OpenRecurringContracts is not null
+            ? 102
+            : this.CurrentPage < this.PageCount - 1 ? 101 : -1;
+        this.PreviousButton.upNeighborID = lastRowId;
+        this.NextButton.leftNeighborID = this.OpenRecurringContracts is not null
+            ? 102
+            : this.CurrentPage > 0 ? 100 : -1;
+        this.NextButton.rightNeighborID = -1;
+        this.NextButton.upNeighborID = lastRowId;
+        this.RecurringButton.leftNeighborID = this.CurrentPage > 0 ? 100 : -1;
+        this.RecurringButton.rightNeighborID = this.CurrentPage < this.PageCount - 1 ? 101 : -1;
+        this.RecurringButton.upNeighborID = lastRowId;
 
-        int rowOffset = (y - firstRowY) / RowHeight;
-        int entryIndex = this.CurrentPage * this.PageSize + rowOffset;
-        if (entryIndex < 0 || entryIndex >= this.Entries.Count)
-            return null;
-
-        WorkerRosterEntry entry = this.Entries[entryIndex];
-        return entry.Availability.State == WorkerAvailabilityState.EligibleForPreview
-            ? entry
-            : null;
+        this.allClickableComponents = new List<ClickableComponent>(this.RowButtons);
+        if (this.CurrentPage > 0)
+            this.allClickableComponents.Add(this.PreviousButton);
+        if (this.CurrentPage < this.PageCount - 1)
+            this.allClickableComponents.Add(this.NextButton);
+        if (this.OpenRecurringContracts is not null)
+            this.allClickableComponents.Add(this.RecurringButton);
+        if (this.upperRightCloseButton is not null)
+            this.allClickableComponents.Add(this.upperRightCloseButton);
     }
 
     private static int GetMenuWidth()

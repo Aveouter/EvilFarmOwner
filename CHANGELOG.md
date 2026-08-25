@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Simplified the hiring roster and shift confirmation into compact vanilla-style summaries, added complete row-by-row controller navigation, and show warnings only when insufficient funds block confirmation.
 - Added main-farm berry and tea-bush collection with vanilla foraging-level quantity, Botanist quality, and experience while excluding walnut, town, map-special, and potted bushes.
 - Added fish-pond output collection through the pond bucket edge with exact item metadata and vanilla value-based fishing experience, without feeding fish or completing requests.
 - Added lossless crab-pot collection with the original deterministic Crabbing Book bonus, fish records, fishing experience, bait/readiness reset, and no automatic rebaiting.
