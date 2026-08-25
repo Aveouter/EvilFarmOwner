@@ -606,6 +606,8 @@ internal sealed class AnimalCareContractExecutionController
     {
         AnimalHouseRoutePlan route = stage.CurrentHouseRoute
             ?? throw new InvalidOperationException("Animal-house exit has no active building.");
+        stage.CurrentTarget = null;
+        stage.CurrentFeedingTarget = null;
         Stack<Point>? path = this.Planner.TryCreateReturnPath(
             stage.WorkLocation,
             stage.Context.Lease.Worker,
@@ -669,6 +671,8 @@ internal sealed class AnimalCareContractExecutionController
         }
         stage.WorkLocation = stage.Farm;
         stage.VisitedBuildingIds.Add(route.BuildingId);
+        stage.AttemptedTroughTiles.Clear();
+        stage.CurrentFeedingTarget = null;
         stage.CurrentHouseRoute = null;
         stage.Context.Lease.Worker.Halt();
         this.BeginNextOrReturn(stage);
