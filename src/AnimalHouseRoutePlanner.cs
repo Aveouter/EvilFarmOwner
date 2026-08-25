@@ -125,6 +125,7 @@ internal sealed class AnimalHouseRoutePlanner
     public static bool HasEligibleWork(AnimalHouse house)
     {
         return AnimalFeedingTargetPlanner.HasEmptyTrough(house)
+            || AnimalProductTargetPlanner.HasEligibleWork(house)
             || house.animals.Values.Any(animal =>
             ReferenceEquals(animal.currentLocation, house)
             && AnimalPettingPolicy.GetSkipReason(

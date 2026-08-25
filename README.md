@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  花钱雇佣镇民，让他们真正走进农场，帮你浇水、收获和整理箱子。<br>
-  Hire townspeople to walk onto your farm and help with watering, harvesting, and chest sorting.
+  花钱雇佣镇民，让他们真正走进农场，帮你浇水、收获、照顾动物和整理箱子。<br>
+  Hire townspeople to walk onto your farm and help with watering, harvesting, animal care, and chest sorting.
 </p>
 
 <p align="center">
@@ -36,6 +36,7 @@
 
 - 浇灌所有能够安全到达的缺水作物；
 - 收获所有能够安全到达的成熟作物，以及树上已经就绪的普通或重型树液采集器产物；
+- 进入畜棚和鸡舍，抚摸动物、用自有干草补满食槽，并收集鸡蛋、牛奶和羊毛；
 - 按箱子里已有的物品整理普通箱子；
 - 设置每天自动尝试执行的完整农活班次。
 
@@ -66,7 +67,7 @@
 2. 按 `K` 打开工人名单。
 3. 选择一位绿色显示、当前可以雇佣的 NPC。
 4. 查看工资、收获物目的地和完整工作范围，确认雇佣。
-5. 工人会依次收获、浇水、整理箱子；当前没有工作的阶段会自动跳过。
+5. 工人会依次收获、浇水、照顾动物、整理箱子；当前没有工作的阶段会自动跳过。
 6. 等待工人完成整个班次并返回。
 
 同一时间只能执行一份合同。合同最迟需要在下午 4:00 前开始，并会在晚上 10:00 前安全结束。
@@ -131,7 +132,7 @@ Mods/EvilFarmOwner/config.json
 
 ### 当前限制
 
-- 暂不支持清理杂物、播种、施肥、照顾动物、补充普通生产机器或自动出售；收获合同仅额外支持树上的普通与重型树液采集器。
+- 暂不支持清理杂物、播种、施肥、补充普通生产机器或自动出售；动物自动采集器的内部箱子也不会被本 Mod 接管。
 - 暂不支持特殊箱子和其他 Mod 添加的箱子。
 - 自动合同与手动雇佣执行同一套完整班次，包括当前可执行的箱子整理。
 - 个别农场布局可能没有安全路线；这种情况下合同会拒绝开始或提前停止。
@@ -151,6 +152,7 @@ Each hire automatically works through these stages in order:
 
 - water every safely reachable dry crop;
 - harvest every safely reachable mature crop and every ready normal or heavy tree tapper;
+- enter barns and coops to pet animals, fill troughs from owned silo hay, and collect eggs, milk, and wool;
 - organize ordinary farm chests based on their existing contents;
 - set up a daily automatic complete farm-work shift.
 
@@ -176,7 +178,7 @@ Requires Stardew Valley 1.6+ and SMAPI 4.0+.
 
 ### Play
 
-Stand on the main farm, press `K`, choose a green available worker, review the wage and harvest destination, then confirm. The worker harvests, waters, and sorts ordinary farm chests in that order; stages with no ready work are skipped automatically.
+Stand on the main farm, press `K`, choose a green available worker, review the wage and harvest destination, then confirm. The worker harvests, waters, cares for livestock, and sorts ordinary farm chests in that order; stages with no ready work are skipped automatically.
 
 Only one named contract can run at a time. Contracts must start by 4:00 PM and stop safely before 10:00 PM.
 
@@ -210,7 +212,7 @@ Most players only need the `K` key. The extra commands help inspect recent work 
 
 ### Current limitations
 
-- No debris clearing, planting, fertilizing, animal care, ordinary machine collection/refilling, or automatic shipping. Harvest contracts additionally support only normal and heavy tappers attached to trees.
+- No debris clearing, planting, fertilizing, ordinary machine collection/refilling, or automatic shipping. Auto-grabber contents are deliberately excluded from livestock collection.
 - No special or modded chest support.
 - Automatic contracts use the same harvest, watering, and chest-sorting sequence as manual hiring.
 - Some farm layouts may not provide a safe route; the contract will refuse or stop instead of breaking objects.
