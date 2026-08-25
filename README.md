@@ -39,6 +39,7 @@
 - 收取能够安全完成原版状态重置的普通生产机器成品；
 - 收取已就绪蟹笼的产物并保留原版收集加成，但不会自动补饵；
 - 收取鱼塘已经生成的产物，但不会投鱼或代交鱼塘任务物品；
+- 采收主农场里成熟的普通浆果丛和茶树，保留采集等级与植物学家的加成；
 - 进入畜棚和鸡舍，抚摸动物、用自有干草补满食槽，并收集鸡蛋、牛奶和羊毛；
 - 按箱子里已有的物品整理普通箱子；
 - 设置每天自动尝试执行的完整农活班次。
@@ -158,6 +159,7 @@ Each hire automatically works through these stages in order:
 - collect outputs from simple ready vanilla machines whose collection state can be preserved safely;
 - collect ready crab pots with vanilla catch bonuses and records, without automatic rebaiting;
 - collect ready fish-pond output without adding fish or completing pond requests;
+- harvest ready ordinary berry and tea bushes on the main farm with vanilla Foraging bonuses;
 - enter barns and coops to pet animals, fill troughs from owned silo hay, and collect eggs, milk, and wool;
 - organize ordinary farm chests based on their existing contents;
 - set up a daily automatic complete farm-work shift.

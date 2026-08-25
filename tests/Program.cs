@@ -84,6 +84,7 @@ List<(string Name, Action Test)> tests = new()
     ("ready machine target semantics", TestReadyMachineTargetSemantics),
     ("ready crab-pot target semantics", TestReadyCrabPotTargetSemantics),
     ("ready fish-pond target semantics", TestReadyFishPondTargetSemantics),
+    ("ready bush target semantics", TestReadyBushTargetSemantics),
     ("harvest unavailable storage stop", TestHarvestUnavailableStorageStop),
     ("harvest transfer replay protection", TestHarvestTransferReplayProtection),
     ("harvest placement conservation", TestHarvestPlacementConservation),
@@ -1923,6 +1924,29 @@ static void TestReadyFishPondTargetSemantics()
     Equal(10, FishPondHarvestSemantics.GetFishingExperience(null));
     Equal(14, FishPondHarvestSemantics.GetFishingExperience(100));
     Equal(33, FishPondHarvestSemantics.GetFishingExperience(599));
+}
+
+static void TestReadyBushTargetSemantics()
+{
+    Equal(true, BushHarvestSemantics.IsReadyTarget(
+        true, false, 1, true, true, true));
+    Equal(true, BushHarvestSemantics.IsReadyTarget(
+        true, false, 3, true, true, true));
+    Equal(false, BushHarvestSemantics.IsReadyTarget(
+        false, false, 1, true, true, true));
+    Equal(false, BushHarvestSemantics.IsReadyTarget(
+        true, true, 1, true, true, true));
+    Equal(false, BushHarvestSemantics.IsReadyTarget(
+        true, false, 4, true, true, true));
+
+    Equal(new BushHarvestPlan("(O)296", 1, 0, 1),
+        BushHarvestSemantics.CreatePlan(1, "(O)296", 0, false));
+    Equal(new BushHarvestPlan("(O)410", 3, 4, 3),
+        BushHarvestSemantics.CreatePlan(1, "(O)410", 8, true));
+    Equal(new BushHarvestPlan("(O)815", 1, 0, 0),
+        BushHarvestSemantics.CreatePlan(3, "(O)815", 10, true));
+    Throws<ArgumentOutOfRangeException>(() =>
+        BushHarvestSemantics.CreatePlan(4, "(O)73", 10, true));
 }
 
 static void TestHarvestPlacementConservation()

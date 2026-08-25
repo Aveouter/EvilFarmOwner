@@ -900,6 +900,7 @@ internal sealed class HarvestingContractExecutionController
             HarvestTargetKind.Machine => this.TryApplyMachineHarvest(contract),
             HarvestTargetKind.CrabPot => this.TryApplyCrabPotHarvest(contract),
             HarvestTargetKind.FishPond => this.TryApplyFishPondHarvest(contract),
+            HarvestTargetKind.Bush => this.TryApplyBushHarvest(contract),
             _ => false
         };
     }
@@ -1167,6 +1168,45 @@ internal sealed class HarvestingContractExecutionController
         contract.Requester.gainExperience(1, experience);
         contract.Farm.playSound("coin", target.ToVector2());
         this.CaptureHarvestItem(contract, collected, "fish pond");
+        this.ShowHarvestedItem(contract, collected);
+        return true;
+    }
+
+    private bool TryApplyBushHarvest(ActiveHarvestContract contract)
+    {
+        Vector2 target = contract.CurrentTarget.TargetTile.ToVector2();
+        Bush? bush = contract.Farm.largeTerrainFeatures.OfType<Bush>()
+            .FirstOrDefault(candidate => candidate.Tile == target);
+        if (bush is null
+            || !BushHarvestSemantics.IsReadyTarget(
+                true,
+                bush.townBush.Value,
+                bush.size.Value,
+                bush.readyForHarvest(),
+                bush.inBloom(),
+                bush.GetShakeOffItem() is not null)
+            || bush.GetShakeOffItem() is not { } outputId)
+            return false;
+
+        BushHarvestPlan plan = BushHarvestSemantics.CreatePlan(
+            bush.size.Value,
+            outputId,
+            contract.Requester.ForagingLevel,
+            contract.Requester.professions.Contains(16));
+        Item collected = ItemRegistry.Create(plan.QualifiedItemId);
+        collected.Stack = plan.Stack;
+        collected.Quality = plan.Quality;
+
+        bush.tileSheetOffset.Value = 0;
+        bush.setUpSourceRect();
+        bush.shakeTimer = 500f;
+        if (plan.ForagingExperience > 0)
+            contract.Requester.gainExperience(2, plan.ForagingExperience);
+        contract.Farm.playSound("leafrustle", target);
+        this.CaptureHarvestItem(
+            contract,
+            collected,
+            bush.size.Value == Bush.greenTeaBush ? "tea bush" : "berry bush");
         this.ShowHarvestedItem(contract, collected);
         return true;
     }

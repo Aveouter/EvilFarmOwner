@@ -137,3 +137,50 @@ internal static class FishPondHarvestSemantics
             : 0);
     }
 }
+
+internal sealed record BushHarvestPlan(
+    string QualifiedItemId,
+    int Stack,
+    int Quality,
+    int ForagingExperience);
+
+internal static class BushHarvestSemantics
+{
+    public static bool IsReadyTarget(
+        bool isMainFarm,
+        bool isTownBush,
+        int size,
+        bool readyForHarvest,
+        bool inBloom,
+        bool hasOutput)
+    {
+        return isMainFarm
+            && !isTownBush
+            && size is 1 or 3
+            && readyForHarvest
+            && inBloom
+            && hasOutput;
+    }
+
+    public static BushHarvestPlan CreatePlan(
+        int size,
+        string qualifiedItemId,
+        int foragingLevel,
+        bool hasBotanistProfession)
+    {
+        if (size is not (1 or 3))
+            throw new ArgumentOutOfRangeException(nameof(size));
+        if (string.IsNullOrWhiteSpace(qualifiedItemId))
+            throw new ArgumentException("Bush output is required.", nameof(qualifiedItemId));
+        if (foragingLevel < 0)
+            throw new ArgumentOutOfRangeException(nameof(foragingLevel));
+
+        bool isTea = size == 3;
+        int stack = isTea ? 1 : 1 + foragingLevel / 4;
+        return new BushHarvestPlan(
+            qualifiedItemId,
+            stack,
+            !isTea && hasBotanistProfession ? 4 : 0,
+            isTea ? 0 : stack);
+    }
+}

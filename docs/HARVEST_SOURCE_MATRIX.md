@@ -12,13 +12,13 @@ This matrix prevents the complete shift from treating every object with a held i
 | Simple ready vanilla machines | Clear the held output and ready/display state, reset the sprite, apply declared harvest stats and experience, and never auto-load another input | Limited to exact vanilla `Object` machines with numeric IDs and no collect-time recalculation or `OutputCollected` continuation rule. Exact output metadata enters the existing lossless destination pipeline. |
 | Crab pots | Preserve the deterministic Crabbing Book double-catch rule, caught-fish record/length, five fishing XP, consumed bait, lid/readiness state, and short removal guard | Collect the existing exact output through the lossless destination pipeline. Never refill bait automatically. |
 | Fish ponds | Clear only the ready building-owned output and grant vanilla fishing experience: 10 plus 4% of the object's store value | Route to the pond's item-bucket edge, preserve the exact output, and never add fish or satisfy pond requests. |
+| Main-farm berry and tea bushes | Clear the ready sprite state; berry count follows foraging level, Botanist quality is preserved, berry XP matches count, and tea yields one leaf without XP | Only ordinary medium berry bushes and mature tea bushes in the main farm location are eligible. Walnut, town/cosmetic, map-special, and potted bushes are excluded. |
 
 ## Requires a dedicated implementation
 
 | Source | Why generic `heldObject` removal is unsafe |
 | --- | --- |
 | Stateful data-driven machines | Machines with collect-time recalculation or `OutputCollected` continuation rules can replace output, consume retained input, or immediately start another cycle. They remain excluded until that continuation can be rolled back exactly. |
-| Berry and tea bushes | Output count, quality, experience, mutex behavior, and special walnut bushes depend on bush type and the requesting farmer. Special/map bushes must be excluded explicitly. |
 | Farm-building interiors | Barns, coops, sheds, caves, and greenhouse-like locations need location-aware entrances, doors, route ownership, and return behavior before their contents can join a main-farm shift. |
 | Loose forage and spawned objects | Ownership, quest/special items, spawned-object flags, and terrain coverage need an allowlist. Debris clearing is not harvest collection. |
 
