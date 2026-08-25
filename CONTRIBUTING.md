@@ -69,3 +69,19 @@ Issue #42 storage failure testing uses the compile-gated procedure in
 [`docs/STORAGE_FAULT_ACCEPTANCE.md`](docs/STORAGE_FAULT_ACCEPTANCE.md). The
 instrumented DLL is test-only; rebuild without `EnableAcceptanceFaults` and run
 the clean release verifier before recording or distributing a candidate.
+
+## Repository Layout
+
+Keep files within these top-level boundaries:
+
+| Path | Purpose |
+| --- | --- |
+| `src/` | Production C# source for the SMAPI mod |
+| `tests/` | Deterministic logic tests |
+| `i18n/` | Player-facing translations |
+| `assets/` | Images packaged with the mod |
+| `docs/` | Design, acceptance, and maintenance notes |
+| `scripts/` | Release and repository verification tools |
+| `.github/` | Issue, pull request, and automation configuration |
+
+Keep project metadata such as `EvilFarmOwner.csproj`, `manifest.json`, `LICENSE`, and release notes at the repository root.
