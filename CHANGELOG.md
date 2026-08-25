@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added object-safe collection of ready normal and heavy tree-tapper products to harvest contracts, with vanilla rescheduling and the existing lossless destination pipeline.
+
 ## 0.1.0 - Unreleased
 
 - Made harvest delivery a contract-level choice: classified chests are the manual and automatic default, requester inventory is explicit, and a running contract never silently switches between them.

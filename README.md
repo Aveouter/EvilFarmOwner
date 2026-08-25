@@ -35,7 +35,7 @@
 目前可以安排：
 
 - 浇灌所有能够安全到达的缺水作物；
-- 收获所有能够安全到达的成熟作物；
+- 收获所有能够安全到达的成熟作物，以及树上已经就绪的普通或重型树液采集器产物；
 - 按箱子里已有的物品整理普通箱子；
 - 设置每天自动尝试执行的浇水或收获合同。
 
@@ -131,7 +131,7 @@ Mods/EvilFarmOwner/config.json
 
 ### 当前限制
 
-- 暂不支持清理杂物、播种、施肥、照顾动物、补充机器或自动出售。
+- 暂不支持清理杂物、播种、施肥、照顾动物、补充普通生产机器或自动出售；收获合同仅额外支持树上的普通与重型树液采集器。
 - 暂不支持特殊箱子和其他 Mod 添加的箱子。
 - 自动合同支持浇水和收获，不支持自动箱子整理。
 - 个别农场布局可能没有安全路线；这种情况下合同会拒绝开始或提前停止。
@@ -150,7 +150,7 @@ Workers do not finish jobs instantly. They enter through a farm boundary, walk b
 Available jobs:
 
 - water every safely reachable dry crop;
-- harvest every safely reachable mature crop;
+- harvest every safely reachable mature crop and every ready normal or heavy tree tapper;
 - organize ordinary farm chests based on their existing contents;
 - set up a daily automatic watering or harvesting contract.
 
@@ -210,7 +210,7 @@ Most players only need the `K` key. The extra commands help inspect recent work 
 
 ### Current limitations
 
-- No debris clearing, planting, fertilizing, animal care, machine refilling, or automatic shipping.
+- No debris clearing, planting, fertilizing, animal care, ordinary machine collection/refilling, or automatic shipping. Harvest contracts additionally support only normal and heavy tappers attached to trees.
 - No special or modded chest support.
 - Automatic contracts support watering and harvesting, but not chest sorting.
 - Some farm layouts may not provide a safe route; the contract will refuse or stop instead of breaking objects.
