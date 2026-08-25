@@ -23,9 +23,11 @@ if [[ ! "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 2
 fi
 
-expected_name="EvilFarmOwner $expected_version.zip"
-if [[ "$(basename "$asset_path")" != "$expected_name" ]]; then
-  echo "Release asset name must be '$expected_name'." >&2
+local_build_name="EvilFarmOwner $expected_version.zip"
+github_asset_name="EvilFarmOwner.$expected_version.zip"
+actual_name="$(basename "$asset_path")"
+if [[ "$actual_name" != "$local_build_name" && "$actual_name" != "$github_asset_name" ]]; then
+  echo "Release asset name must be '$local_build_name' locally or '$github_asset_name' after GitHub normalization." >&2
   exit 1
 fi
 
