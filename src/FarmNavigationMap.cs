@@ -104,7 +104,7 @@ internal static class FarmNavigationMap
     private const int VanillaNpcWalkingPixelsPerTick = 2;
 
     public static bool TryBuild(
-        Farm farm,
+        GameLocation farm,
         NPC worker,
         Point startTile,
         IMonitor monitor,
@@ -163,7 +163,7 @@ internal static class FarmNavigationMap
     }
 
     public static bool CanBeginPath(
-        Farm farm,
+        GameLocation farm,
         NPC worker,
         Point startTile,
         Stack<Point> path,
@@ -265,7 +265,7 @@ internal static class FarmNavigationMap
         return true;
     }
 
-    private static bool IsPassable(Farm farm, NPC worker, GridPoint tile)
+    private static bool IsPassable(GameLocation farm, NPC worker, GridPoint tile)
     {
         if (farm.warps.Any(warp => warp.X == tile.X && warp.Y == tile.Y)
             || farm.doors.ContainsKey(new Point(tile.X, tile.Y)))

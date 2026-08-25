@@ -15,7 +15,7 @@ internal sealed record AnimalPettingTargetPlan(
 internal sealed record AnimalPettingWorkPlan(
     Point ArrivalTile,
     FarmBoundarySide ArrivalSide,
-    AnimalPettingTargetPlan FirstTarget);
+    AnimalPettingTargetPlan? FirstTarget);
 
 internal sealed record AnimalPettingRouteOption(
     long AnimalId,
@@ -68,7 +68,7 @@ internal sealed class AnimalPettingTargetPlanner
     }
 
     public AnimalPettingTargetPlan? TryFindNext(
-        Farm farm,
+        GameLocation farm,
         NPC worker,
         Point startTile,
         IReadOnlySet<long> attemptedAnimalIds)
@@ -136,7 +136,7 @@ internal sealed class AnimalPettingTargetPlanner
             .ToArray();
     }
 
-    public Stack<Point>? TryCreateReturnPath(Farm farm, NPC worker, Point arrivalTile)
+    public Stack<Point>? TryCreateReturnPath(GameLocation farm, NPC worker, Point arrivalTile)
     {
         if (!FarmNavigationMap.TryBuild(farm, worker, worker.TilePoint, this.Monitor, out GridRouteMap? routes)
             || routes is null

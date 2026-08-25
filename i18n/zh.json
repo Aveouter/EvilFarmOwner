@@ -154,7 +154,7 @@
   "contract.confirm.rest-day.farm-work": "授权三倍工资并完成全部农活",
   "farm-work.start.too-late": "完整农活班次最迟必须在下午 4:00 开始。",
   "farm-work.start.no-work": "主农场当前没有可执行的收获、浇水、牲畜抚摸或箱子整理工作。",
-  "animal-care.start.no-work": "主农场室外没有清醒且今天尚未抚摸的牲畜。",
+  "animal-care.start.no-work": "当前没有清醒且尚未抚摸的牲畜，也没有可处理的空食槽。",
   "farm-work.hud.completed": "{{worker}} 已完成农活班次：执行 {{stages}} 个有效阶段，共 {{work}} 次动作；{{hours}} 小时实付 {{paid}}g，退还 {{refunded}}g。",
   "farm-work.hud.stopped": "{{worker}} 已停止农活班次：{{reason}} 已完成 {{stages}} 个阶段、{{work}} 次动作；{{hours}} 小时实付 {{paid}}g，退还 {{refunded}}g。",
   "contract.start.host-only": "只有主机玩家可以开始 NPC 工作合同。",
