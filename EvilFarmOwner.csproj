@@ -7,6 +7,7 @@
     <RepositoryUrl>https://github.com/Aveouter/EvilFarmOwner</RepositoryUrl>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableAcceptanceFaults Condition="'$(EnableAcceptanceFaults)' == ''">false</EnableAcceptanceFaults>
   </PropertyGroup>
 
@@ -19,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="tests/**/*.cs" />
+    <Compile Include="src/**/*.cs" />
     <None Update="LICENSE" CopyToOutputDirectory="PreserveNewest" />
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="i18n\*.json" CopyToOutputDirectory="PreserveNewest" />
