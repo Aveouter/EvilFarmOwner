@@ -9,12 +9,12 @@ namespace EvilFarmOwner;
 
 internal sealed class WorkContractPreviewMenu : IClickableMenu
 {
-    private const int MaximumWidth = 900;
-    private const int MaximumHeight = 700;
+    private const int MaximumWidth = 820;
+    private const int MaximumHeight = 580;
     private const int ScreenMargin = 64;
     private const int HorizontalPadding = 56;
-    private const int BackButtonWidth = 180;
-    private const int ConfirmButtonWidth = 300;
+    private const int BackButtonWidth = 168;
+    private const int ConfirmButtonWidth = 260;
     private const int ButtonHeight = 52;
 
     private readonly WorkerRosterEntry Worker;
@@ -35,12 +35,7 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         ITranslationHelper translation,
         Action returnToRoster,
         Func<HarvestDestinationMode, bool> confirmContract)
-        : base(
-            GetMenuX(),
-            GetMenuY(),
-            GetMenuWidth(),
-            GetMenuHeight(),
-            showUpperRightCloseButton: true)
+        : base(GetMenuX(), GetMenuY(), GetMenuWidth(), GetMenuHeight(), showUpperRightCloseButton: true)
     {
         this.Worker = worker;
         this.Preview = preview;
@@ -49,42 +44,33 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         this.ReturnToRoster = returnToRoster;
         this.ConfirmContract = confirmContract;
 
+        int buttonY = this.yPositionOnScreen + this.height - ButtonHeight - 28;
         this.BackButton = new ClickableComponent(
-            new Rectangle(
-                this.xPositionOnScreen + HorizontalPadding,
-                this.yPositionOnScreen + this.height - ButtonHeight - 28,
-                BackButtonWidth,
-                ButtonHeight),
-            translation.Get("contract.back"));
-        this.BackButton.myID = 100;
-        this.BackButton.rightNeighborID = 101;
-
+            new Rectangle(this.xPositionOnScreen + HorizontalPadding, buttonY, BackButtonWidth, ButtonHeight),
+            translation.Get("contract.back"))
+        {
+            myID = 100,
+            rightNeighborID = 101
+        };
         this.ConfirmButton = new ClickableComponent(
-            new Rectangle(
-                this.xPositionOnScreen + this.width - HorizontalPadding - ConfirmButtonWidth,
-                this.yPositionOnScreen + this.height - ButtonHeight - 28,
-                ConfirmButtonWidth,
-                ButtonHeight),
-            this.GetConfirmText());
-        this.ConfirmButton.myID = 101;
-        this.ConfirmButton.leftNeighborID = 100;
+            new Rectangle(this.xPositionOnScreen + this.width - HorizontalPadding - ConfirmButtonWidth, buttonY, ConfirmButtonWidth, ButtonHeight),
+            this.GetConfirmText())
+        {
+            myID = 101,
+            leftNeighborID = 100
+        };
 
-        int contentWidth = this.width - HorizontalPadding * 2;
-        int columnGap = 52;
-        int columnWidth = (contentWidth - columnGap) / 2;
-        int detailsY = this.yPositionOnScreen + 132 + 112;
         if (task is NamedFarmTask.FarmWork or NamedFarmTask.Harvesting)
         {
             this.DestinationButton = new ClickableComponent(
-                new Rectangle(
-                    this.xPositionOnScreen + HorizontalPadding,
-                    detailsY + 202,
-                    columnWidth,
-                    38),
-                this.GetDestinationText());
-            this.DestinationButton.myID = 102;
-            this.DestinationButton.downNeighborID = 101;
+                new Rectangle(this.xPositionOnScreen + HorizontalPadding, this.yPositionOnScreen + 270, this.width - HorizontalPadding * 2, 48),
+                this.GetDestinationText())
+            {
+                myID = 102,
+                downNeighborID = 101
+            };
             this.ConfirmButton.upNeighborID = 102;
+            this.BackButton.upNeighborID = 102;
         }
 
         this.allClickableComponents = new List<ClickableComponent> { this.BackButton, this.ConfirmButton };
@@ -92,10 +78,10 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
             this.allClickableComponents.Add(this.DestinationButton);
         if (this.upperRightCloseButton is not null)
             this.allClickableComponents.Add(this.upperRightCloseButton);
-
-        this.populateClickableComponentList();
         this.snapToDefaultClickableComponent();
     }
+
+    private bool CanAfford => Game1.player.Money >= this.Preview.MaximumAuthorizedWage;
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
@@ -111,6 +97,12 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
 
         if (this.ConfirmButton.containsPoint(x, y))
         {
+            if (!this.CanAfford)
+            {
+                Game1.playSound("cancel");
+                return;
+            }
+
             Game1.playSound("smallSelect");
             if (this.ConfirmContract(this.DestinationMode))
                 Game1.activeClickableMenu = null;
@@ -135,199 +127,102 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
             this.ReturnToRoster();
             return;
         }
-
         base.receiveKeyPress(key);
     }
 
     public override void snapToDefaultClickableComponent()
     {
-        this.currentlySnappedComponent = this.getComponentWithID(this.ConfirmButton.myID);
+        this.currentlySnappedComponent = this.getComponentWithID(this.CanAfford
+            ? this.ConfirmButton.myID
+            : this.BackButton.myID);
         this.snapCursorToCurrentSnappedComponent();
     }
 
     public override void draw(SpriteBatch batch)
     {
-        Game1.drawDialogueBox(
-            this.xPositionOnScreen,
-            this.yPositionOnScreen,
-            this.width,
-            this.height,
-            speaker: false,
-            drawOnlyBox: true);
+        Game1.drawDialogueBox(this.xPositionOnScreen, this.yPositionOnScreen, this.width, this.height, false, true);
+        int x = this.xPositionOnScreen + HorizontalPadding;
+        int width = this.width - HorizontalPadding * 2;
+        int y = this.yPositionOnScreen + 40;
 
-        int contentX = this.xPositionOnScreen + HorizontalPadding;
-        int contentWidth = this.width - HorizontalPadding * 2;
-        int contentY = this.yPositionOnScreen + 40;
-
-        batch.DrawString(
-            Game1.dialogueFont,
-            this.Translation.Get(this.GetTaskKey("contract.title")),
-            new Vector2(contentX, contentY),
-            Game1.textColor);
-
-        contentY += 58;
-        string subtitle = Game1.parseText(
-            this.Translation.Get(this.GetTaskKey("contract.subtitle")),
-            Game1.smallFont,
-            contentWidth);
-        batch.DrawString(Game1.smallFont, subtitle, new Vector2(contentX, contentY), Color.DimGray);
-
-        int workerY = this.yPositionOnScreen + 132;
-        this.DrawWorkerCard(batch, contentX, workerY, contentWidth);
-
-        int detailsY = workerY + 112;
-        int columnGap = 52;
-        int columnWidth = (contentWidth - columnGap) / 2;
-        int rightColumnX = contentX + columnWidth + columnGap;
-
-        this.DrawDetailRow(
-            batch,
-            contentX,
-            detailsY,
-            columnWidth,
-            "contract.task",
-            this.Translation.Get(this.GetTaskKey("contract.task")));
-        this.DrawDetailRow(
-            batch,
-            contentX,
-            detailsY + 42,
-            columnWidth,
-            "contract.limit",
-            this.Translation.Get(this.GetTaskKey("contract.limit.value")));
-        this.DrawDetailRow(batch, contentX, detailsY + 84, columnWidth, "contract.day", this.GetDayText());
-        this.DrawDetailRow(batch, contentX, detailsY + 126, columnWidth, "contract.base-rate", this.Translation.Get("contract.base-rate.value", new { gold = this.Preview.BaseHourlyWage }));
-        this.DrawDetailRow(batch, contentX, detailsY + 168, columnWidth, "contract.friendship", this.Translation.Get("contract.friendship.value", new
+        batch.DrawString(Game1.dialogueFont, this.Translation.Get("contract.confirm.title"), new Vector2(x, y), Game1.textColor);
+        y += 64;
+        this.DrawWorkerCard(batch, x, y, width);
+        y += 112;
+        this.DrawSummaryRow(batch, x, y, width, "contract.task", this.Translation.Get(this.GetTaskKey("contract.task")));
+        y += 54;
+        if (this.DestinationButton is not null)
         {
-            hearts = this.Preview.FriendshipHearts,
-            band = this.GetFriendshipBandText()
-        }));
-        if (this.Task is NamedFarmTask.FarmWork or NamedFarmTask.Harvesting)
+            this.DrawSelectableRow(batch, this.DestinationButton, "contract.destination.label", this.GetDestinationText());
+            y += 54;
+        }
+        this.DrawSummaryRow(batch, x, y, width, "contract.day", this.GetDayText());
+
+        string total = this.Translation.Get("contract.authorization.total", new { gold = this.Preview.MaximumAuthorizedWage });
+        Vector2 totalSize = Game1.smallFont.MeasureString(total);
+        batch.DrawString(Game1.smallFont, total, new Vector2(x + width - totalSize.X, y), new Color(35, 110, 45));
+
+        if (!this.CanAfford)
         {
-            this.DrawDetailRow(
-                batch,
-                contentX,
-                detailsY + 210,
-                columnWidth,
-                "contract.destination.toggle",
-                this.GetDestinationText(),
-                highlight: true);
+            string warning = Game1.parseText(this.Translation.Get("contract.warning.insufficient-funds", new
+            {
+                gold = this.Preview.MaximumAuthorizedWage
+            }), Game1.smallFont, width);
+            batch.DrawString(Game1.smallFont, warning, new Vector2(x, this.BackButton.bounds.Y - 40), new Color(150, 45, 40));
         }
 
-        this.DrawDetailRow(batch, rightColumnX, detailsY, columnWidth, "contract.friendship-multiplier", FormatMultiplier(this.Preview.FriendshipMultiplier));
-        this.DrawDetailRow(batch, rightColumnX, detailsY + 42, columnWidth, "contract.day-multiplier", FormatMultiplier(this.Preview.DayMultiplier));
-        this.DrawDetailRow(batch, rightColumnX, detailsY + 84, columnWidth, "contract.efficiency", this.GetEfficiencyText());
-        this.DrawDetailRow(batch, rightColumnX, detailsY + 126, columnWidth, "contract.callout", this.Translation.Get("contract.gold", new { gold = this.Preview.MinimumCalloutWage }), highlight: true);
-        this.DrawDetailRow(batch, rightColumnX, detailsY + 168, columnWidth, "contract.overtime", this.Translation.Get("contract.overtime.disabled", new
-        {
-            multiplier = FormatMultiplier(this.Preview.OvertimeMultiplier),
-            hours = this.Preview.MaximumOvertimeHours
-        }));
-        this.DrawDetailRow(batch, rightColumnX, detailsY + 210, columnWidth, "contract.maximum", this.Translation.Get("contract.gold", new { gold = this.Preview.MaximumAuthorizedWage }), highlight: true);
-
-        int noticeY = this.BackButton.bounds.Y - 48;
-        string notice = Game1.parseText(
-            this.Preview.DayKind == ContractDayKind.RestDay
-                ? this.Translation.Get("contract.notice.rest-day")
-                : this.Translation.Get("contract.notice.confirm"),
-            Game1.smallFont,
-            contentWidth);
-        batch.DrawString(Game1.smallFont, notice, new Vector2(contentX, noticeY), new Color(150, 45, 40));
-
-        this.DrawButton(batch, this.BackButton);
-        this.DrawButton(batch, this.ConfirmButton);
+        this.DrawButton(batch, this.BackButton, enabled: true);
+        this.DrawButton(batch, this.ConfirmButton, this.CanAfford);
         base.draw(batch);
         this.drawMouse(batch);
     }
 
     private void DrawWorkerCard(SpriteBatch batch, int x, int y, int width)
     {
-        IClickableMenu.drawTextureBox(
-            batch,
-            Game1.menuTexture,
-            new Rectangle(0, 256, 60, 60),
-            x,
-            y,
-            width,
-            96,
-            Color.White,
-            0.8f,
-            drawShadow: false);
-
+        IClickableMenu.drawTextureBox(batch, Game1.menuTexture, new Rectangle(0, 256, 60, 60), x, y, width, 96, Color.White, 0.8f, false);
         int portraitSize = Math.Min(64, Math.Min(this.Worker.Portrait.Width, this.Worker.Portrait.Height));
-        batch.Draw(
-            this.Worker.Portrait,
-            new Rectangle(x + 16, y + 16, 64, 64),
-            new Rectangle(0, 0, portraitSize, portraitSize),
-            Color.White);
-
-        batch.DrawString(Game1.dialogueFont, this.Worker.DisplayName, new Vector2(x + 100, y + 16), Game1.textColor);
-        batch.DrawString(
-            Game1.smallFont,
-            this.Translation.Get("contract.worker.selected"),
-            new Vector2(x + 102, y + 58),
-            Color.DimGray);
-    }
-
-    private void DrawDetailRow(
-        SpriteBatch batch,
-        int x,
-        int y,
-        int width,
-        string labelKey,
-        string value,
-        bool highlight = false)
-    {
-        string label = this.Translation.Get(labelKey);
-        batch.DrawString(Game1.smallFont, label, new Vector2(x, y), Color.DimGray);
-
-        Vector2 valueSize = Game1.smallFont.MeasureString(value);
-        batch.DrawString(
-            Game1.smallFont,
-            value,
-            new Vector2(x + width - valueSize.X, y),
-            highlight ? new Color(35, 110, 45) : Game1.textColor);
-    }
-
-    private void DrawButton(SpriteBatch batch, ClickableComponent button)
-    {
-        IClickableMenu.drawTextureBox(
-            batch,
-            Game1.menuTexture,
-            new Rectangle(0, 256, 60, 60),
-            button.bounds.X,
-            button.bounds.Y,
-            button.bounds.Width,
-            button.bounds.Height,
-            Color.White,
-            0.8f,
-            drawShadow: false);
-
-        Vector2 labelSize = Game1.smallFont.MeasureString(button.name);
-        batch.DrawString(
-            Game1.smallFont,
-            button.name,
-            new Vector2(
-                button.bounds.Center.X - labelSize.X / 2,
-                button.bounds.Center.Y - labelSize.Y / 2),
-            Game1.textColor);
-    }
-
-    private string GetDayText()
-    {
-        return this.Preview.DayKind == ContractDayKind.RestDay
-            ? this.Translation.Get("contract.day.rest")
-            : this.Translation.Get("contract.day.regular");
-    }
-
-    private string GetConfirmText()
-    {
-        if (this.Preview.DayKind == ContractDayKind.RestDay)
+        batch.Draw(this.Worker.Portrait, new Rectangle(x + 16, y + 16, 64, 64), new Rectangle(0, 0, portraitSize, portraitSize), Color.White);
+        batch.DrawString(Game1.dialogueFont, this.Worker.DisplayName, new Vector2(x + 100, y + 12), Game1.textColor);
+        batch.DrawString(Game1.smallFont, this.Translation.Get("roster.worker.friendship", new
         {
-            return this.Translation.Get(this.GetTaskKey("contract.confirm.rest-day"));
-        }
-
-        return this.Translation.Get(this.GetTaskKey("contract.confirm.regular"));
+            hearts = this.Preview.FriendshipHearts
+        }), new Vector2(x + 102, y + 58), Color.DimGray);
+        string wage = this.Translation.Get("contract.worker.subtotal", new { gold = this.Preview.MaximumAuthorizedWage });
+        Vector2 wageSize = Game1.smallFont.MeasureString(wage);
+        batch.DrawString(Game1.smallFont, wage, new Vector2(x + width - wageSize.X - 20, y + 38), new Color(35, 110, 45));
     }
+
+    private void DrawSummaryRow(SpriteBatch batch, int x, int y, int width, string labelKey, string value)
+    {
+        batch.DrawString(Game1.smallFont, this.Translation.Get(labelKey), new Vector2(x, y), Color.DimGray);
+        string wrapped = Game1.parseText(value, Game1.smallFont, width - 190);
+        batch.DrawString(Game1.smallFont, wrapped, new Vector2(x + 190, y), Game1.textColor);
+    }
+
+    private void DrawSelectableRow(SpriteBatch batch, ClickableComponent button, string labelKey, string value)
+    {
+        bool selected = button == this.currentlySnappedComponent || button.containsPoint(Game1.getMouseX(), Game1.getMouseY());
+        if (selected)
+            IClickableMenu.drawTextureBox(batch, Game1.menuTexture, new Rectangle(0, 256, 60, 60), button.bounds.X, button.bounds.Y, button.bounds.Width, button.bounds.Height, new Color(255, 245, 190), 0.5f, false);
+        batch.DrawString(Game1.smallFont, this.Translation.Get(labelKey), new Vector2(button.bounds.X, button.bounds.Y + 8), Color.DimGray);
+        Vector2 size = Game1.smallFont.MeasureString(value);
+        batch.DrawString(Game1.smallFont, value, new Vector2(button.bounds.Right - size.X - 16, button.bounds.Y + 8), Game1.textColor);
+    }
+
+    private void DrawButton(SpriteBatch batch, ClickableComponent button, bool enabled)
+    {
+        IClickableMenu.drawTextureBox(batch, Game1.menuTexture, new Rectangle(0, 256, 60, 60), button.bounds.X, button.bounds.Y, button.bounds.Width, button.bounds.Height, enabled ? Color.White : Color.Gray, 0.8f, false);
+        Vector2 size = Game1.smallFont.MeasureString(button.name);
+        batch.DrawString(Game1.smallFont, button.name, new Vector2(button.bounds.Center.X - size.X / 2, button.bounds.Center.Y - size.Y / 2), enabled ? Game1.textColor : Color.DimGray);
+    }
+
+    private string GetDayText() => this.Preview.DayKind == ContractDayKind.RestDay
+        ? this.Translation.Get("contract.day.rest")
+        : this.Translation.Get("contract.day.regular");
+
+    private string GetConfirmText() => this.Translation.Get(this.GetTaskKey(this.Preview.DayKind == ContractDayKind.RestDay
+        ? "contract.confirm.rest-day"
+        : "contract.confirm.regular"));
 
     private string GetTaskKey(string prefix)
     {
@@ -342,68 +237,12 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         return $"{prefix}.{suffix}";
     }
 
-    private string GetFriendshipBandText()
-    {
-        string key = this.Preview.FriendshipBand switch
-        {
-            FriendshipWageBand.HighRisk => "contract.friendship-band.high-risk",
-            FriendshipWageBand.ElevatedRisk => "contract.friendship-band.elevated-risk",
-            FriendshipWageBand.Standard => "contract.friendship-band.standard",
-            _ => "contract.friendship-band.trusted"
-        };
+    private string GetDestinationText() => this.Translation.Get(this.DestinationMode == HarvestDestinationMode.RequesterInventory
+        ? "contract.destination.requester"
+        : "contract.destination.chests");
 
-        return this.Translation.Get(key);
-    }
-
-    private string GetEfficiencyText()
-    {
-        string reasonKey = this.Preview.EfficiencyBackground switch
-        {
-            WorkerEfficiencyBackground.Gardening => "contract.efficiency-reason.gardening",
-            WorkerEfficiencyBackground.Ranching => "contract.efficiency-reason.ranching",
-            WorkerEfficiencyBackground.OutdoorGathering => "contract.efficiency-reason.outdoors",
-            WorkerEfficiencyBackground.ManualFieldwork => "contract.efficiency-reason.manual",
-            WorkerEfficiencyBackground.FieldScience => "contract.efficiency-reason.science",
-            _ => "contract.efficiency-reason.baseline"
-        };
-
-        return this.Translation.Get("contract.efficiency.value", new
-        {
-            multiplier = FormatMultiplier(this.Preview.EfficiencyMultiplier),
-            reason = this.Translation.Get(reasonKey)
-        });
-    }
-
-    private string GetDestinationText()
-    {
-        return this.Translation.Get(
-            this.DestinationMode == HarvestDestinationMode.RequesterInventory
-                ? "contract.destination.requester"
-                : "contract.destination.chests");
-    }
-
-    private static string FormatMultiplier(decimal multiplier)
-    {
-        return $"{multiplier:0.00}x";
-    }
-
-    private static int GetMenuWidth()
-    {
-        return Math.Min(MaximumWidth, Math.Max(680, Game1.uiViewport.Width - ScreenMargin));
-    }
-
-    private static int GetMenuHeight()
-    {
-        return Math.Min(MaximumHeight, Math.Max(620, Game1.uiViewport.Height - ScreenMargin));
-    }
-
-    private static int GetMenuX()
-    {
-        return Game1.uiViewport.Width / 2 - GetMenuWidth() / 2;
-    }
-
-    private static int GetMenuY()
-    {
-        return Game1.uiViewport.Height / 2 - GetMenuHeight() / 2;
-    }
+    private static int GetMenuWidth() => Math.Min(MaximumWidth, Math.Max(620, Game1.uiViewport.Width - ScreenMargin));
+    private static int GetMenuHeight() => Math.Min(MaximumHeight, Math.Max(520, Game1.uiViewport.Height - ScreenMargin));
+    private static int GetMenuX() => Game1.uiViewport.Width / 2 - GetMenuWidth() / 2;
+    private static int GetMenuY() => Game1.uiViewport.Height / 2 - GetMenuHeight() / 2;
 }
