@@ -85,7 +85,13 @@ internal static class FarmWorkPassPolicy
         FarmWorkPass pass,
         string childPhase)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(childPhase);
+        if (string.IsNullOrWhiteSpace(childPhase))
+        {
+            throw new ArgumentException(
+                "Child phase is required.",
+                nameof(childPhase));
+        }
+
         return $"{stage}/{pass}/{childPhase}";
     }
 }
