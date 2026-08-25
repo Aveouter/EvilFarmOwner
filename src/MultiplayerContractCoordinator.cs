@@ -18,6 +18,7 @@ internal sealed class MultiplayerContractCoordinator
     private readonly WateringContractExecutionController WateringContracts;
     private readonly HarvestingContractExecutionController HarvestingContracts;
     private readonly StorageSortContractExecutionController StorageSortContracts;
+    private readonly FarmWorkContractExecutionController FarmWorkContracts;
     private readonly ProcessedContractRequestLedger ProcessedRequests = new();
     private readonly ContractSnapshotTracker SnapshotTracker = new();
     private readonly HostStateVersionTracker RemoteStateVersions = new();
@@ -47,7 +48,8 @@ internal sealed class MultiplayerContractCoordinator
         IMonitor monitor,
         WateringContractExecutionController wateringContracts,
         HarvestingContractExecutionController harvestingContracts,
-        StorageSortContractExecutionController storageSortContracts)
+        StorageSortContractExecutionController storageSortContracts,
+        FarmWorkContractExecutionController farmWorkContracts)
     {
         this.Helper = helper;
         this.Manifest = manifest;
@@ -56,6 +58,7 @@ internal sealed class MultiplayerContractCoordinator
         this.WateringContracts = wateringContracts;
         this.HarvestingContracts = harvestingContracts;
         this.StorageSortContracts = storageSortContracts;
+        this.FarmWorkContracts = farmWorkContracts;
     }
 
     public bool HasPendingRequest => this.PendingRequest is not null;
@@ -394,7 +397,8 @@ internal sealed class MultiplayerContractCoordinator
             return response;
         }
 
-        if (this.WateringContracts.HasActiveContract
+        if (this.FarmWorkContracts.HasActiveContract
+            || this.WateringContracts.HasActiveContract
             || this.HarvestingContracts.HasActiveContract
             || this.StorageSortContracts.HasActiveContract)
         {
@@ -409,6 +413,16 @@ internal sealed class MultiplayerContractCoordinator
         string? contractId;
         switch (request.Task)
         {
+            case NamedFarmTask.FarmWork:
+                accepted = this.FarmWorkContracts.TryStart(
+                    request.RequestingPlayerId,
+                    request.WorkerName,
+                    request.RequestId,
+                    request.HarvestDestination);
+                failureKey = this.FarmWorkContracts.LastStartFailureKey;
+                contractId = this.FarmWorkContracts.ActiveContractId;
+                break;
+
             case NamedFarmTask.Watering:
                 accepted = this.WateringContracts.TryStart(
                     request.RequestingPlayerId,
@@ -525,14 +539,10 @@ internal sealed class MultiplayerContractCoordinator
 
     private void PublishHostCompletions()
     {
-        NamedContractCompletionState? watering = this.WateringContracts.ConsumeCompletion();
-        NamedContractCompletionState? harvesting = this.HarvestingContracts.ConsumeCompletion();
-        NamedContractCompletionState? storageSorting = this.StorageSortContracts.ConsumeCompletion();
+        NamedContractCompletionState? farmWork = this.FarmWorkContracts.ConsumeCompletion();
         foreach (NamedContractCompletionState completion in new[]
                  {
-                     watering,
-                     harvesting,
-                     storageSorting
+                     farmWork
                  }.OfType<NamedContractCompletionState>())
         {
             ContractResultMessage result = new()
@@ -866,7 +876,13 @@ internal sealed class MultiplayerContractCoordinator
             return;
 
         Vector2 tile = new(snapshot.TargetX, snapshot.TargetY);
-        if (snapshot.Task == NamedFarmTask.Watering)
+        bool farmWorkWatering = snapshot.Task == NamedFarmTask.FarmWork
+            && snapshot.Phase.StartsWith("Watering/", StringComparison.Ordinal);
+        bool farmWorkHarvesting = snapshot.Task == NamedFarmTask.FarmWork
+            && snapshot.Phase.StartsWith("Harvesting/", StringComparison.Ordinal);
+        bool farmWorkSorting = snapshot.Task == NamedFarmTask.FarmWork
+            && snapshot.Phase.StartsWith("StorageSorting/", StringComparison.Ordinal);
+        if (snapshot.Task == NamedFarmTask.Watering || farmWorkWatering)
         {
             farm.playSound("wateringCan", tile);
             farm.temporarySprites.Add(new TemporaryAnimatedSprite(
@@ -880,7 +896,7 @@ internal sealed class MultiplayerContractCoordinator
                 64,
                 (tile.Y * Game1.tileSize + 32f) / 10000f - 0.01f));
         }
-        else if (snapshot.Task == NamedFarmTask.Harvesting)
+        else if (snapshot.Task == NamedFarmTask.Harvesting || farmWorkHarvesting)
         {
             farm.playSound("harvest", tile);
             farm.temporarySprites.Add(new TemporaryAnimatedSprite(
@@ -891,7 +907,7 @@ internal sealed class MultiplayerContractCoordinator
                 Game1.random.Next(2) == 0,
                 125f));
         }
-        else if (snapshot.Task == NamedFarmTask.StorageSorting)
+        else if (snapshot.Task == NamedFarmTask.StorageSorting || farmWorkSorting)
         {
             farm.playSound("openChest", tile);
         }
@@ -901,14 +917,15 @@ internal sealed class MultiplayerContractCoordinator
     {
         return snapshot.Task == NamedFarmTask.StorageSorting
             ? string.Equals(snapshot.Phase, "ActingAtDestination", StringComparison.Ordinal)
-            : string.Equals(snapshot.Phase, "Acting", StringComparison.Ordinal);
+            : snapshot.Task == NamedFarmTask.FarmWork
+                ? snapshot.Phase.EndsWith("/Acting", StringComparison.Ordinal)
+                    || snapshot.Phase.EndsWith("/ActingAtDestination", StringComparison.Ordinal)
+                : string.Equals(snapshot.Phase, "Acting", StringComparison.Ordinal);
     }
 
     private NamedContractRuntimeState? GetHostRuntimeState()
     {
-        return this.WateringContracts.GetRuntimeState()
-            ?? this.HarvestingContracts.GetRuntimeState()
-            ?? this.StorageSortContracts.GetRuntimeState();
+        return this.FarmWorkContracts.GetRuntimeState();
     }
 
     private long NextHostSequence(string contractId)
@@ -1037,6 +1054,7 @@ internal sealed class MultiplayerContractCoordinator
     {
         return this.Translation.Get(task switch
         {
+            NamedFarmTask.FarmWork => "contract.task.farm-work",
             NamedFarmTask.Watering => "contract.task.watering",
             NamedFarmTask.Harvesting => "contract.task.harvesting",
             NamedFarmTask.StorageSorting => "contract.task.storage-sorting",

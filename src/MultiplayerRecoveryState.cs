@@ -22,6 +22,7 @@ internal static class MultiplayerRecoveryState
     private const int LegacyPlacementProtocolSchemaVersion = 5;
     private const int LegacyEfficiencyProtocolSchemaVersion = 6;
     private const int LegacyDestinationProtocolSchemaVersion = 7;
+    private const int LegacyStorageSortingProtocolSchemaVersion = 8;
 
     public static MultiplayerRecoverySaveData Create(
         string modVersion,
@@ -127,13 +128,15 @@ internal static class MultiplayerRecoveryState
         // Protocol 4 only adds the reconnect sync nonce. Protocol 5 adds a nonnegative
         // quarantine destination count. Protocol 6 adds efficiency only to live snapshots.
         // Protocol 7 adds a harvest destination whose zero value preserves legacy classified-
-        // chest behavior. Protocol 8 adds storage sorting as a task. Persisted transaction
-        // identities remain compatible after validation.
+        // chest behavior. Protocol 8 adds storage sorting as a task. Protocol 9 replaces
+        // task-specific starts with one farm-work shift. Persisted transaction identities
+        // remain compatible after validation.
         return protocolSchemaVersion is LegacyHandshakeProtocolSchemaVersion
             or LegacyQuarantineProtocolSchemaVersion
             or LegacyPlacementProtocolSchemaVersion
             or LegacyEfficiencyProtocolSchemaVersion
             or LegacyDestinationProtocolSchemaVersion
+            or LegacyStorageSortingProtocolSchemaVersion
             or MultiplayerContractProtocol.SchemaVersion;
     }
 
@@ -173,6 +176,8 @@ internal static class MultiplayerRecoveryState
             || string.IsNullOrWhiteSpace(result.WorkerName)
             || result.WorkerName.Length > 100
             || !Enum.IsDefined(result.Task)
+            || (result.SchemaVersion >= MultiplayerContractProtocol.SchemaVersion
+                && result.Task != NamedFarmTask.FarmWork)
             || !HarvestDestinationPolicy.IsValidForTask(
                 result.Task,
                 result.HarvestDestination)
@@ -234,14 +239,17 @@ internal static class MultiplayerRecoveryState
 
     private static bool AreTransferReportsValid(ContractResultMessage result)
     {
-        if (result.Task != NamedFarmTask.StorageSorting)
+        if (result.Task is not (NamedFarmTask.FarmWork or NamedFarmTask.StorageSorting))
         {
             return result.CompletedTransfers.Length == 0
                 && result.SkippedTransfers.Length == 0;
         }
 
-        if (result.SchemaVersion < MultiplayerContractProtocol.SchemaVersion
-            || result.CompletedTransfers.Length != result.CompletedWork
+        if (result.SchemaVersion < LegacyStorageSortingProtocolSchemaVersion
+            || (result.Task == NamedFarmTask.StorageSorting
+                && result.CompletedTransfers.Length != result.CompletedWork)
+            || (result.Task == NamedFarmTask.FarmWork
+                && result.CompletedTransfers.Length > result.CompletedWork)
             || result.CompletedTransfers.Length + result.SkippedTransfers.Length > 4096
             || (result.Succeeded && result.SkippedTransfers.Length != 0))
         {
@@ -262,7 +270,9 @@ internal static class MultiplayerRecoveryState
                 return false;
         }
 
-        return movedItems == result.ChestItems
+        return (result.Task == NamedFarmTask.StorageSorting
+                ? movedItems == result.ChestItems
+                : movedItems <= result.ChestItems)
             && sequences.OrderBy(sequence => sequence).SequenceEqual(
                 Enumerable.Range(1, sequences.Count));
     }

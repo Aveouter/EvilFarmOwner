@@ -73,7 +73,7 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         int columnGap = 52;
         int columnWidth = (contentWidth - columnGap) / 2;
         int detailsY = this.yPositionOnScreen + 132 + 112;
-        if (task == NamedFarmTask.Harvesting)
+        if (task is NamedFarmTask.FarmWork or NamedFarmTask.Harvesting)
         {
             this.DestinationButton = new ClickableComponent(
                 new Rectangle(
@@ -201,7 +201,7 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
             hearts = this.Preview.FriendshipHearts,
             band = this.GetFriendshipBandText()
         }));
-        if (this.Task == NamedFarmTask.Harvesting)
+        if (this.Task is NamedFarmTask.FarmWork or NamedFarmTask.Harvesting)
         {
             this.DrawDetailRow(
                 batch,
@@ -333,6 +333,7 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
     {
         string suffix = this.Task switch
         {
+            NamedFarmTask.FarmWork => "farm-work",
             NamedFarmTask.Watering => "watering",
             NamedFarmTask.Harvesting => "harvesting",
             NamedFarmTask.StorageSorting => "storage-sorting",

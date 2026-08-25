@@ -17,6 +17,7 @@ public sealed class ModEntry : Mod
     private HarvestingContractExecutionController? HarvestingContracts;
     private StorageSortRecoveryManager? StorageSortRecovery;
     private StorageSortContractExecutionController? StorageSortContracts;
+    private FarmWorkContractExecutionController? FarmWorkContracts;
     private MultiplayerContractCoordinator? MultiplayerContracts;
     private RecurringContractCoordinator? RecurringContracts;
     private readonly HarvestAcceptanceFaults AcceptanceFaults = new();
@@ -42,6 +43,13 @@ public sealed class ModEntry : Mod
             this.Monitor,
             this.WorkerRoster,
             this.StorageSortRecovery);
+        this.FarmWorkContracts = new FarmWorkContractExecutionController(
+            helper.Translation,
+            this.Monitor,
+            this.WorkerRoster,
+            this.HarvestingContracts,
+            this.WateringContracts,
+            this.StorageSortContracts);
         this.MultiplayerContracts = new MultiplayerContractCoordinator(
             helper,
             this.ModManifest,
@@ -49,7 +57,8 @@ public sealed class ModEntry : Mod
             this.Monitor,
             this.WateringContracts,
             this.HarvestingContracts,
-            this.StorageSortContracts);
+            this.StorageSortContracts,
+            this.FarmWorkContracts);
         this.RecurringContracts = new RecurringContractCoordinator(
             helper,
             helper.Translation,
@@ -224,22 +233,12 @@ public sealed class ModEntry : Mod
         Game1.activeClickableMenu = new WorkerRosterMenu(
             this.WorkerRoster.GetRoster(),
             this.Helper.Translation,
-            this.OpenWorkerTaskSelection,
+            (worker, page) => this.OpenWorkContractPreview(
+                worker,
+                page,
+                NamedFarmTask.FarmWork),
             Context.IsMainPlayer ? this.OpenRecurringContractMenu : null,
             initialPage);
-    }
-
-    private void OpenWorkerTaskSelection(WorkerRosterEntry worker, int rosterPage)
-    {
-        if (!Context.IsWorldReady
-            || worker.Availability.State != WorkerAvailabilityState.EligibleForPreview)
-            return;
-
-        Game1.activeClickableMenu = new WorkerTaskSelectionMenu(
-            worker,
-            this.Helper.Translation,
-            () => this.OpenWorkerRoster(rosterPage),
-            task => this.OpenWorkContractPreview(worker, rosterPage, task));
     }
 
     private void OpenWorkContractPreview(
@@ -263,7 +262,7 @@ public sealed class ModEntry : Mod
             preview,
             task,
             this.Helper.Translation,
-            () => this.OpenWorkerTaskSelection(worker, rosterPage),
+            () => this.OpenWorkerRoster(rosterPage),
             destinationMode => this.TryStartNamedContract(
                 worker.InternalName,
                 task,
@@ -275,6 +274,7 @@ public sealed class ModEntry : Mod
         this.WateringContracts?.Update();
         this.HarvestingContracts?.Update();
         this.StorageSortContracts?.Update();
+        this.FarmWorkContracts?.Update();
         this.StorageSortRecovery?.Update();
         this.MultiplayerContracts?.Update();
         this.RecurringContracts?.Update(this.HasActiveNamedContract());
@@ -285,6 +285,7 @@ public sealed class ModEntry : Mod
         this.WateringContracts?.OnDayEnding();
         this.HarvestingContracts?.OnDayEnding();
         this.StorageSortContracts?.OnSaving();
+        this.FarmWorkContracts?.OnDayEnding();
         this.MultiplayerContracts?.Update();
     }
 
@@ -303,6 +304,7 @@ public sealed class ModEntry : Mod
         this.WateringContracts?.OnDayEnding();
         this.HarvestingContracts?.OnSaving();
         this.StorageSortContracts?.OnSaving();
+        this.FarmWorkContracts?.OnDayEnding();
         this.MultiplayerContracts?.Update();
         this.MultiplayerContracts?.OnSaving();
         this.RecurringContracts?.OnSaving();
@@ -313,6 +315,7 @@ public sealed class ModEntry : Mod
         this.WateringContracts?.OnReturnedToTitle();
         this.HarvestingContracts?.OnReturnedToTitle();
         this.StorageSortContracts?.OnReturnedToTitle();
+        this.FarmWorkContracts?.OnReturnedToTitle();
         this.StorageSortRecovery?.OnReturnedToTitle();
         this.MultiplayerContracts?.Update();
         this.MultiplayerContracts?.OnReturnedToTitle();
@@ -321,7 +324,8 @@ public sealed class ModEntry : Mod
 
     private bool HasActiveNamedContract()
     {
-        return this.WateringContracts?.HasActiveContract == true
+        return this.FarmWorkContracts?.HasActiveContract == true
+            || this.WateringContracts?.HasActiveContract == true
             || this.HarvestingContracts?.HasActiveContract == true
             || this.StorageSortContracts?.HasActiveContract == true
             || this.MultiplayerContracts?.HasObservedActiveContract == true
@@ -375,27 +379,13 @@ public sealed class ModEntry : Mod
         Game1.activeClickableMenu = new WorkerRosterMenu(
             workers,
             this.Helper.Translation,
-            (worker, page) => this.OpenRecurringTaskSelection(worker, page, workers),
+            (worker, page) => this.OpenRecurringAuthorization(
+                worker,
+                page,
+                NamedFarmTask.FarmWork,
+                workers),
             this.OpenRecurringContractMenu,
             initialPage);
-    }
-
-    private void OpenRecurringTaskSelection(
-        WorkerRosterEntry worker,
-        int rosterPage,
-        IReadOnlyList<WorkerRosterEntry> availableWorkers)
-    {
-        if (!Context.IsWorldReady
-            || !Context.IsMainPlayer
-            || worker.Availability.State != WorkerAvailabilityState.EligibleForPreview)
-            return;
-
-        Game1.activeClickableMenu = new WorkerTaskSelectionMenu(
-            worker,
-            this.Helper.Translation,
-            () => this.OpenRecurringWorkerRoster(rosterPage),
-            task => this.OpenRecurringAuthorization(worker, rosterPage, task, availableWorkers),
-            includeStorageSorting: false);
     }
 
     private void OpenRecurringAuthorization(
@@ -415,7 +405,7 @@ public sealed class ModEntry : Mod
             availableWorkers,
             this.RecurringContracts,
             this.Helper.Translation,
-            () => this.OpenRecurringTaskSelection(worker, rosterPage, availableWorkers),
+            () => this.OpenRecurringWorkerRoster(rosterPage),
             this.OpenRecurringContractMenu);
     }
 
@@ -570,6 +560,7 @@ public sealed class ModEntry : Mod
 
         string task = this.Helper.Translation.Get(result.Task switch
         {
+            NamedFarmTask.FarmWork => "contract.task.farm-work",
             NamedFarmTask.Watering => "contract.task.watering",
             NamedFarmTask.Harvesting => "contract.task.harvesting",
             NamedFarmTask.StorageSorting => "contract.task.storage-sorting",
@@ -608,6 +599,15 @@ public sealed class ModEntry : Mod
                 items
             }), LogLevel.Info);
         }
+        if (result.Task == NamedFarmTask.FarmWork && result.CompletedTransfers.Length > 0)
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("storage-sort.report.work", new
+            {
+                completed = result.CompletedTransfers.Length,
+                items = result.CompletedTransfers.Sum(transfer => transfer.Quantity),
+                skipped = result.SkippedTransfers.Length
+            }), LogLevel.Info);
+        }
         this.Monitor.Log(this.Helper.Translation.Get("report.destinations", new
         {
             player = result.PlayerItems,
@@ -616,7 +616,7 @@ public sealed class ModEntry : Mod
             quarantine = result.QuarantinedItems,
             dropped = result.DroppedItems
         }), LogLevel.Info);
-        if (result.Task == NamedFarmTask.Harvesting)
+        if (result.Task is NamedFarmTask.FarmWork or NamedFarmTask.Harvesting)
         {
             this.Monitor.Log(this.Helper.Translation.Get("report.destination-mode", new
             {
@@ -633,7 +633,7 @@ public sealed class ModEntry : Mod
             refunded = result.RefundedGold
         }), LogLevel.Info);
 
-        if (result.Task == NamedFarmTask.StorageSorting)
+        if (result.Task is NamedFarmTask.FarmWork or NamedFarmTask.StorageSorting)
         {
             foreach (ContractTransferReportMessage transfer in result.CompletedTransfers
                          .OrderBy(transfer => transfer.Sequence))

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Replaced manual task selection with one complete farm-work shift per hire: harvest ready crops and tappers, water dry crops, then sort ordinary farm chests, skipping empty stages.
+- Reused one NPC lease, one six-hour wage reservation, one harvest destination, and one final settlement across the whole shift; recurring hiring now uses the same behavior.
+- Upgraded the host-authoritative multiplayer protocol to version 9 and migrated valid legacy automatic watering/harvest authorizations to complete farm work without raising their saved wage caps.
 - Added object-safe collection of ready normal and heavy tree-tapper products to harvest contracts, with vanilla rescheduling and the existing lossless destination pipeline.
 
 ## 0.1.0 - Unreleased

@@ -20,6 +20,7 @@ internal sealed record WorkerEfficiencyProfile(
     {
         return task switch
         {
+            NamedFarmTask.FarmWork => Math.Max(this.WateringMultiplier, this.HarvestingMultiplier),
             NamedFarmTask.Watering => this.WateringMultiplier,
             NamedFarmTask.Harvesting => this.HarvestingMultiplier,
             _ => WorkerEfficiencyProfiles.BaselineMultiplier

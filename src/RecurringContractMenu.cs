@@ -151,9 +151,7 @@ internal sealed class RecurringContractMenu : IClickableMenu
         }
         else
         {
-            string task = this.Translation.Get(template.Task == NamedFarmTask.Watering
-                ? "contract.task.watering"
-                : "contract.task.harvesting");
+            string task = this.Translation.Get("contract.task.farm-work");
             string mode = this.Translation.Get(template.WorkerMode == RecurringWorkerMode.FixedWorkerOnly
                 ? "recurring.mode.fixed"
                 : "recurring.mode.substitutes");
