@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.3.2
+  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.5.0
 </p>
 
 <p align="center">
@@ -39,7 +39,7 @@
 2. 从 [Releases](https://github.com/Aveouter/EvilFarmOwner/releases/latest) 下载 ZIP。
 3. 解压后，把 `EvilFarmOwner` 文件夹放进游戏的 `Mods` 文件夹。
 4. 通过 SMAPI 启动游戏，载入存档并站在主农场。
-5. 按 `K`，选择一名工人，确认工资和产物去向，然后开始班次。
+5. 按 `K`，选择工人，确认总工资和产物去向，然后开始班次。默认上限为 1 人，主机可在设置中提高到 4 人。
 
 需要 Stardew Valley 1.6 或更高版本。Generic Mod Config Menu 是可选的，可用于修改按键、工资和综合班次偏好。
 
@@ -57,7 +57,7 @@
 
 使用分类箱时，NPC 会连续收集产物，按照原版可堆叠规则模拟携带空间，达到 12 个实际物品格后再集中送货；同物品同品质会共用一格，而不是每件作物各占一格。送货时按目标箱分组，每个箱子只走访和加锁一次；目标已经采完或接近停止采集时间时也会立即送货。玩家背包模式仍即时交付，因为它不需要 NPC 往返。
 
-玩家离开农场后，NPC 仍会在农场继续工作。当前同一时间只能执行一份合同、雇佣一名工人。
+玩家离开农场后，NPC 仍会在农场继续工作。同一时间只执行一份合同，但一份合同可以包含 1–4 名工人。多人班次会让所有工人分担收获和浇水；动物照料与箱子整理各只交给一人，避免重复操作。
 
 ### 工资
 
@@ -67,7 +67,7 @@
 - 休息日需要明确授权三倍工资。
 - 开工时暂时预留最高工资，工人返回后按实际工时收费并退回剩余金币。
 
-安装可选的 Generic Mod Config Menu 后，主机可以调整基础时薪（50g–500g）、好感度影响（0%–40%）、休息日倍率（1.0–5.0 倍）、默认产物去向，并启用或关闭收获、浇水、动物照料和箱子整理。至少保留一个工作阶段；已经开工的班次不会被中途修改。
+安装可选的 Generic Mod Config Menu 后，主机可以调整基础时薪（50g–500g）、好感度影响（0%–40%）、休息日倍率（1.0–5.0 倍）、同时雇佣上限（1–4 人）、默认产物去向，并启用或关闭收获、浇水、动物照料和箱子整理。至少保留一个工作阶段；已经开工的班次不会被中途修改。
 
 ### 收获物去向
 
@@ -87,13 +87,15 @@
 - 普通日工资上限；
 - 是否允许休息日三倍工资。
 
-授权从下一个游戏日开始。主机在上午 6:10 到下午 4:00 之间进入主农场时，Mod 每天最多尝试一次。自动合同与手动雇佣执行同一套完整班次；NPC、预算、路线或储存条件不合适时会跳过当天。
+授权从下一个游戏日开始。主机在上午 6:10 到下午 4:00 之间进入主农场时，Mod 每天最多尝试一次。自动合同会在授权名单中按工作效率、工资、好感度和姓名稳定选择最多 4 名合适工人，并与手动雇佣执行同一套完整班次；NPC、预算、路线或储存条件不合适时会跳过当天。
 
 ### 多人游戏
 
 主机和农场工都可以申请合同，但只有主机修改金币、NPC、作物、动物和箱子。所有玩家必须安装完全相同的 Mod 版本。
 
-协议包含重复请求防护、阶段同步、断线重连和主机重启后的历史结果恢复。真实双进程多人验收仍未完成，重要存档请先备份；报告联机问题时请同时提供主机与农场工的 SMAPI 日志。
+协议包含重复请求防护、每名工人的状态同步、断线重连和主机重启后的历史结果恢复。多人班次的任务认领、路线等待、货物和工资都分别记录，单个工人失败不会重复收取其他人的工资。
+
+维护者选择在未执行真实双进程和完整实机矩阵的情况下发布本版本，因此这些场景仍属于未验证状态。重要存档请先备份；报告联机问题时请同时提供主机与农场工的 SMAPI 日志。
 
 ### 常用命令
 
@@ -115,9 +117,8 @@ efo_netstatus    查看联机合同状态
 - 暂不支持清理杂物、播种、施肥、自动补充机器原料或自动出售。
 - 不接管动物自动采集器；也不收取会在交互时重新计算产物或自动续产的机器。
 - 仅支持主农场上的普通玩家箱子，不支持特殊箱子和其他 Mod 添加的箱子。
-- 当前一次只能雇佣一名工人；多人调度、路线预留和工资汇总仍在逐步接入，尚未开放并发。
 - 自定义农场如果没有安全路线，合同会拒绝开始或提前停止。
-- 强制储存故障矩阵、真实双进程多人和最终发布 ZIP 的游戏内烟雾测试尚未完整执行。
+- 2–4 人实机矩阵、强制储存故障矩阵、真实双进程多人和最终发布 ZIP 的游戏内烟雾测试未执行；本版本基于自动测试直接验收。
 
 ---
 
@@ -135,7 +136,7 @@ NPCs who are busy with festivals, events, work schedules, or other protected act
 2. Download the ZIP from [Releases](https://github.com/Aveouter/EvilFarmOwner/releases/latest).
 3. Extract it and place the `EvilFarmOwner` folder in your game's `Mods` folder.
 4. Launch through SMAPI, load a save, and stand on the main farm.
-5. Press `K`, choose a worker, review the wage and delivery destination, then confirm.
+5. Press `K`, select workers, review the combined wage and delivery destination, then confirm. The default limit is one; the host may raise it to four in settings.
 
 Stardew Valley 1.6 or later is required. Generic Mod Config Menu is optional and exposes the hotkey, wage, and complete-shift preferences.
 
@@ -153,7 +154,7 @@ Empty stages are skipped. The worker replans or skips isolated unreachable targe
 
 With classified chests selected, the NPC simulates vanilla-compatible stacking and keeps collecting until the cargo occupies 12 actual slots; compatible items share a slot instead of every crop counting separately. Delivery then groups cargo by destination so each chest is visited and locked once. Cargo is also delivered when no target remains or the acquisition cutoff is reached. Requester-inventory delivery remains immediate because it requires no NPC round trip.
 
-The NPC continues working on the farm when the player changes maps. Only one contract and one worker can run at a time in the current version.
+NPCs continue working on the farm when the player changes maps. Only one contract runs at a time, but that contract may include one to four workers. All workers can share harvesting and watering; animal care and chest sorting each have one owner to prevent duplicate actions.
 
 ### Wages
 
@@ -163,7 +164,7 @@ The NPC continues working on the farm when the player changes maps. Only one con
 - Rest-day work requires explicit authorization for triple pay.
 - The maximum is reserved at dispatch, then unused gold is refunded after the worker returns.
 
-With the optional Generic Mod Config Menu installed, the host can adjust the base rate (50g–500g), friendship impact (0%–40%), rest-day multiplier (1.0x–5.0x), default harvest destination, and which of harvesting, watering, animal care, and chest sorting are included. At least one stage remains enabled, and a running shift keeps its starting snapshot.
+With the optional Generic Mod Config Menu installed, the host can adjust the base rate (50g–500g), friendship impact (0%–40%), rest-day multiplier (1.0x–5.0x), simultaneous-worker limit (1–4), default harvest destination, and which of harvesting, watering, animal care, and chest sorting are included. At least one stage remains enabled, and a running shift keeps its starting snapshot.
 
 ### Harvest delivery
 
@@ -178,13 +179,15 @@ A running contract never changes destination silently. If the selected destinati
 
 The host can open “Automatic contract” from the bottom of the roster and choose a preferred worker, an explicit substitute pool, a regular-day wage cap, and whether rest-day triple pay is allowed.
 
-Starting the next game day, the mod tries at most once when the host enters the main farm between 6:10 AM and 4:00 PM. Automatic hiring uses the same complete shift as manual hiring and skips the day when worker, budget, route, or storage checks fail.
+Starting the next game day, the mod tries at most once when the host enters the main farm between 6:10 AM and 4:00 PM. It selects up to four authorized workers in a stable efficiency, wage, friendship, and name order. Automatic hiring uses the same complete shift as manual hiring and skips the day when worker, budget, route, or storage checks fail.
 
 ### Multiplayer
 
 Hosts and farmhands may request contracts, but only the host changes money, NPCs, crops, animals, and storage. Every player must install the exact same mod version.
 
-The protocol includes duplicate-request protection, phase synchronization, reconnect handling, and prior-result recovery after a host restart. Real two-process acceptance is still incomplete, so back up important saves and include both host and farmhand SMAPI logs in multiplayer reports.
+The protocol includes duplicate-request protection, per-worker state synchronization, reconnect handling, and prior-result recovery after a host restart. Multi-worker targets, route waits, cargo, and billing are tracked independently so one worker's failure does not charge the others twice.
+
+The maintainer chose to publish without a real two-process run or the full live matrix, so those scenarios remain unverified. Back up important saves and include both host and farmhand SMAPI logs in multiplayer reports.
 
 ### Useful commands
 
@@ -206,9 +209,8 @@ If an old `H` hotkey conflicts with UI Info Suite 2, change it to `K` through Ge
 - No debris clearing, planting, fertilizing, automatic machine refilling, or automatic shipping.
 - Auto-grabbers and machines which recalculate or automatically restart on collection are excluded.
 - Only ordinary player-owned main-farm chests are supported; special and modded chests are excluded.
-- Only one worker can be hired at a time. Multi-worker scheduling, route reservations, and aggregate billing are being integrated but concurrent dispatch is not enabled.
 - A custom farm without a safe route may reject or stop a contract.
-- The forced-storage fault matrix, real two-process multiplayer, and final in-game smoke test of the published ZIP are not yet complete.
+- The live 2–4 worker matrix, forced-storage fault matrix, real two-process multiplayer run, and final in-game smoke test of the published ZIP were not performed; this version was accepted from automated evidence.
 
 ## Compatibility
 
