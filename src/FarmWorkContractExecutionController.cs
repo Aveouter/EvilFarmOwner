@@ -50,7 +50,8 @@ internal sealed class FarmWorkContractExecutionController
         long requestingPlayerId,
         string workerInternalName,
         string requestId,
-        HarvestDestinationMode harvestDestination)
+        HarvestDestinationMode harvestDestination,
+        bool isBillable = true)
     {
         this.LastStartFailureKey = null;
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
@@ -88,11 +89,11 @@ internal sealed class FarmWorkContractExecutionController
             worker.Name,
             NamedFarmTask.FarmWork,
             settings);
-        if (requester.Money < preview.MaximumAuthorizedWage)
+        if (isBillable && requester.Money < preview.MaximumAuthorizedWage)
             return this.FailStart("contract.start.insufficient-funds");
         if (!NpcWorkLease.TryAcquire(
                 worker,
-                preview.MaximumAuthorizedWage,
+                isBillable ? preview.MaximumAuthorizedWage : 0,
                 this.Monitor,
                 out NpcWorkLease? lease)
             || lease is null)
@@ -105,10 +106,12 @@ internal sealed class FarmWorkContractExecutionController
             lease,
             preview,
             harvestDestination,
-            settings.EnabledStages);
+            settings.EnabledStages,
+            isBillable);
         ActiveFarmWorkShift shift = new(context);
         this.ActiveShift = shift;
-        requester.Money -= preview.MaximumAuthorizedWage;
+        if (isBillable)
+            requester.Money -= preview.MaximumAuthorizedWage;
         this.BeginNextAvailableStage(shift);
         if (this.ActiveShift is not null)
             return true;
@@ -360,11 +363,13 @@ internal sealed class FarmWorkContractExecutionController
         if (action == NpcLeaseRecoveryAction.Relinquish)
             restoreResult = shift.Context.Lease.RelinquishToConflictingController();
 
-        WateringContractSettlement settlement = WateringContractSettlement.Create(
-            shift.Context.BillingPreview,
-            shift.Dispatched,
-            shift.Context.Lease.StartTime,
-            Game1.timeOfDay);
+        WateringContractSettlement settlement = shift.Context.IsBillable
+            ? WateringContractSettlement.Create(
+                shift.Context.BillingPreview,
+                shift.Dispatched,
+                shift.Context.Lease.StartTime,
+                Game1.timeOfDay)
+            : new WateringContractSettlement(0, 0, 0, 0);
         shift.Context.Requester.Money += settlement.RefundedGold;
         bool succeeded = shift.PendingSucceeded && restoreResult == NpcLeaseRestoreResult.Restored;
         string reasonKey = succeeded

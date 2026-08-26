@@ -961,6 +961,13 @@ static void TestRecurringContractLegacyUpgrade()
     upgraded = RecurringContractPolicy.Upgrade(empty);
     Equal(RecurringContractPolicy.SchemaVersion, upgraded.SchemaVersion);
     Equal(true, RecurringContractPolicy.IsValid(upgraded));
+
+    RecurringContractSaveData versionTwo = NewRecurringContractState();
+    versionTwo.SchemaVersion = 2;
+    versionTwo.Template!.PreviousSelectedWorkerNames = Array.Empty<string>();
+    upgraded = RecurringContractPolicy.Upgrade(versionTwo);
+    Equal("Leah", upgraded.Template!.PreviousSelectedWorkerNames[0]);
+    Equal(true, RecurringContractPolicy.IsValid(upgraded));
 }
 
 static void TestPreDispatchSettlement()
@@ -3357,6 +3364,12 @@ static void TestMultiplayerGroupSettlementValidation()
         }
     };
 
+    Equal(true, MultiplayerRecoveryState.IsValidResult(
+        result,
+        445566,
+        MultiplayerContractProtocol.SchemaVersion));
+    result.WorkerSettlements[1].Succeeded = false;
+    result.WorkerSettlements[1].ReasonKey = "contract.failure.route-stalled";
     Equal(true, MultiplayerRecoveryState.IsValidResult(
         result,
         445566,

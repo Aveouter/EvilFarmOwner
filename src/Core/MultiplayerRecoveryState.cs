@@ -289,7 +289,7 @@ internal static class MultiplayerRecoveryState
             && result.BillableHours == result.WorkerSettlements.Sum(item => item.BillableHours)
             && result.ChargedGold == result.WorkerSettlements.Sum(item => item.ChargedGold)
             && result.RefundedGold == result.WorkerSettlements.Sum(item => item.RefundedGold)
-            && result.Succeeded == result.WorkerSettlements.All(item => item.Succeeded);
+            && (!result.WorkerSettlements.All(item => item.Succeeded) || result.Succeeded);
     }
 
     private static bool AreTransferReportsValid(ContractResultMessage result)

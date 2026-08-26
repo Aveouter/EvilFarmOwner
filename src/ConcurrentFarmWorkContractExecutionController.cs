@@ -93,7 +93,11 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         for (int index = 0; index < workers.Count; index++)
         {
             ContractSettingsSnapshot workerSettings = settings with { EnabledStages = assignments[index] };
-            WorkerRuntime runtime = this.CreateRuntime(workerSettings);
+            WorkerRuntime runtime = this.CreateRuntime(
+                workerSettings,
+                workers[index].Name,
+                assignments[index],
+                isRecovery: false);
             if (!runtime.FarmWork.TryStart(
                     requestingPlayerId,
                     workers[index].Name,
@@ -109,6 +113,7 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             }
             group.Workers.Add(runtime);
         }
+        group.InitialWorkerCount = group.Workers.Count;
 
         this.ActiveGroup = group;
         this.Monitor.Log(
@@ -133,7 +138,7 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         }
 
         if (group.Workers.All(worker => worker.Completion is not null))
-            this.CompleteGroup(group);
+            this.FinishOrRecover(group);
     }
 
     public void OnDayEnding()
@@ -191,7 +196,11 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         return completion;
     }
 
-    private WorkerRuntime CreateRuntime(ContractSettingsSnapshot settings)
+    private WorkerRuntime CreateRuntime(
+        ContractSettingsSnapshot settings,
+        string workerName,
+        FarmWorkStageSelection assignedStages,
+        bool isRecovery)
     {
         WateringContractExecutionController watering = new(this.Translation, this.Monitor, this.WorkerRoster);
         HarvestingContractExecutionController harvesting = new(
@@ -214,7 +223,69 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             animalCare,
             storage,
             () => settings);
-        return new WorkerRuntime(watering, harvesting, animalCare, storage, farmWork);
+        return new WorkerRuntime(
+            watering,
+            harvesting,
+            animalCare,
+            storage,
+            farmWork,
+            workerName,
+            assignedStages,
+            isRecovery);
+    }
+
+    private void FinishOrRecover(ActiveWorkerGroup group)
+    {
+        if (!group.RecoveryAttempted)
+        {
+            group.RecoveryAttempted = true;
+            WorkerRuntime[] initial = group.Workers.Take(group.InitialWorkerCount).ToArray();
+            FarmWorkStageSelection failedStages = initial
+                .Where(worker => worker.Completion?.Succeeded == false)
+                .Aggregate(
+                    FarmWorkStageSelection.None,
+                    (stages, worker) => stages | worker.AssignedStages);
+            WorkerRuntime? recoveryWorker = initial
+                .Where(worker => worker.Completion?.Succeeded == true)
+                .OrderBy(worker => worker.WorkerName, StringComparer.Ordinal)
+                .FirstOrDefault();
+            if (failedStages != FarmWorkStageSelection.None && recoveryWorker is not null)
+            {
+                ContractSettingsSnapshot settings = this.GetSettings();
+                if (!settings.IsValid)
+                    settings = ContractSettingsSnapshot.Default;
+                settings = settings with { EnabledStages = failedStages };
+                WorkerRuntime recovery = this.CreateRuntime(
+                    settings,
+                    recoveryWorker.WorkerName,
+                    failedStages,
+                    isRecovery: true);
+                if (recovery.FarmWork.TryStart(
+                        group.RequestingPlayerId,
+                        recoveryWorker.WorkerName,
+                        group.RequestId,
+                        group.HarvestDestination,
+                        isBillable: false))
+                {
+                    group.Workers.Add(recovery);
+                    this.Monitor.Log(
+                        $"Reassigned failed stages {failedStages} to {recoveryWorker.WorkerName} "
+                        + $"for group {group.Id:N} without a second wage charge.",
+                        LogLevel.Warn);
+                    return;
+                }
+
+                group.RecoverySatisfied = recovery.FarmWork.LastStartFailureKey == "farm-work.start.no-work";
+            }
+        }
+        else if (group.Workers.Skip(group.InitialWorkerCount).Any())
+        {
+            group.RecoverySatisfied = group.Workers
+                .Skip(group.InitialWorkerCount)
+                .All(worker => worker.Completion?.Succeeded == true);
+        }
+
+        this.CompleteGroup(group);
     }
 
     private void CompleteGroup(ActiveWorkerGroup group)
@@ -222,7 +293,19 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         NamedContractCompletionState[] results = group.Workers
             .Select(worker => worker.Completion!)
             .ToArray();
-        bool succeeded = results.All(result => result.Succeeded);
+        NamedContractCompletionState[] initialResults = results.Take(group.InitialWorkerCount).ToArray();
+        bool succeeded = initialResults.All(result => result.Succeeded) || group.RecoverySatisfied;
+        NamedContractCompletionState[] workerSettlements = initialResults
+            .Select(initial => MergeWorkerResults(
+                initial,
+                group.Workers.Skip(group.InitialWorkerCount)
+                    .Where(worker => string.Equals(
+                        worker.WorkerName,
+                        initial.WorkerName,
+                        StringComparison.OrdinalIgnoreCase))
+                    .Select(worker => worker.Completion!)
+                    .ToArray()))
+            .ToArray();
         this.LastCompletion = new NamedContractCompletionState(
             group.Id.ToString("N"),
             group.RequestId,
@@ -246,15 +329,57 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             results.SelectMany(result => result.SkippedTransfers).ToArray())
         {
             HarvestDestination = group.HarvestDestination,
-            WorkerSettlements = results
+            WorkerSettlements = workerSettlements
         };
         this.ActiveGroup = null;
+    }
+
+    private static NamedContractCompletionState MergeWorkerResults(
+        NamedContractCompletionState initial,
+        IReadOnlyList<NamedContractCompletionState> recovery)
+    {
+        if (recovery.Count == 0)
+            return initial;
+        NamedContractCompletionState[] all = new[] { initial }.Concat(recovery).ToArray();
+        return new NamedContractCompletionState(
+            initial.ContractId,
+            initial.RequestId,
+            initial.RequestingPlayerId,
+            initial.WorkerName,
+            initial.Task,
+            all.All(result => result.Succeeded),
+            all.All(result => result.Succeeded)
+                ? ""
+                : all.First(result => !result.Succeeded).ReasonKey,
+            all.Sum(result => result.CompletedWork),
+            all.Sum(result => result.PlayerItems),
+            all.Sum(result => result.ChestItems),
+            all.Sum(result => result.OverflowItems),
+            all.Sum(result => result.QuarantinedItems),
+            all.Sum(result => result.DroppedItems),
+            all.Sum(result => result.BillableHours),
+            all.Sum(result => result.ChargedGold),
+            all.Sum(result => result.RefundedGold),
+            all.SelectMany(result => result.ProducedItems).ToArray(),
+            all.SelectMany(result => result.CompletedTransferIds).Distinct(StringComparer.Ordinal).ToArray(),
+            all.SelectMany(result => result.CompletedTransfers).ToArray(),
+            all.SelectMany(result => result.SkippedTransfers).ToArray())
+        {
+            HarvestDestination = initial.HarvestDestination
+        };
     }
 
     private void DrainCancelled(IEnumerable<WorkerRuntime> workers)
     {
         foreach (WorkerRuntime runtime in workers)
-            runtime.FarmWork.ConsumeCompletion();
+        {
+            NamedContractCompletionState? cancelled = runtime.FarmWork.ConsumeCompletion();
+            if (cancelled?.ChargedGold > 0
+                && Game1.GetPlayer(cancelled.RequestingPlayerId, onlyOnline: true) is { } requester)
+            {
+                requester.Money += cancelled.ChargedGold;
+            }
+        }
     }
 
     private bool FailStart(string key)
@@ -282,6 +407,9 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         public long RequestingPlayerId { get; }
         public HarvestDestinationMode HarvestDestination { get; }
         public List<WorkerRuntime> Workers { get; } = new();
+        public int InitialWorkerCount { get; set; }
+        public bool RecoveryAttempted { get; set; }
+        public bool RecoverySatisfied { get; set; }
     }
 
     private sealed class WorkerRuntime
@@ -291,13 +419,19 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             HarvestingContractExecutionController harvesting,
             AnimalCareContractExecutionController animalCare,
             StorageSortContractExecutionController storageSorting,
-            FarmWorkContractExecutionController farmWork)
+            FarmWorkContractExecutionController farmWork,
+            string workerName,
+            FarmWorkStageSelection assignedStages,
+            bool isRecovery)
         {
             this.Watering = watering;
             this.Harvesting = harvesting;
             this.AnimalCare = animalCare;
             this.StorageSorting = storageSorting;
             this.FarmWork = farmWork;
+            this.WorkerName = workerName;
+            this.AssignedStages = assignedStages;
+            this.IsRecovery = isRecovery;
         }
 
         public WateringContractExecutionController Watering { get; }
@@ -305,6 +439,9 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         public AnimalCareContractExecutionController AnimalCare { get; }
         public StorageSortContractExecutionController StorageSorting { get; }
         public FarmWorkContractExecutionController FarmWork { get; }
+        public string WorkerName { get; }
+        public FarmWorkStageSelection AssignedStages { get; }
+        public bool IsRecovery { get; }
         public NamedContractCompletionState? Completion { get; set; }
     }
 }
