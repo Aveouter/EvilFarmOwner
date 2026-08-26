@@ -1,7 +1,7 @@
 {
   "Name": "Evil Farm Owner",
   "Author": "Aveouter",
-  "Version": "0.3.0",
+  "Version": "0.3.1",
   "Description": "Hire available adult NPCs for complete visible farm-work shifts with safe harvest delivery.",
   "UniqueID": "Aveouter.EvilFarmOwner",
   "EntryDll": "EvilFarmOwner.dll",
