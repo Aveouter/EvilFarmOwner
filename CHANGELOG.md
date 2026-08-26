@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Batched classified-chest harvest cargo behind a 12-stack delivery threshold, eliminating a full storage round trip after every crop, tapper, tree, machine, pot, pond, or bush while retaining the existing lossless transfer pipeline.
 - Added host-authoritative wage and complete-shift preferences through Generic Mod Config Menu: base hourly wage, friendship impact, rest-day multiplier, default harvest destination, and per-stage enablement with immutable contract snapshots and multiplayer synchronization.
 
 ## 0.2.0 - 2026-08-26

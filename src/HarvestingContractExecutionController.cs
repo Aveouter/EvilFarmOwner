@@ -369,7 +369,7 @@ internal sealed class HarvestingContractExecutionController
                 if (contract.PhaseTicks >= contract.ActionDurationTicks)
                 {
                     contract.Lease.Worker.Sprite?.ClearAnimation();
-                    this.BeginDeliveryOrReturn(contract);
+                    this.ContinueHarvestOrDeliver(contract);
                 }
                 break;
 
@@ -660,7 +660,7 @@ internal sealed class HarvestingContractExecutionController
                 + $"trying another safe interaction edge "
                 + $"[{decision.RouteFailureCount}/{decision.MaximumRouteFailures}].",
                 LogLevel.Debug);
-            this.BeginNextOrReturn(contract);
+            this.ContinueHarvestOrDeliver(contract);
             return;
         }
 
@@ -674,7 +674,7 @@ internal sealed class HarvestingContractExecutionController
                 + $"from {origin}; skipping only that crop and continuing "
                 + $"[{decision.StalledTargetCount}/{decision.MaximumStalledTargets} stalled crops at this origin].",
                 LogLevel.Warn);
-            this.BeginNextOrReturn(contract);
+            this.ContinueHarvestOrDeliver(contract);
             return;
         }
 
@@ -687,7 +687,10 @@ internal sealed class HarvestingContractExecutionController
             + $"{decision.MaximumStalledTargets} stalled harvest targets from {origin}; "
             + $"returning with {remaining} harvest target(s) marked unreachable.",
             LogLevel.Warn);
-        this.BeginReturn(contract, depositOverflowOnReturn: false);
+        if (contract.Cargo.Count > 0)
+            this.BeginDeliveryOrReturn(contract);
+        else
+            this.BeginReturn(contract, depositOverflowOnReturn: false);
     }
 
     private void HandleFailedDeliveryRoute(ActiveHarvestContract contract, string reason)
@@ -1554,7 +1557,29 @@ internal sealed class HarvestingContractExecutionController
         this.BeginDeliveryOrReturn(contract);
     }
 
-    private void BeginNextOrReturn(ActiveHarvestContract contract)
+    private void ContinueHarvestOrDeliver(ActiveHarvestContract contract)
+    {
+        if (!ReferenceEquals(this.ActiveContract, contract))
+            return;
+
+        bool deliverImmediately = contract.DestinationMode ==
+            HarvestDestinationMode.RequesterInventory;
+        bool acquisitionClosed = Game1.timeOfDay >= StopAcquiringTime;
+        if (deliverImmediately || HarvestCargoBatchPolicy.ShouldDeliver(
+                contract.Cargo.Count,
+                acquisitionClosed,
+                noRemainingTarget: false))
+        {
+            this.BeginDeliveryOrReturn(contract);
+            return;
+        }
+
+        this.BeginNextOrReturn(contract, allowHarvestWithCargo: true);
+    }
+
+    private void BeginNextOrReturn(
+        ActiveHarvestContract contract,
+        bool allowHarvestWithCargo = false)
     {
         if (!ReferenceEquals(this.ActiveContract, contract))
             return;
@@ -1568,7 +1593,7 @@ internal sealed class HarvestingContractExecutionController
             return;
         }
 
-        if (contract.Cargo.Count > 0)
+        if (contract.Cargo.Count > 0 && !allowHarvestWithCargo)
         {
             this.BeginDeliveryOrReturn(contract);
             return;
@@ -1579,7 +1604,10 @@ internal sealed class HarvestingContractExecutionController
             contract.RemainingTargets = HarvestTargetPlanner.CountRemainingHarvestTargets(
                 contract.Farm,
                 contract.CompletedTargets);
-            this.BeginReturn(contract, depositOverflowOnReturn: false);
+            if (contract.Cargo.Count > 0)
+                this.BeginDeliveryOrReturn(contract);
+            else
+                this.BeginReturn(contract, depositOverflowOnReturn: false);
             return;
         }
 
@@ -1602,7 +1630,13 @@ internal sealed class HarvestingContractExecutionController
                     + "Remaining targets are isolated by live collision, raised-seed trellises, placed objects, or previously failed edges.",
                     LogLevel.Warn);
             }
-            this.BeginReturn(contract, depositOverflowOnReturn: false);
+            if (HarvestCargoBatchPolicy.ShouldDeliver(
+                    contract.Cargo.Count,
+                    acquisitionClosed: false,
+                    noRemainingTarget: true))
+                this.BeginDeliveryOrReturn(contract);
+            else
+                this.BeginReturn(contract, depositOverflowOnReturn: false);
             return;
         }
 
