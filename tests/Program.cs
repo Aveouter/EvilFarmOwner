@@ -211,6 +211,10 @@ static void TestContractSettingsNormalization()
         (FarmWorkStageSelection)128));
     Equal(FarmWorkStageSelection.Watering, ContractSettingsPolicy.NormalizeEnabledStages(
         FarmWorkStageSelection.Watering));
+    Equal(1, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(0));
+    Equal(1, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(-5));
+    Equal(3, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(3));
+    Equal(4, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(9));
 }
 
 static void TestConfiguredFarmWorkStages()
@@ -236,10 +240,12 @@ static void TestMultiplayerContractSettingsValidation()
         FriendshipWageImpactPercent = 10,
         RestDayMultiplier = 2m,
         DefaultHarvestDestination = HarvestDestinationMode.RequesterInventory,
-        EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare
+        EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare,
+        MaximumConcurrentWorkers = 3
     };
     Equal(true, message.TryGetSnapshot(out ContractSettingsSnapshot valid));
     Equal(150, valid.BaseHourlyWage);
+    Equal(3, valid.MaximumConcurrentWorkers);
     Equal(FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare, valid.EnabledStages);
 
     message.EnabledStages = FarmWorkStageSelection.None;
@@ -248,6 +254,11 @@ static void TestMultiplayerContractSettingsValidation()
     message.BaseHourlyWage = 151;
     Equal(false, message.TryGetSnapshot(out _));
     message.BaseHourlyWage = 150;
+    message.MaximumConcurrentWorkers = 0;
+    Equal(false, message.TryGetSnapshot(out _));
+    message.SchemaVersion = MultiplayerContractProtocol.SingleWorkerSchemaVersion;
+    Equal(true, message.TryGetSnapshot(out ContractSettingsSnapshot migrated));
+    Equal(1, migrated.MaximumConcurrentWorkers);
     message.SchemaVersion--;
     Equal(false, message.TryGetSnapshot(out _));
 }
@@ -3096,7 +3107,8 @@ static void TestMultiplayerSyncHandshakeSerialization()
             FriendshipWageImpactPercent = 30,
             RestDayMultiplier = 2.5m,
             DefaultHarvestDestination = HarvestDestinationMode.RequesterInventory,
-            EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare
+            EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare,
+            MaximumConcurrentWorkers = 4
         }
     };
     ContractSyncStateMessage? restoredState = JsonSerializer.Deserialize<ContractSyncStateMessage>(
@@ -3110,6 +3122,7 @@ static void TestMultiplayerSyncHandshakeSerialization()
     Equal(30, restoredSettings.FriendshipWageImpactPercent);
     Equal(2.5m, restoredSettings.RestDayMultiplier);
     Equal(HarvestDestinationMode.RequesterInventory, restoredSettings.DefaultHarvestDestination);
+    Equal(4, restoredSettings.MaximumConcurrentWorkers);
     Equal(
         FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare,
         restoredSettings.EnabledStages);
@@ -3184,7 +3197,7 @@ static void TestMultiplayerSnapshotSerialization()
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(10, MultiplayerContractProtocol.SchemaVersion);
+    Equal(11, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,

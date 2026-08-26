@@ -83,6 +83,20 @@ internal sealed class GenericModConfigMenuIntegration
             fieldId: nameof(ModConfig.RestDayMultiplier));
 
         api.AddSectionTitle(this.Manifest, this.Text("gmcm.section.shift"));
+        api.AddNumberOption(
+            this.Manifest,
+            getValue: () => this.GetConfig().MaximumConcurrentWorkers,
+            setValue: value =>
+            {
+                if (!Context.IsWorldReady || Context.IsMainPlayer)
+                    this.GetConfig().MaximumConcurrentWorkers = value;
+            },
+            name: this.Text("gmcm.maximum-workers.name"),
+            tooltip: this.Text("gmcm.maximum-workers.tooltip"),
+            min: ContractSettingsPolicy.MinimumMaximumConcurrentWorkers,
+            max: ContractSettingsPolicy.MaximumMaximumConcurrentWorkers,
+            interval: 1,
+            fieldId: nameof(ModConfig.MaximumConcurrentWorkers));
         api.AddTextOption(
             this.Manifest,
             getValue: () => this.GetConfig().DefaultHarvestDestination.ToString(),

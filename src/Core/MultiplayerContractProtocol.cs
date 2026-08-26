@@ -2,7 +2,8 @@ namespace EvilFarmOwner;
 
 internal static class MultiplayerContractProtocol
 {
-    public const int SchemaVersion = 10;
+    public const int SchemaVersion = 11;
+    public const int SingleWorkerSchemaVersion = 10;
     public const int ProcessedRequestCapacity = 256;
     public const string StartRequestType = "Contract/StartRequest";
     public const string StartResponseType = "Contract/StartResponse";
@@ -156,16 +157,23 @@ internal sealed class ContractSettingsMessage
     public decimal RestDayMultiplier { get; set; }
     public HarvestDestinationMode DefaultHarvestDestination { get; set; }
     public FarmWorkStageSelection EnabledStages { get; set; }
+    public int MaximumConcurrentWorkers { get; set; }
 
     public bool TryGetSnapshot(out ContractSettingsSnapshot settings)
     {
+        int workerLimit = this.SchemaVersion == MultiplayerContractProtocol.SingleWorkerSchemaVersion
+            && this.MaximumConcurrentWorkers <= 0
+                ? ContractSettingsPolicy.DefaultMaximumConcurrentWorkers
+                : this.MaximumConcurrentWorkers;
         settings = new ContractSettingsSnapshot(
             this.BaseHourlyWage,
             this.FriendshipWageImpactPercent,
             this.RestDayMultiplier,
             this.DefaultHarvestDestination,
-            this.EnabledStages);
-        return this.SchemaVersion == MultiplayerContractProtocol.SchemaVersion
+            this.EnabledStages,
+            workerLimit);
+        return this.SchemaVersion is MultiplayerContractProtocol.SingleWorkerSchemaVersion
+                or MultiplayerContractProtocol.SchemaVersion
             && this.SettingsVersion >= 0
             && settings.IsValid;
     }

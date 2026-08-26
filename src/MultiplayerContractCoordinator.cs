@@ -933,7 +933,8 @@ internal sealed class MultiplayerContractCoordinator
             FriendshipWageImpactPercent = settings.FriendshipWageImpactPercent,
             RestDayMultiplier = settings.RestDayMultiplier,
             DefaultHarvestDestination = settings.DefaultHarvestDestination,
-            EnabledStages = settings.EnabledStages
+            EnabledStages = settings.EnabledStages,
+            MaximumConcurrentWorkers = settings.MaximumConcurrentWorkers
         };
     }
 
