@@ -84,7 +84,12 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             return this.FailStart("contract.start.insufficient-funds");
 
         Guid groupId = Guid.NewGuid();
-        ActiveWorkerGroup group = new(groupId, requestId, requestingPlayerId, harvestDestination);
+        ActiveWorkerGroup group = new(
+            groupId,
+            requestId,
+            requestingPlayerId,
+            harvestDestination,
+            settings);
         IReadOnlyList<FarmWorkStageSelection> assignments = WorkStagePartitionPolicy.Partition(
             settings.EnabledStages,
             workers.Count);
@@ -271,10 +276,7 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
                 .FirstOrDefault();
             if (failedStages != FarmWorkStageSelection.None && recoveryWorker is not null)
             {
-                ContractSettingsSnapshot settings = this.GetSettings();
-                if (!settings.IsValid)
-                    settings = ContractSettingsSnapshot.Default;
-                settings = settings with { EnabledStages = failedStages };
+                ContractSettingsSnapshot settings = group.Settings with { EnabledStages = failedStages };
                 WorkerRuntime recovery = this.CreateRuntime(
                     settings,
                     recoveryWorker.WorkerName,
@@ -416,18 +418,21 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             Guid id,
             string requestId,
             long requestingPlayerId,
-            HarvestDestinationMode harvestDestination)
+            HarvestDestinationMode harvestDestination,
+            ContractSettingsSnapshot settings)
         {
             this.Id = id;
             this.RequestId = requestId;
             this.RequestingPlayerId = requestingPlayerId;
             this.HarvestDestination = harvestDestination;
+            this.Settings = settings;
         }
 
         public Guid Id { get; }
         public string RequestId { get; }
         public long RequestingPlayerId { get; }
         public HarvestDestinationMode HarvestDestination { get; }
+        public ContractSettingsSnapshot Settings { get; }
         public List<WorkerRuntime> Workers { get; } = new();
         public RuntimeWorkClaimCoordinator WorkClaims { get; } = new();
         public RuntimeWorkforceRouteCoordinator WorkforceRoutes { get; } = new();
