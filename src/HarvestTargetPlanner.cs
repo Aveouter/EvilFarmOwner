@@ -153,11 +153,22 @@ internal sealed class HarvestTargetPlanner
         Point startTile,
         Point arrivalTile,
         IReadOnlySet<Point> completedTargets,
-        IReadOnlySet<FarmTaskRouteEdge> failedEdges)
+        IReadOnlySet<FarmTaskRouteEdge> failedEdges,
+        TravelObstacleLedger? obstacles = null)
     {
         int width = farm.Map.Layers[0].LayerWidth;
         int height = farm.Map.Layers[0].LayerHeight;
-        if (!FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
+        bool builtRoutes = obstacles is null
+            ? FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
+            : FarmNavigationMap.TryBuild(
+                farm,
+                worker,
+                startTile,
+                this.Monitor,
+                farm.NameOrUniqueName,
+                obstacles,
+                out routes);
+        if (!builtRoutes
             || routes is null
             || !routes.IsReachable(new GridPoint(arrivalTile.X, arrivalTile.Y)))
         {

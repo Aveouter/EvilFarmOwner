@@ -284,7 +284,7 @@ internal sealed class WateringContractExecutionController
 
                 if (contract.PhaseTicks > MaximumTravelTicks)
                 {
-                    this.HandleInterruptedTargetTravel(contract);
+                    this.HandleInterruptedTargetTravel(contract, TravelInterruptionKind.Timeout);
                     return;
                 }
 
@@ -292,6 +292,7 @@ internal sealed class WateringContractExecutionController
                     && contract.Lease.Worker.controller is not null
                     && !ReferenceEquals(contract.Lease.Worker.controller, contract.Controller))
                 {
+                    this.LogControllerConflict(contract);
                     this.FinishContract(contract, succeeded: false, "contract.failure.controller-conflict");
                     return;
                 }
@@ -300,14 +301,17 @@ internal sealed class WateringContractExecutionController
                     && contract.TravelWatchdog.Tick(
                         contract.Lease.Worker.Position.X,
                         contract.Lease.Worker.Position.Y,
+                        new GridPoint(
+                            contract.Lease.Worker.TilePoint.X,
+                            contract.Lease.Worker.TilePoint.Y),
                         MaximumStalledTravelTicks))
                 {
-                    this.HandleInterruptedTargetTravel(contract);
+                    this.HandleInterruptedTargetTravel(contract, TravelInterruptionKind.ProgressStall);
                     return;
                 }
 
                 if (contract.PhaseTicks > 1 && contract.Lease.Worker.controller is null)
-                    this.HandleInterruptedTargetTravel(contract);
+                    this.HandleInterruptedTargetTravel(contract, TravelInterruptionKind.ControllerEnded);
                 break;
 
             case WateringContractPhase.Acting:
@@ -625,14 +629,72 @@ internal sealed class WateringContractExecutionController
         }
     }
 
-    private void HandleInterruptedTargetTravel(ActiveWateringContract contract)
+    private void LogControllerConflict(ActiveWateringContract contract)
+    {
+        TravelInterruptionSnapshot diagnostic = this.CaptureTargetInterruption(
+            contract,
+            TravelInterruptionKind.ControllerReplaced);
+        this.Monitor.Log(
+            $"Watering travel interrupted: contract={contract.Id:N}, "
+            + $"worker={contract.Lease.Worker.Name}, phase={contract.Phase}, "
+            + diagnostic.ToTechnicalReason() + ".",
+            LogLevel.Warn);
+    }
+
+    private TravelInterruptionSnapshot CaptureTargetInterruption(
+        ActiveWateringContract contract,
+        TravelInterruptionKind kind,
+        Stack<Point>? explicitPath = null,
+        string? explicitCollisionProbe = null)
+    {
+        return TravelInterruptionRuntime.Capture(
+            contract.Farm,
+            contract.Lease.Worker,
+            contract.Controller,
+            contract.CurrentTarget.InteractionTile,
+            kind,
+            contract.TravelWatchdog.PreviousProgressTile,
+            explicitPath,
+            explicitCollisionProbe);
+    }
+
+    private void RecordTargetObstacle(
+        ActiveWateringContract contract,
+        TravelInterruptionSnapshot diagnostic)
+    {
+        TravelObstacleSelection selection = TravelRouteExclusionPolicy.Select(
+            diagnostic.LocationKey,
+            diagnostic.Origin,
+            diagnostic.PreviousProgressTile,
+            diagnostic.NextWaypoint);
+        if (contract.TargetObstacles.Add(selection))
+        {
+            this.Monitor.Log(
+                $"Watering target routing excluded dynamic obstacle tile={selection.Tile}, "
+                + $"edge={selection.Edge} for contract {contract.Id:N}.",
+                LogLevel.Debug);
+        }
+    }
+
+    private void HandleInterruptedTargetTravel(
+        ActiveWateringContract contract,
+        TravelInterruptionKind kind)
     {
         if (contract.Lease.Worker.controller is not null
             && !ReferenceEquals(contract.Lease.Worker.controller, contract.Controller))
         {
+            this.LogControllerConflict(contract);
             this.FinishContract(contract, succeeded: false, "contract.failure.controller-conflict");
             return;
         }
+
+        TravelInterruptionSnapshot diagnostic = this.CaptureTargetInterruption(contract, kind);
+        this.Monitor.Log(
+            $"Watering travel interrupted: contract={contract.Id:N}, "
+            + $"worker={contract.Lease.Worker.Name}, phase={contract.Phase}, "
+            + diagnostic.ToTechnicalReason() + ".",
+            LogLevel.Debug);
+        this.RecordTargetObstacle(contract, diagnostic);
 
         if (ReferenceEquals(contract.Lease.Worker.controller, contract.Controller))
             contract.Lease.Worker.controller = null;
@@ -640,10 +702,16 @@ internal sealed class WateringContractExecutionController
         if (this.TryHandleStalledEntrance(contract))
             return;
 
-        this.HandleFailedTargetRoute(contract, "stalled or stopped controller");
+        this.HandleFailedTargetRoute(
+            contract,
+            diagnostic.ToTechnicalReason(),
+            diagnostic.ReasonTranslationKey);
     }
 
-    private void HandleFailedTargetRoute(ActiveWateringContract contract, string reason)
+    private void HandleFailedTargetRoute(
+        ActiveWateringContract contract,
+        string reason,
+        string reasonTranslationKey)
     {
         FarmTaskRouteEdge failedEdge = WateringTargetPlanner.ToEdge(
             contract.CurrentTarget.TargetTile,
@@ -690,6 +758,14 @@ internal sealed class WateringContractExecutionController
             + $"{decision.MaximumStalledTargets} stalled crops from {origin}; "
             + $"returning with {remaining} dry crop(s) marked unreachable.",
             LogLevel.Warn);
+        Game1.addHUDMessage(new HUDMessage(
+            this.Translation.Get("route.hud.target-routes-exhausted", new
+            {
+                worker = contract.Lease.Worker.displayName,
+                origin = $"{origin.X},{origin.Y}",
+                reason = this.Translation.Get(reasonTranslationKey)
+            }),
+            HUDMessage.error_type));
         this.BeginReturn(contract);
     }
 
@@ -838,7 +914,8 @@ internal sealed class WateringContractExecutionController
             contract.Lease.Worker.TilePoint,
             contract.Plan.ArrivalTile,
             contract.CompletedTargets,
-            contract.FailedEdges);
+            contract.FailedEdges,
+            contract.TargetObstacles);
 
         if (!next.IsSuccess || next.Target is null)
         {
@@ -869,9 +946,19 @@ internal sealed class WateringContractExecutionController
                     next.Target.Path,
                     out string firstStepFailure))
             {
+                TravelInterruptionSnapshot diagnostic = this.CaptureTargetInterruption(
+                    contract,
+                    TravelInterruptionKind.FirstStepRejected,
+                    next.Target.Path,
+                    firstStepFailure);
+                this.Monitor.Log(
+                    $"Watering target route rejected before controller setup: {diagnostic.ToTechnicalReason()}.",
+                    LogLevel.Debug);
+                this.RecordTargetObstacle(contract, diagnostic);
                 this.HandleFailedTargetRoute(
                     contract,
-                    $"first-step collision probe rejected the route: {firstStepFailure}");
+                    diagnostic.ToTechnicalReason(),
+                    diagnostic.ReasonTranslationKey);
                 return;
             }
 
@@ -885,13 +972,26 @@ internal sealed class WateringContractExecutionController
             contract.Lease.AttachController(controller);
             contract.TravelWatchdog.Reset(
                 contract.Lease.Worker.Position.X,
-                contract.Lease.Worker.Position.Y);
+                contract.Lease.Worker.Position.Y,
+                new GridPoint(
+                    contract.Lease.Worker.TilePoint.X,
+                    contract.Lease.Worker.TilePoint.Y));
         }
         catch (Exception ex)
         {
+            TravelInterruptionSnapshot diagnostic = this.CaptureTargetInterruption(
+                contract,
+                TravelInterruptionKind.ControllerSetupFailed,
+                contract.CurrentTarget.Path,
+                ex.Message);
+            this.Monitor.Log(
+                $"Watering target controller setup failed: {diagnostic.ToTechnicalReason()}.",
+                LogLevel.Debug);
+            this.RecordTargetObstacle(contract, diagnostic);
             this.HandleFailedTargetRoute(
                 contract,
-                $"controller setup failed: {ex.Message}");
+                diagnostic.ToTechnicalReason(),
+                diagnostic.ReasonTranslationKey);
         }
     }
 
@@ -1174,6 +1274,7 @@ internal sealed class WateringContractExecutionController
         public WateringWorkPlan Plan { get; set; }
         public HashSet<Point> CompletedTargets { get; } = new();
         public HashSet<FarmTaskRouteEdge> FailedEdges { get; } = new();
+        public TravelObstacleLedger TargetObstacles { get; } = new();
         public HashSet<FarmBoundarySide> FailedArrivalSides { get; } = new();
         public TravelProgressWatchdog TravelWatchdog { get; } = new();
         public TravelReplanBudget ReplanBudget { get; } = new();
