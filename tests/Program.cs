@@ -665,6 +665,9 @@ static void TestWorkStagePartition()
         3);
     Equal(FarmWorkStageSelection.None, tooMany[2]);
     Equal(0, WorkStagePartitionPolicy.Partition(FarmWorkStageSelection.All, 0).Count);
+    Equal(4, WorkStagePartitionPolicy.CountEnabled(FarmWorkStageSelection.All));
+    Equal(2, WorkStagePartitionPolicy.CountEnabled(
+        FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare));
 }
 
 static WorkforceRouteProposal Route(
@@ -863,6 +866,7 @@ static void TestRecurringContractStateValidation()
         RunId = runId,
         Status = RecurringEvaluationStatus.Completed,
         SelectedWorkerName = "Alex",
+        SelectedWorkerNames = new[] { "Alex" },
         AuthorizedGold = 720,
         CompletedWork = 12,
         ChargedGold = 120,
@@ -3530,6 +3534,7 @@ static RecurringContractSaveData NewRecurringContractState()
             LastProcessedTotalDays = 11,
             LastRunId = "",
             PreviousSelectedWorkerName = "Leah",
+            PreviousSelectedWorkerNames = new[] { "Leah" },
             LastEvaluation = new RecurringEvaluationData()
         }
     };

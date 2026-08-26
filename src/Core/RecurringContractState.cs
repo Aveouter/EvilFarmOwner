@@ -41,6 +41,7 @@ internal sealed class RecurringContractTemplateData
     public int LastProcessedTotalDays { get; set; } = -1;
     public string LastRunId { get; set; } = "";
     public string PreviousSelectedWorkerName { get; set; } = "";
+    public string[] PreviousSelectedWorkerNames { get; set; } = Array.Empty<string>();
     public RecurringEvaluationData LastEvaluation { get; set; } = new();
 }
 
@@ -50,6 +51,7 @@ internal sealed class RecurringEvaluationData
     public string RunId { get; set; } = "";
     public RecurringEvaluationStatus Status { get; set; }
     public string SelectedWorkerName { get; set; } = "";
+    public string[] SelectedWorkerNames { get; set; } = Array.Empty<string>();
     public string ReasonKey { get; set; } = "";
     public int AuthorizedGold { get; set; }
     public int CompletedWork { get; set; }
@@ -75,7 +77,7 @@ internal sealed record RecurringWorkerCandidate(
 
 internal static class RecurringContractPolicy
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
     public const int MaximumStoredWorkers = 27;
     public const int MaximumStoredGold = 1_000_000;
     public const int EvaluationWindowStart = 610;
@@ -108,6 +110,11 @@ internal static class RecurringContractPolicy
                 && !Guid.TryParseExact(template.LastRunId, "N", out _))
             || (!string.IsNullOrWhiteSpace(template.PreviousSelectedWorkerName)
                 && !WorkerEfficiencyProfiles.HasExplicitProfile(template.PreviousSelectedWorkerName))
+            || template.PreviousSelectedWorkerNames is null
+            || template.PreviousSelectedWorkerNames.Length > ContractSettingsPolicy.MaximumMaximumConcurrentWorkers
+            || template.PreviousSelectedWorkerNames.Any(name => !WorkerEfficiencyProfiles.HasExplicitProfile(name))
+            || template.PreviousSelectedWorkerNames.Distinct(StringComparer.OrdinalIgnoreCase).Count()
+                != template.PreviousSelectedWorkerNames.Length
             || !IsValid(template.LastEvaluation))
             return false;
 
@@ -132,12 +139,29 @@ internal static class RecurringContractPolicy
     public static RecurringContractSaveData Upgrade(RecurringContractSaveData state)
     {
         ArgumentNullException.ThrowIfNull(state);
-        if (state.SchemaVersion != 1)
+        if (state.SchemaVersion is < 1 or > SchemaVersion)
             return state;
 
-        if (state.Template?.Task is NamedFarmTask.Watering or NamedFarmTask.Harvesting)
-            state.Template.Task = NamedFarmTask.FarmWork;
-        state.SchemaVersion = SchemaVersion;
+        if (state.SchemaVersion == 1)
+        {
+            if (state.Template?.Task is NamedFarmTask.Watering or NamedFarmTask.Harvesting)
+                state.Template.Task = NamedFarmTask.FarmWork;
+            state.SchemaVersion = 2;
+        }
+        if (state.SchemaVersion == 2)
+        {
+            if (state.Template is { } template)
+            {
+                template.PreviousSelectedWorkerNames = string.IsNullOrWhiteSpace(template.PreviousSelectedWorkerName)
+                    ? Array.Empty<string>()
+                    : new[] { template.PreviousSelectedWorkerName };
+                template.LastEvaluation.SelectedWorkerNames = string.IsNullOrWhiteSpace(
+                    template.LastEvaluation.SelectedWorkerName)
+                        ? Array.Empty<string>()
+                        : new[] { template.LastEvaluation.SelectedWorkerName };
+            }
+            state.SchemaVersion = SchemaVersion;
+        }
         return state;
     }
 
@@ -208,6 +232,18 @@ internal static class RecurringContractPolicy
             || evaluation.Rejections.Length > MaximumStoredWorkers)
             return false;
 
+        if (evaluation.SelectedWorkerNames is null
+            || evaluation.SelectedWorkerNames.Length > ContractSettingsPolicy.MaximumMaximumConcurrentWorkers
+            || evaluation.SelectedWorkerNames.Any(name => !WorkerEfficiencyProfiles.HasExplicitProfile(name))
+            || evaluation.SelectedWorkerNames.Distinct(StringComparer.OrdinalIgnoreCase).Count()
+                != evaluation.SelectedWorkerNames.Length
+            || (evaluation.SelectedWorkerNames.Length > 0
+                && !string.Equals(
+                    evaluation.SelectedWorkerName,
+                    evaluation.SelectedWorkerNames[0],
+                    StringComparison.OrdinalIgnoreCase)))
+            return false;
+
         if (!string.IsNullOrWhiteSpace(evaluation.RunId)
             && !Guid.TryParseExact(evaluation.RunId, "N", out _))
             return false;
@@ -228,6 +264,7 @@ internal static class RecurringContractPolicy
         {
             RecurringEvaluationStatus.None => string.IsNullOrWhiteSpace(evaluation.RunId)
                 && string.IsNullOrWhiteSpace(evaluation.SelectedWorkerName)
+                && evaluation.SelectedWorkerNames.Length == 0
                 && string.IsNullOrWhiteSpace(evaluation.ReasonKey)
                 && evaluation.AuthorizedGold == 0
                 && evaluation.CompletedWork == 0
@@ -235,6 +272,7 @@ internal static class RecurringContractPolicy
                 && evaluation.RefundedGold == 0,
             RecurringEvaluationStatus.Started => Guid.TryParseExact(evaluation.RunId, "N", out _)
                 && !string.IsNullOrWhiteSpace(evaluation.SelectedWorkerName)
+                && evaluation.SelectedWorkerNames.Length > 0
                 && string.IsNullOrWhiteSpace(evaluation.ReasonKey)
                 && evaluation.AuthorizedGold > 0
                 && evaluation.CompletedWork == 0
@@ -243,16 +281,19 @@ internal static class RecurringContractPolicy
             RecurringEvaluationStatus.Completed =>
                 Guid.TryParseExact(evaluation.RunId, "N", out _)
                 && !string.IsNullOrWhiteSpace(evaluation.SelectedWorkerName)
+                && evaluation.SelectedWorkerNames.Length > 0
                 && string.IsNullOrWhiteSpace(evaluation.ReasonKey)
                 && evaluation.AuthorizedGold > 0
                 && evaluation.CompletedWork > 0
                 && evaluation.ChargedGold > 0,
             RecurringEvaluationStatus.Stopped => Guid.TryParseExact(evaluation.RunId, "N", out _)
                 && !string.IsNullOrWhiteSpace(evaluation.SelectedWorkerName)
+                && evaluation.SelectedWorkerNames.Length > 0
                 && !string.IsNullOrWhiteSpace(evaluation.ReasonKey)
                 && evaluation.AuthorizedGold > 0,
             RecurringEvaluationStatus.Skipped => Guid.TryParseExact(evaluation.RunId, "N", out _)
                 && string.IsNullOrWhiteSpace(evaluation.SelectedWorkerName)
+                && evaluation.SelectedWorkerNames.Length == 0
                 && !string.IsNullOrWhiteSpace(evaluation.ReasonKey)
                 && evaluation.AuthorizedGold == 0
                 && evaluation.CompletedWork == 0

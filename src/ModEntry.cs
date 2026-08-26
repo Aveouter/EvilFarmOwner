@@ -290,7 +290,10 @@ public sealed class ModEntry : Mod
 
         IReadOnlyList<WorkerRosterEntry> roster = this.WorkerRoster.GetRoster();
         ContractSettingsSnapshot settings = this.GetEffectiveContractSettings();
-        if (settings.MaximumConcurrentWorkers <= 1)
+        int selectableWorkers = Math.Min(
+            settings.MaximumConcurrentWorkers,
+            WorkStagePartitionPolicy.CountEnabled(settings.EnabledStages));
+        if (selectableWorkers <= 1)
         {
             Game1.activeClickableMenu = new WorkerRosterMenu(
                 roster,
@@ -311,7 +314,7 @@ public sealed class ModEntry : Mod
                 workers,
                 page,
                 NamedFarmTask.FarmWork),
-            settings.MaximumConcurrentWorkers,
+            selectableWorkers,
             Context.IsMainPlayer ? this.OpenRecurringContractMenu : null,
             initialPage,
             initialSelections);

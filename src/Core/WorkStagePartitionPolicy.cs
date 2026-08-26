@@ -29,4 +29,7 @@ internal static class WorkStagePartitionPolicy
         }
         return result;
     }
+
+    public static int CountEnabled(FarmWorkStageSelection enabledStages) =>
+        StageOrder.Count(stage => enabledStages.HasFlag(stage));
 }
