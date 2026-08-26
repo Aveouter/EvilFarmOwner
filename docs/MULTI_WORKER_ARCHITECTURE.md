@@ -62,9 +62,9 @@ The deterministic route ledger, single-worker equivalence, tile conflicts, oppos
 - A farmhand keeps the original pending request ID across response timeout, disconnect, and nonce-matched resynchronization. A synchronized active snapshot or result consumes it; otherwise the same request is resent and the host replay ledger prevents a second dispatch or charge.
 - Completed request/result recovery survives save/reload and host-session rebinding. An interrupted live shift is restored safely; it is not silently replayed after a host restart.
 
-## Remaining release gates
+## Maintainer acceptance decision
 
-The PR remains Draft until one final live matrix demonstrates:
+On 2026-08-27, the maintainer explicitly accepted the initial merge without running the final live matrix or a real two-process game. The deterministic suite, production build, protocol checks, source validation, and evidence tooling passed; the following scenarios remain unverified rather than passed:
 
 - one-worker behavior matches the released baseline;
 - two to four workers divide enabled stages and do not collide at farm, building, or chest entrances;
@@ -72,4 +72,4 @@ The PR remains Draft until one final live matrix demonstrates:
 - save/reload, day end, host restart, farmhand reconnect, player departure, and storage contention recover safely;
 - a real host and farmhand process agree on active snapshots and final settlement.
 
-Only after those gates pass may README and release notes advertise concurrent workers.
+Release notes may describe the implemented concurrent-worker feature, but must retain this live-validation limitation until recorded evidence exists.

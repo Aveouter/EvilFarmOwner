@@ -27,15 +27,13 @@ Implemented on the draft feature branch:
 - one bounded reassignment pass for failed stages, with no second wage charge;
 - automatic-contract save migration and multiworker selection within the saved total authorization cap.
 
-Remaining release gates:
+Automated acceptance evidence:
 
 - the standalone Core suite already records deterministic selection, partition, claims, route conflicts, one-worker route equivalence, settlement aggregation, protocol migration, restart recovery data, and reconnect serialization;
-- record live 1–4 worker behavior and failed-worker reassignment without duplicate work or wages;
-- record live save/reload, day end, host restart, farmhand reconnect, storage contention, and player-leaves-farm behavior;
-- complete a real two-process host/farmhand acceptance run;
-- run the clean release verifier, package allowlist and command scan, SHA-256 re-download audit, and exact-ZIP SMAPI load smoke test.
+- the production Mod builds without warnings or errors, and the current Source validation workflow passes;
+- the release verifier, package allowlist, production-command scan, and SHA-256 audit remain required when the v0.5.0 release package is produced.
 
-Until every release gate passes, README and release notes must not claim concurrent workers or fully verified remote multiplayer support.
+Maintainer acceptance decision (2026-08-27): the live 1–4 worker matrix, save/reload and reconnect scenarios, real two-process host/farmhand run, and exact-ZIP SMAPI smoke test were explicitly waived for merge without being performed. This is risk acceptance, not evidence that those scenarios passed. User-facing release notes must identify remote multiplayer and live multiworker behavior as unverified until a future recorded run supplies that evidence.
 
 ## Deferred ideas
 

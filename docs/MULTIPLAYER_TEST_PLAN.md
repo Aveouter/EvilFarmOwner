@@ -2,6 +2,8 @@
 
 This is the final live release gate for Issue #136 and draft PR #143. Run the matrix once against the exact production candidate. Split-screen is not evidence for the remote protocol rows.
 
+Maintainer decision (2026-08-27): this matrix was explicitly waived for the initial merge and was not performed. Nothing in this document should be read as a passing result. Keep it as the future regression/validation procedure, and do not rerun individual rows repeatedly.
+
 ## Evidence package
 
 Before starting, record:
@@ -92,7 +94,7 @@ For each row, verify no money, NPC, target, cargo, chest, or recovery state chan
 
 ## Release decision
 
-The v0.5.0 gate passes only when every matrix row has one recorded result and all of these invariants hold:
+When the deferred live validation is eventually performed, it passes only when every matrix row has one recorded result and all of these invariants hold:
 
 1. No Evil Farm Owner error or unhandled exception appears in either SMAPI log.
 2. No placed object is destroyed and no NPC remains leased, hidden, duplicated, or schedule-stalled after settlement.
