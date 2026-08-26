@@ -89,6 +89,7 @@ List<(string Name, Action Test)> tests = new()
     ("storage sort save-boundary policy", TestStorageSortSaveBoundaryPolicy),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("harvest chest release deferral", TestHarvestChestReleaseDeferral),
+    ("harvest cargo batch threshold", TestHarvestCargoBatchThreshold),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("ready tapper target semantics", TestReadyTapperTargetSemantics),
     ("ready fruit-tree target semantics", TestReadyFruitTreeTargetSemantics),
@@ -2056,6 +2057,30 @@ static void TestHarvestChestReleaseDeferral()
 
     Equal(0, remainingCargoStacks);
     Equal(2, deliveredStacks);
+}
+
+static void TestHarvestCargoBatchThreshold()
+{
+    Equal(false, HarvestCargoBatchPolicy.ShouldDeliver(
+        carriedStacks: 0,
+        acquisitionClosed: true,
+        noRemainingTarget: true));
+    Equal(false, HarvestCargoBatchPolicy.ShouldDeliver(
+        HarvestCargoBatchPolicy.DeliveryStackThreshold - 1,
+        acquisitionClosed: false,
+        noRemainingTarget: false));
+    Equal(true, HarvestCargoBatchPolicy.ShouldDeliver(
+        HarvestCargoBatchPolicy.DeliveryStackThreshold,
+        acquisitionClosed: false,
+        noRemainingTarget: false));
+    Equal(true, HarvestCargoBatchPolicy.ShouldDeliver(
+        carriedStacks: 1,
+        acquisitionClosed: true,
+        noRemainingTarget: false));
+    Equal(true, HarvestCargoBatchPolicy.ShouldDeliver(
+        carriedStacks: 1,
+        acquisitionClosed: false,
+        noRemainingTarget: true));
 }
 
 static void TestRegrowingHarvestCaptureSemantics()
