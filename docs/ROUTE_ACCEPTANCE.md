@@ -31,4 +31,4 @@ The matrix is complete only when every row has recorded evidence and both checks
 1. Before/after world and item counts reconcile with no placed-object mutation.
 2. The SMAPI log contains no Evil Farm Owner error or unhandled exception.
 
-Real host/farmhand two-process acceptance is intentionally separate and remains a v0.5.0 gate in `MULTIPLAYER_TEST_PLAN.md`.
+Real host/farmhand two-process acceptance remains the deferred procedure in `MULTIPLAYER_TEST_PLAN.md`; it was explicitly waived for the initial v0.5.0 release.

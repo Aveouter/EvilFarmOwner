@@ -1,6 +1,6 @@
 # Multi-worker architecture boundary
 
-This document describes the concurrent worker runtime implemented on the draft v0.5.0 branch. It is not a claim that v0.5.0 has passed its live multiplayer release gates.
+This document describes the concurrent worker runtime released in v0.5.0. It is not a claim that the waived live multiplayer matrix passed.
 
 ## Host-owned shift snapshot
 

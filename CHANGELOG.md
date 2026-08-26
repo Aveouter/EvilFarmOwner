@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 - 2026-08-27
+
+- Added host-configurable concurrent hiring for one to four available adult NPCs while preserving a one-worker default and legacy configuration migration.
+- Added multi-select hiring and stable budget-aware automatic selection using efficiency, friendship-adjusted wage, friendship, and NPC name.
+- Let all selected workers share harvest and watering targets through unique host-owned claims, while animal care and chest sorting remain single-owner stages.
+- Added map-scoped tile, edge, entrance, and indoor route reservations so workers wait or replan without crossing through each other or destroying farm objects.
+- Added independent NPC leases, cargo, recovery, and wage settlements with one bounded failed-stage reassignment and no duplicate charge.
+- Upgraded multiplayer synchronization to schema 11 with per-worker snapshots, atomic batch validation, idempotent reconnect requests, host-restart history recovery, and schema-10 single-worker migration.
+- Added a one-pass multiplayer evidence collector for peer DLL hashes, final network agreement, recovery health, and SMAPI error scanning.
+- Recorded the maintainer decision to publish without the live 1–4 worker matrix, save/reload and reconnect scenarios, real two-process multiplayer run, or final in-game ZIP smoke test; those scenarios remain unverified.
+
 ## 0.3.2 - 2026-08-26
 
 - Added a shared primitive-only travel interruption snapshot and map-scoped tile/edge obstacle ledger for bounded route recovery across farm-work controllers.
