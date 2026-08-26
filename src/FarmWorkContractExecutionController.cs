@@ -214,6 +214,30 @@ internal sealed class FarmWorkContractExecutionController
         return completion;
     }
 
+    public void Cancel(string reasonKey, bool mustFinalizeNow = true)
+    {
+        if (this.ActiveShift is not { } shift)
+            return;
+
+        switch (shift.CurrentStage)
+        {
+            case FarmWorkStage.Harvesting:
+                this.Harvesting.OnDayEnding();
+                break;
+            case FarmWorkStage.Watering:
+                this.Watering.OnDayEnding();
+                break;
+            case FarmWorkStage.AnimalCare:
+                this.AnimalCare.OnDayEnding();
+                break;
+            case FarmWorkStage.StorageSorting:
+                this.StorageSorting.OnSaving();
+                break;
+        }
+        this.CaptureCurrentStageCompletion(shift);
+        this.BeginFinalization(shift, false, reasonKey, mustFinalizeNow);
+    }
+
     private void BeginNextAvailableStage(ActiveFarmWorkShift shift)
     {
         FarmWorkStage stage = FarmWorkStagePolicy.GetNext(

@@ -19,7 +19,7 @@ public sealed class ModEntry : Mod
     private AnimalCareContractExecutionController? AnimalCareContracts;
     private StorageSortRecoveryManager? StorageSortRecovery;
     private StorageSortContractExecutionController? StorageSortContracts;
-    private FarmWorkContractExecutionController? FarmWorkContracts;
+    private ConcurrentFarmWorkContractExecutionController? FarmWorkContracts;
     private MultiplayerContractCoordinator? MultiplayerContracts;
     private RecurringContractCoordinator? RecurringContracts;
     private readonly HarvestAcceptanceFaults AcceptanceFaults = new();
@@ -51,14 +51,12 @@ public sealed class ModEntry : Mod
             this.Monitor,
             this.WorkerRoster,
             this.StorageSortRecovery);
-        this.FarmWorkContracts = new FarmWorkContractExecutionController(
+        this.FarmWorkContracts = new ConcurrentFarmWorkContractExecutionController(
             helper.Translation,
             this.Monitor,
             this.WorkerRoster,
-            this.HarvestingContracts,
-            this.WateringContracts,
-            this.AnimalCareContracts,
-            this.StorageSortContracts,
+            this.StorageSortRecovery,
+            this.AcceptanceFaults,
             () => this.Config.CreateSnapshot());
         this.MultiplayerContracts = new MultiplayerContractCoordinator(
             helper,

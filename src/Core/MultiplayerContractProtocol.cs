@@ -99,6 +99,7 @@ internal sealed class ContractResultMessage
     public string RequestId { get; set; } = "";
     public long RequestingPlayerId { get; set; }
     public string WorkerName { get; set; } = "";
+    public string[] WorkerNames { get; set; } = Array.Empty<string>();
     public NamedFarmTask Task { get; set; }
     public HarvestDestinationMode HarvestDestination { get; set; }
     public bool Succeeded { get; set; }
@@ -118,6 +119,24 @@ internal sealed class ContractResultMessage
         Array.Empty<ContractTransferReportMessage>();
     public ContractTransferReportMessage[] SkippedTransfers { get; set; } =
         Array.Empty<ContractTransferReportMessage>();
+    public ContractWorkerSettlementMessage[] WorkerSettlements { get; set; } =
+        Array.Empty<ContractWorkerSettlementMessage>();
+}
+
+internal sealed class ContractWorkerSettlementMessage
+{
+    public string WorkerName { get; set; } = "";
+    public bool Succeeded { get; set; }
+    public string ReasonKey { get; set; } = "";
+    public int CompletedWork { get; set; }
+    public int PlayerItems { get; set; }
+    public int ChestItems { get; set; }
+    public int OverflowItems { get; set; }
+    public int QuarantinedItems { get; set; }
+    public int DroppedItems { get; set; }
+    public int BillableHours { get; set; }
+    public int ChargedGold { get; set; }
+    public int RefundedGold { get; set; }
 }
 
 internal sealed class ContractTransferReportMessage
@@ -152,6 +171,8 @@ internal sealed class ContractSyncStateMessage
     public long StateVersion { get; set; }
     public bool HasActiveContract { get; set; }
     public ContractSnapshotMessage? ActiveContract { get; set; }
+    public ContractSnapshotMessage[] ActiveContracts { get; set; } =
+        Array.Empty<ContractSnapshotMessage>();
     public ContractResultMessage? RecentResult { get; set; }
     public ContractSettingsMessage Settings { get; set; } = new();
 }
@@ -540,4 +561,6 @@ internal sealed record NamedContractCompletionState(
 {
     public HarvestDestinationMode HarvestDestination { get; init; } =
         HarvestDestinationMode.ClassifiedChests;
+    public IReadOnlyList<NamedContractCompletionState> WorkerSettlements { get; init; } =
+        Array.Empty<NamedContractCompletionState>();
 }

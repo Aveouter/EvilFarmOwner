@@ -18,7 +18,7 @@ internal sealed class MultiplayerContractCoordinator
     private readonly WateringContractExecutionController WateringContracts;
     private readonly HarvestingContractExecutionController HarvestingContracts;
     private readonly StorageSortContractExecutionController StorageSortContracts;
-    private readonly FarmWorkContractExecutionController FarmWorkContracts;
+    private readonly ConcurrentFarmWorkContractExecutionController FarmWorkContracts;
     private readonly Func<ContractSettingsSnapshot> GetLocalSettings;
     private readonly ProcessedContractRequestLedger ProcessedRequests = new();
     private readonly ContractSnapshotTracker SnapshotTracker = new();
@@ -35,9 +35,12 @@ internal sealed class MultiplayerContractCoordinator
     private long HostStateVersion;
     private ContractStartRequestMessage? PendingRequest;
     private int PendingTicks;
-    private ContractSnapshotMessage? CurrentHostSnapshot;
-    private ContractSnapshotMessage? RemoteActiveSnapshot;
-    private string LastHostStateSignature = "";
+    private readonly Dictionary<string, ContractSnapshotMessage> CurrentHostSnapshots =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ContractSnapshotMessage> RemoteActiveSnapshots =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> LastHostStateSignatures =
+        new(StringComparer.OrdinalIgnoreCase);
     private bool RecoveryStateHealthy = true;
     private ContractSettingsSnapshot RemoteHostSettings = ContractSettingsSnapshot.Default;
     private long HostSettingsVersion;
@@ -53,7 +56,7 @@ internal sealed class MultiplayerContractCoordinator
         WateringContractExecutionController wateringContracts,
         HarvestingContractExecutionController harvestingContracts,
         StorageSortContractExecutionController storageSortContracts,
-        FarmWorkContractExecutionController farmWorkContracts,
+        ConcurrentFarmWorkContractExecutionController farmWorkContracts,
         Func<ContractSettingsSnapshot>? getLocalSettings = null)
     {
         this.Helper = helper;
@@ -69,8 +72,8 @@ internal sealed class MultiplayerContractCoordinator
 
     public bool HasPendingRequest => this.PendingRequest is not null;
 
-    public bool HasObservedActiveContract => this.CurrentHostSnapshot is not null
-        || this.RemoteActiveSnapshot is not null;
+    public bool HasObservedActiveContract => this.CurrentHostSnapshots.Count > 0
+        || this.RemoteActiveSnapshots.Count > 0;
 
     public ContractSettingsSnapshot GetHostContractSettings()
     {
@@ -98,8 +101,8 @@ internal sealed class MultiplayerContractCoordinator
     {
         string role = Context.IsMainPlayer ? "host" : "farmhand";
         string session = Context.IsMainPlayer ? this.HostSessionId : this.ClientHostSession.Current;
-        string active = this.GetHostRuntimeState()?.ContractId
-            ?? this.RemoteActiveSnapshot?.ContractId
+        string active = this.GetHostRuntimeStates().FirstOrDefault()?.ContractId
+            ?? this.RemoteActiveSnapshots.Values.FirstOrDefault()?.ContractId
             ?? "none";
         string pending = this.PendingRequest?.RequestId ?? "none";
         string quarantineHealth = Context.IsMainPlayer
@@ -217,7 +220,7 @@ internal sealed class MultiplayerContractCoordinator
             return;
 
         this.PublishHostCompletions();
-        bool hasActiveContract = this.GetHostRuntimeState() is not null;
+        bool hasActiveContract = this.GetHostRuntimeStates().Count > 0;
         if (hasActiveContract)
         {
             this.RecoveryStateHealthy = false;
@@ -304,7 +307,7 @@ internal sealed class MultiplayerContractCoordinator
         this.ClientHostSession.Clear();
         this.SnapshotTracker.Clear();
         this.RemoteStateVersions.Clear();
-        this.RemoteActiveSnapshot = null;
+        this.RemoteActiveSnapshots.Clear();
         this.SeenClientResponses.Clear();
         this.ClientResponseOrder.Clear();
         this.SendSyncRequest();
@@ -314,7 +317,7 @@ internal sealed class MultiplayerContractCoordinator
     {
         if (Context.IsMainPlayer)
         {
-            NamedContractRuntimeState? active = this.GetHostRuntimeState();
+            NamedContractRuntimeState? active = this.GetHostRuntimeStates().FirstOrDefault();
             if (active?.RequestingPlayerId == e.Peer.PlayerID)
             {
                 this.Monitor.Log(
@@ -327,7 +330,7 @@ internal sealed class MultiplayerContractCoordinator
             this.ClientHostSession.Clear();
             this.SnapshotTracker.Clear();
             this.RemoteStateVersions.Clear();
-            this.RemoteActiveSnapshot = null;
+            this.RemoteActiveSnapshots.Clear();
             this.SeenClientResponses.Clear();
             this.ClientResponseOrder.Clear();
         }
@@ -469,7 +472,7 @@ internal sealed class MultiplayerContractCoordinator
             case NamedFarmTask.FarmWork:
                 accepted = this.FarmWorkContracts.TryStart(
                     request.RequestingPlayerId,
-                    request.WorkerName,
+                    request.GetWorkerNames(),
                     request.RequestId,
                     request.HarvestDestination);
                 failureKey = this.FarmWorkContracts.LastStartFailureKey;
@@ -522,72 +525,76 @@ internal sealed class MultiplayerContractCoordinator
 
     private void PublishHostRuntimeState()
     {
-        NamedContractRuntimeState? state = this.GetHostRuntimeState();
-        if (state is null)
+        IReadOnlyList<NamedContractRuntimeState> states = this.GetHostRuntimeStates();
+        if (states.Count == 0)
         {
-            this.CurrentHostSnapshot = null;
-            this.LastHostStateSignature = "";
+            this.CurrentHostSnapshots.Clear();
+            this.LastHostStateSignatures.Clear();
             return;
         }
 
-        string signature = string.Join(
-            '|',
-            state.ContractId,
-            state.Phase,
-            state.HarvestDestination,
-            state.EfficiencyMultiplier,
-            state.ArrivalX,
-            state.ArrivalY,
-            state.ArrivalSide,
-            state.EntranceSwitches,
-            state.TargetX,
-            state.TargetY,
-            state.CompletedWork,
-            state.CargoCount,
-            string.Join(',', state.Cargo.Select(item => $"{item.TransferId}:{item.Stack}")),
-            string.Join(',', state.CompletedTransferIds));
-        if (string.Equals(signature, this.LastHostStateSignature, StringComparison.Ordinal))
-            return;
-
-        this.LastHostStateSignature = signature;
-        ContractSnapshotMessage snapshot = new()
+        HashSet<string> activeWorkers = states.Select(state => state.WorkerName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (string stale in this.CurrentHostSnapshots.Keys
+                     .Where(worker => !activeWorkers.Contains(worker)).ToArray())
         {
-            SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
-            SaveId = Game1.uniqueIDForThisGame,
-            HostSessionId = this.HostSessionId,
-            ContractId = state.ContractId,
-            Sequence = this.NextHostSequence(state.ContractId),
-            StateVersion = ++this.HostStateVersion,
-            RequestId = state.RequestId,
-            RequestingPlayerId = state.RequestingPlayerId,
-            WorkerName = state.WorkerName,
-            Task = state.Task,
-            HarvestDestination = state.HarvestDestination,
-            EfficiencyMultiplier = state.EfficiencyMultiplier,
-            Phase = state.Phase,
-            ArrivalX = state.ArrivalX,
-            ArrivalY = state.ArrivalY,
-            ArrivalSide = state.ArrivalSide,
-            EntranceSwitches = state.EntranceSwitches,
-            TargetX = state.TargetX,
-            TargetY = state.TargetY,
-            ReservedGold = state.ReservedGold,
-            StartTime = state.StartTime,
-            CompletedWork = state.CompletedWork,
-            CargoCount = state.CargoCount,
-            Cargo = state.Cargo.Select(item => new ContractCargoSnapshotMessage
+            this.CurrentHostSnapshots.Remove(stale);
+            this.LastHostStateSignatures.Remove(stale);
+        }
+
+        foreach (NamedContractRuntimeState state in states)
+        {
+            string signature = string.Join(
+                '|', state.ContractId, state.Phase, state.HarvestDestination,
+                state.EfficiencyMultiplier, state.ArrivalX, state.ArrivalY,
+                state.ArrivalSide, state.EntranceSwitches, state.TargetX, state.TargetY,
+                state.CompletedWork, state.CargoCount,
+                string.Join(',', state.Cargo.Select(item => $"{item.TransferId}:{item.Stack}")),
+                string.Join(',', state.CompletedTransferIds));
+            if (this.LastHostStateSignatures.TryGetValue(state.WorkerName, out string? prior)
+                && string.Equals(signature, prior, StringComparison.Ordinal))
+                continue;
+
+            this.LastHostStateSignatures[state.WorkerName] = signature;
+            ContractSnapshotMessage snapshot = new()
             {
-                TransferId = item.TransferId,
-                QualifiedItemId = item.QualifiedItemId,
-                DisplayName = item.DisplayName,
-                Quality = item.Quality,
-                Stack = item.Stack
-            }).ToArray(),
-            CompletedTransferIds = state.CompletedTransferIds.ToArray()
-        };
-        this.CurrentHostSnapshot = snapshot;
-        if (Context.IsMultiplayer)
-            this.BroadcastMessage(snapshot, MultiplayerContractProtocol.SnapshotType);
+                SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+                SaveId = Game1.uniqueIDForThisGame,
+                HostSessionId = this.HostSessionId,
+                ContractId = state.ContractId,
+                Sequence = this.NextHostSequence(state.ContractId),
+                StateVersion = ++this.HostStateVersion,
+                RequestId = state.RequestId,
+                RequestingPlayerId = state.RequestingPlayerId,
+                WorkerName = state.WorkerName,
+                Task = state.Task,
+                HarvestDestination = state.HarvestDestination,
+                EfficiencyMultiplier = state.EfficiencyMultiplier,
+                Phase = state.Phase,
+                ArrivalX = state.ArrivalX,
+                ArrivalY = state.ArrivalY,
+                ArrivalSide = state.ArrivalSide,
+                EntranceSwitches = state.EntranceSwitches,
+                TargetX = state.TargetX,
+                TargetY = state.TargetY,
+                ReservedGold = state.ReservedGold,
+                StartTime = state.StartTime,
+                CompletedWork = state.CompletedWork,
+                CargoCount = state.CargoCount,
+                Cargo = state.Cargo.Select(item => new ContractCargoSnapshotMessage
+                {
+                    TransferId = item.TransferId,
+                    QualifiedItemId = item.QualifiedItemId,
+                    DisplayName = item.DisplayName,
+                    Quality = item.Quality,
+                    Stack = item.Stack
+                }).ToArray(),
+                CompletedTransferIds = state.CompletedTransferIds.ToArray()
+            };
+            this.CurrentHostSnapshots[state.WorkerName] = snapshot;
+            if (Context.IsMultiplayer)
+                this.BroadcastMessage(snapshot, MultiplayerContractProtocol.SnapshotType);
+        }
     }
 
     private void PublishHostCompletions()
@@ -609,6 +616,9 @@ internal sealed class MultiplayerContractCoordinator
                 RequestId = completion.RequestId,
                 RequestingPlayerId = completion.RequestingPlayerId,
                 WorkerName = completion.WorkerName,
+                WorkerNames = completion.WorkerSettlements.Count > 0
+                    ? completion.WorkerSettlements.Select(item => item.WorkerName).ToArray()
+                    : new[] { completion.WorkerName },
                 Task = completion.Task,
                 HarvestDestination = completion.HarvestDestination,
                 Succeeded = completion.Succeeded,
@@ -632,11 +642,32 @@ internal sealed class MultiplayerContractCoordinator
                 }).ToArray(),
                 CompletedTransferIds = completion.CompletedTransferIds.ToArray(),
                 CompletedTransfers = completion.CompletedTransfers.Select(ToTransferMessage).ToArray(),
-                SkippedTransfers = completion.SkippedTransfers.Select(ToTransferMessage).ToArray()
+                SkippedTransfers = completion.SkippedTransfers.Select(ToTransferMessage).ToArray(),
+                WorkerSettlements = completion.WorkerSettlements.Select(item =>
+                    new ContractWorkerSettlementMessage
+                    {
+                        WorkerName = item.WorkerName,
+                        Succeeded = item.Succeeded,
+                        ReasonKey = item.ReasonKey,
+                        CompletedWork = item.CompletedWork,
+                        PlayerItems = item.PlayerItems,
+                        ChestItems = item.ChestItems,
+                        OverflowItems = item.OverflowItems,
+                        QuarantinedItems = item.QuarantinedItems,
+                        DroppedItems = item.DroppedItems,
+                        BillableHours = item.BillableHours,
+                        ChargedGold = item.ChargedGold,
+                        RefundedGold = item.RefundedGold
+                    }).ToArray()
             };
             this.RecentResults[completion.RequestingPlayerId] = result;
-            if (this.CurrentHostSnapshot?.ContractId == completion.ContractId)
-                this.CurrentHostSnapshot = null;
+            foreach (string worker in this.CurrentHostSnapshots
+                         .Where(pair => pair.Value.ContractId == completion.ContractId)
+                         .Select(pair => pair.Key).ToArray())
+            {
+                this.CurrentHostSnapshots.Remove(worker);
+                this.LastHostStateSignatures.Remove(worker);
+            }
             if (Context.IsMultiplayer)
                 this.BroadcastMessage(result, MultiplayerContractProtocol.ResultType);
         }
@@ -721,8 +752,8 @@ internal sealed class MultiplayerContractCoordinator
 
         this.RemoteStateVersions.Commit(snapshot.StateVersion);
 
-        ContractSnapshotMessage? previous = this.RemoteActiveSnapshot;
-        this.RemoteActiveSnapshot = snapshot;
+        this.RemoteActiveSnapshots.TryGetValue(snapshot.WorkerName, out ContractSnapshotMessage? previous);
+        this.RemoteActiveSnapshots[snapshot.WorkerName] = snapshot;
         if (this.PendingRequest?.RequestId == snapshot.RequestId)
         {
             this.PendingRequest = null;
@@ -783,8 +814,10 @@ internal sealed class MultiplayerContractCoordinator
         this.RemoteStateVersions.Commit(result.StateVersion);
         this.RecentResults[result.RequestingPlayerId] = result;
 
-        if (this.RemoteActiveSnapshot?.ContractId == result.ContractId)
-            this.RemoteActiveSnapshot = null;
+        foreach (string worker in this.RemoteActiveSnapshots
+                     .Where(pair => pair.Value.ContractId == result.ContractId)
+                     .Select(pair => pair.Key).ToArray())
+            this.RemoteActiveSnapshots.Remove(worker);
         if (this.PendingRequest?.RequestId == result.RequestId)
         {
             this.PendingRequest = null;
@@ -852,12 +885,19 @@ internal sealed class MultiplayerContractCoordinator
                 state.Settings.HostSessionId,
                 state.HostSessionId,
                 StringComparison.Ordinal);
+        ContractSnapshotMessage[] activeContracts = state.ActiveContracts.Length > 0
+            ? state.ActiveContracts
+            : state.ActiveContract is null
+                ? Array.Empty<ContractSnapshotMessage>()
+                : new[] { state.ActiveContract };
         if (state.SchemaVersion != MultiplayerContractProtocol.SchemaVersion
             || state.SaveId != Game1.uniqueIDForThisGame
             || !Guid.TryParseExact(state.HostSessionId, "N", out _)
             || state.StateVersion < 0
-            || state.HasActiveContract != (state.ActiveContract is not null)
-            || state.ActiveContract?.StateVersion > state.StateVersion
+            || state.HasActiveContract != (activeContracts.Length > 0)
+            || activeContracts.Any(snapshot => snapshot.StateVersion > state.StateVersion)
+            || activeContracts.Select(snapshot => snapshot.WorkerName)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Count() != activeContracts.Length
             || state.RecentResult?.StateVersion > state.StateVersion
             || !validSettings)
             return;
@@ -874,13 +914,15 @@ internal sealed class MultiplayerContractCoordinator
         if (state.RecentResult is not null)
             this.HandleResult(state.RecentResult);
 
-        if (state.HasActiveContract && state.ActiveContract is not null)
+        if (state.HasActiveContract)
         {
-            this.HandleSnapshot(state.ActiveContract);
+            this.RemoteActiveSnapshots.Clear();
+            foreach (ContractSnapshotMessage snapshot in activeContracts.OrderBy(item => item.StateVersion))
+                this.HandleSnapshot(snapshot);
         }
         else
         {
-            this.RemoteActiveSnapshot = null;
+            this.RemoteActiveSnapshots.Clear();
             this.RemoteStateVersions.Commit(state.StateVersion);
         }
 
@@ -930,6 +972,9 @@ internal sealed class MultiplayerContractCoordinator
 
     private void SendSyncState(long playerId, string syncRequestId)
     {
+        ContractSnapshotMessage[] activeContracts = this.CurrentHostSnapshots.Values
+            .OrderBy(snapshot => snapshot.WorkerName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         ContractSyncStateMessage state = new()
         {
             SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
@@ -937,8 +982,9 @@ internal sealed class MultiplayerContractCoordinator
             HostSessionId = this.HostSessionId,
             SyncRequestId = syncRequestId,
             StateVersion = this.HostStateVersion,
-            HasActiveContract = this.CurrentHostSnapshot is not null,
-            ActiveContract = this.CurrentHostSnapshot,
+            HasActiveContract = activeContracts.Length > 0,
+            ActiveContract = activeContracts.FirstOrDefault(),
+            ActiveContracts = activeContracts,
             RecentResult = this.RecentResults.GetValueOrDefault(playerId),
             Settings = this.CreateSettingsMessage()
         };
@@ -1017,9 +1063,9 @@ internal sealed class MultiplayerContractCoordinator
                 : string.Equals(snapshot.Phase, "Acting", StringComparison.Ordinal);
     }
 
-    private NamedContractRuntimeState? GetHostRuntimeState()
+    private IReadOnlyList<NamedContractRuntimeState> GetHostRuntimeStates()
     {
-        return this.FarmWorkContracts.GetRuntimeState();
+        return this.FarmWorkContracts.GetRuntimeStates();
     }
 
     private long NextHostSequence(string contractId)
@@ -1065,9 +1111,9 @@ internal sealed class MultiplayerContractCoordinator
         this.HostStateVersion = 0;
         this.PendingRequest = null;
         this.PendingTicks = 0;
-        this.CurrentHostSnapshot = null;
-        this.RemoteActiveSnapshot = null;
-        this.LastHostStateSignature = "";
+        this.CurrentHostSnapshots.Clear();
+        this.RemoteActiveSnapshots.Clear();
+        this.LastHostStateSignatures.Clear();
         this.ProcessedRequests.Clear();
         this.SnapshotTracker.Clear();
         this.RemoteStateVersions.Clear();
