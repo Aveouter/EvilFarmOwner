@@ -13,6 +13,7 @@ internal sealed class RecurringContractCoordinator
     private readonly IMonitor Monitor;
     private readonly WorkerRosterService WorkerRoster;
     private readonly MultiplayerContractCoordinator MultiplayerContracts;
+    private readonly Func<ContractSettingsSnapshot> GetSettings;
     private RecurringContractSaveData State = CreateEmptyState();
     private bool PersistenceHealthy = true;
 
@@ -21,13 +22,15 @@ internal sealed class RecurringContractCoordinator
         ITranslationHelper translation,
         IMonitor monitor,
         WorkerRosterService workerRoster,
-        MultiplayerContractCoordinator multiplayerContracts)
+        MultiplayerContractCoordinator multiplayerContracts,
+        Func<ContractSettingsSnapshot>? getSettings = null)
     {
         this.Helper = helper;
         this.Translation = translation;
         this.Monitor = monitor;
         this.WorkerRoster = workerRoster;
         this.MultiplayerContracts = multiplayerContracts;
+        this.GetSettings = getSettings ?? (() => ContractSettingsSnapshot.Default);
     }
 
     public RecurringContractTemplateData? Template => this.State.Template;
@@ -239,7 +242,11 @@ internal sealed class RecurringContractCoordinator
             return;
         }
 
-        bool isRestDay = ContractPreviewService.Create(0, Game1.dayOfMonth).DayKind == ContractDayKind.RestDay;
+        ContractSettingsSnapshot settings = this.GetSettings();
+        bool isRestDay = ContractPreviewService.Create(
+            0,
+            Game1.dayOfMonth,
+            settings).DayKind == ContractDayKind.RestDay;
         if (isRestDay && !template.AllowRestDays)
         {
             this.Skip(template, "recurring.reason.rest-day-disabled", Array.Empty<RecurringCandidateRejectionData>(), runId);
@@ -273,7 +280,8 @@ internal sealed class RecurringContractCoordinator
                 friendshipHearts,
                 Game1.dayOfMonth,
                 worker.Name,
-                template.Task);
+                template.Task,
+                settings);
             RecurringBudgetFailure budgetFailure = RecurringContractPolicy.CheckBudget(
                 preview.MaximumAuthorizedWage,
                 authorizedCap,
@@ -317,7 +325,7 @@ internal sealed class RecurringContractCoordinator
         bool accepted = this.MultiplayerContracts.RequestStart(
             selected.WorkerName,
             template.Task,
-            HarvestDestinationPolicy.AutomaticMode,
+            settings.DefaultHarvestDestination,
             runId);
         if (!accepted)
         {
@@ -357,7 +365,12 @@ internal sealed class RecurringContractCoordinator
     private int GetMaximumWage(string workerName, NamedFarmTask task, int dayOfMonth)
     {
         int hearts = Game1.player.getFriendshipHeartLevelForNPC(workerName);
-        return ContractPreviewService.Create(hearts, dayOfMonth, workerName, task).MaximumAuthorizedWage;
+        return ContractPreviewService.Create(
+            hearts,
+            dayOfMonth,
+            workerName,
+            task,
+            this.GetSettings()).MaximumAuthorizedWage;
     }
 
     private void RefreshLatestResult()

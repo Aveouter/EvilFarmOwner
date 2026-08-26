@@ -15,14 +15,29 @@ internal static class ContractPreviewService
             friendshipHearts,
             dayOfMonth,
             BaselineEfficiencyMultiplier,
-            WorkerEfficiencyBackground.Baseline);
+            WorkerEfficiencyBackground.Baseline,
+            ContractSettingsSnapshot.Default);
+    }
+
+    public static WorkContractPreview Create(
+        int friendshipHearts,
+        int dayOfMonth,
+        ContractSettingsSnapshot settings)
+    {
+        return Create(
+            friendshipHearts,
+            dayOfMonth,
+            BaselineEfficiencyMultiplier,
+            WorkerEfficiencyBackground.Baseline,
+            settings);
     }
 
     public static WorkContractPreview Create(
         int friendshipHearts,
         int dayOfMonth,
         string workerName,
-        NamedFarmTask task)
+        NamedFarmTask task,
+        ContractSettingsSnapshot? settings = null)
     {
         WorkerEfficiencyProfile profile = WorkerEfficiencyProfiles.GetProfile(workerName);
         return Create(
@@ -31,28 +46,35 @@ internal static class ContractPreviewService
             profile.GetMultiplier(task),
             task == NamedFarmTask.StorageSorting
                 ? WorkerEfficiencyBackground.Baseline
-                : profile.Background);
+                : profile.Background,
+            settings ?? ContractSettingsSnapshot.Default);
     }
 
     private static WorkContractPreview Create(
         int friendshipHearts,
         int dayOfMonth,
         decimal efficiencyMultiplier,
-        WorkerEfficiencyBackground efficiencyBackground)
+        WorkerEfficiencyBackground efficiencyBackground,
+        ContractSettingsSnapshot settings)
     {
+        if (!settings.IsValid)
+            settings = ContractSettingsSnapshot.Default;
+
         int normalizedHearts = Math.Max(0, friendshipHearts);
-        (FriendshipWageBand band, decimal friendshipMultiplier) = GetFriendshipBand(normalizedHearts);
+        (FriendshipWageBand band, decimal friendshipMultiplier) = GetFriendshipBand(
+            normalizedHearts,
+            settings.FriendshipWageImpactPercent);
 
         int normalizedDay = Math.Max(1, dayOfMonth);
         int zeroBasedDayOfWeek = (normalizedDay - 1) % 7;
         bool isRestDay = zeroBasedDayOfWeek >= 5;
         ContractDayKind dayKind = isRestDay ? ContractDayKind.RestDay : ContractDayKind.RegularWorkday;
-        decimal dayMultiplier = isRestDay ? RestDayMultiplier : 1.00m;
+        decimal dayMultiplier = isRestDay ? settings.RestDayMultiplier : 1.00m;
 
         int estimatedWage = RoundWage(
-            BaseHourlyWage * RegularShiftHours * friendshipMultiplier * dayMultiplier);
+            settings.BaseHourlyWage * RegularShiftHours * friendshipMultiplier * dayMultiplier);
         int minimumCalloutWage = RoundWage(
-            BaseHourlyWage * friendshipMultiplier * dayMultiplier);
+            settings.BaseHourlyWage * friendshipMultiplier * dayMultiplier);
 
         return new WorkContractPreview(
             normalizedHearts,
@@ -60,7 +82,7 @@ internal static class ContractPreviewService
             friendshipMultiplier,
             dayKind,
             dayMultiplier,
-            BaseHourlyWage,
+            settings.BaseHourlyWage,
             RegularShiftHours,
             efficiencyMultiplier,
             efficiencyBackground,
@@ -72,18 +94,22 @@ internal static class ContractPreviewService
             MinimumCalloutWage: minimumCalloutWage);
     }
 
-    private static (FriendshipWageBand Band, decimal Multiplier) GetFriendshipBand(int hearts)
+    private static (FriendshipWageBand Band, decimal Multiplier) GetFriendshipBand(
+        int hearts,
+        int friendshipImpactPercent)
     {
+        decimal impact = ContractSettingsPolicy.NormalizeFriendshipImpactPercent(
+            friendshipImpactPercent) / 100m;
         if (hearts <= 1)
-            return (FriendshipWageBand.HighRisk, 1.20m);
+            return (FriendshipWageBand.HighRisk, 1.00m + impact);
 
         if (hearts <= 3)
-            return (FriendshipWageBand.ElevatedRisk, 1.10m);
+            return (FriendshipWageBand.ElevatedRisk, 1.00m + impact / 2m);
 
         if (hearts <= 7)
             return (FriendshipWageBand.Standard, 1.00m);
 
-        return (FriendshipWageBand.Trusted, 0.90m);
+        return (FriendshipWageBand.Trusted, 1.00m - impact / 2m);
     }
 
     private static int RoundWage(decimal wage)

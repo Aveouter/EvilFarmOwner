@@ -19,6 +19,7 @@ internal sealed class MultiplayerContractCoordinator
     private readonly HarvestingContractExecutionController HarvestingContracts;
     private readonly StorageSortContractExecutionController StorageSortContracts;
     private readonly FarmWorkContractExecutionController FarmWorkContracts;
+    private readonly Func<ContractSettingsSnapshot> GetLocalSettings;
     private readonly ProcessedContractRequestLedger ProcessedRequests = new();
     private readonly ContractSnapshotTracker SnapshotTracker = new();
     private readonly HostStateVersionTracker RemoteStateVersions = new();
@@ -38,6 +39,9 @@ internal sealed class MultiplayerContractCoordinator
     private ContractSnapshotMessage? RemoteActiveSnapshot;
     private string LastHostStateSignature = "";
     private bool RecoveryStateHealthy = true;
+    private ContractSettingsSnapshot RemoteHostSettings = ContractSettingsSnapshot.Default;
+    private long HostSettingsVersion;
+    private long RemoteSettingsVersion;
 
     public string? LastRequestFailureKey { get; private set; }
 
@@ -49,7 +53,8 @@ internal sealed class MultiplayerContractCoordinator
         WateringContractExecutionController wateringContracts,
         HarvestingContractExecutionController harvestingContracts,
         StorageSortContractExecutionController storageSortContracts,
-        FarmWorkContractExecutionController farmWorkContracts)
+        FarmWorkContractExecutionController farmWorkContracts,
+        Func<ContractSettingsSnapshot>? getLocalSettings = null)
     {
         this.Helper = helper;
         this.Manifest = manifest;
@@ -59,12 +64,30 @@ internal sealed class MultiplayerContractCoordinator
         this.HarvestingContracts = harvestingContracts;
         this.StorageSortContracts = storageSortContracts;
         this.FarmWorkContracts = farmWorkContracts;
+        this.GetLocalSettings = getLocalSettings ?? (() => ContractSettingsSnapshot.Default);
     }
 
     public bool HasPendingRequest => this.PendingRequest is not null;
 
     public bool HasObservedActiveContract => this.CurrentHostSnapshot is not null
         || this.RemoteActiveSnapshot is not null;
+
+    public ContractSettingsSnapshot GetHostContractSettings()
+    {
+        ContractSettingsSnapshot settings = Context.IsMainPlayer
+            ? this.GetLocalSettings()
+            : this.RemoteHostSettings;
+        return settings.IsValid ? settings : ContractSettingsSnapshot.Default;
+    }
+
+    public void NotifyHostContractSettingsChanged()
+    {
+        if (!Context.IsWorldReady || !Context.IsMainPlayer || !Context.IsMultiplayer)
+            return;
+
+        this.HostSettingsVersion++;
+        this.BroadcastMessage(this.CreateSettingsMessage(), MultiplayerContractProtocol.SettingsType);
+    }
 
     public bool TryGetRecentResult(long requestingPlayerId, out ContractResultMessage? result)
     {
@@ -332,6 +355,11 @@ internal sealed class MultiplayerContractCoordinator
                 case MultiplayerContractProtocol.SyncStateType when !Context.IsMainPlayer
                     && e.FromPlayerID == Game1.MasterPlayer.UniqueMultiplayerID:
                     this.HandleSyncState(e.ReadAs<ContractSyncStateMessage>());
+                    break;
+
+                case MultiplayerContractProtocol.SettingsType when !Context.IsMainPlayer
+                    && e.FromPlayerID == Game1.MasterPlayer.UniqueMultiplayerID:
+                    this.HandleSettings(e.ReadAs<ContractSettingsMessage>());
                     break;
             }
         }
@@ -792,13 +820,21 @@ internal sealed class MultiplayerContractCoordinator
 
     private void HandleSyncState(ContractSyncStateMessage state)
     {
+        bool validSettings = state.Settings.TryGetSnapshot(out ContractSettingsSnapshot settings)
+            && state.Settings.SaveId == Game1.uniqueIDForThisGame
+            && state.Settings.SettingsVersion >= this.RemoteSettingsVersion
+            && string.Equals(
+                state.Settings.HostSessionId,
+                state.HostSessionId,
+                StringComparison.Ordinal);
         if (state.SchemaVersion != MultiplayerContractProtocol.SchemaVersion
             || state.SaveId != Game1.uniqueIDForThisGame
             || !Guid.TryParseExact(state.HostSessionId, "N", out _)
             || state.StateVersion < 0
             || state.HasActiveContract != (state.ActiveContract is not null)
             || state.ActiveContract?.StateVersion > state.StateVersion
-            || state.RecentResult?.StateVersion > state.StateVersion)
+            || state.RecentResult?.StateVersion > state.StateVersion
+            || !validSettings)
             return;
 
         if (!this.RemoteStateVersions.CanAccept(state.StateVersion))
@@ -807,6 +843,8 @@ internal sealed class MultiplayerContractCoordinator
         if (!this.ClientHostSession.TryEstablish(state.HostSessionId, state.SyncRequestId))
             return;
         this.SnapshotTracker.BeginSession(state.HostSessionId);
+        this.RemoteHostSettings = settings;
+        this.RemoteSettingsVersion = state.Settings.SettingsVersion;
 
         if (state.RecentResult is not null)
             this.HandleResult(state.RecentResult);
@@ -828,6 +866,18 @@ internal sealed class MultiplayerContractCoordinator
                 MultiplayerContractProtocol.StartRequestType,
                 Game1.MasterPlayer.UniqueMultiplayerID);
         }
+    }
+
+    private void HandleSettings(ContractSettingsMessage message)
+    {
+        if (message.SaveId != Game1.uniqueIDForThisGame
+            || !this.ClientHostSession.Matches(message.HostSessionId)
+            || message.SettingsVersion < this.RemoteSettingsVersion
+            || !message.TryGetSnapshot(out ContractSettingsSnapshot settings))
+            return;
+
+        this.RemoteHostSettings = settings;
+        this.RemoteSettingsVersion = message.SettingsVersion;
     }
 
     private void SendSyncRequest()
@@ -864,9 +914,27 @@ internal sealed class MultiplayerContractCoordinator
             StateVersion = this.HostStateVersion,
             HasActiveContract = this.CurrentHostSnapshot is not null,
             ActiveContract = this.CurrentHostSnapshot,
-            RecentResult = this.RecentResults.GetValueOrDefault(playerId)
+            RecentResult = this.RecentResults.GetValueOrDefault(playerId),
+            Settings = this.CreateSettingsMessage()
         };
         this.SendMessage(state, MultiplayerContractProtocol.SyncStateType, playerId);
+    }
+
+    private ContractSettingsMessage CreateSettingsMessage()
+    {
+        ContractSettingsSnapshot settings = this.GetHostContractSettings();
+        return new ContractSettingsMessage
+        {
+            SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+            SaveId = Game1.uniqueIDForThisGame,
+            HostSessionId = this.HostSessionId,
+            SettingsVersion = this.HostSettingsVersion,
+            BaseHourlyWage = settings.BaseHourlyWage,
+            FriendshipWageImpactPercent = settings.FriendshipWageImpactPercent,
+            RestDayMultiplier = settings.RestDayMultiplier,
+            DefaultHarvestDestination = settings.DefaultHarvestDestination,
+            EnabledStages = settings.EnabledStages
+        };
     }
 
     private void RenderRemoteAction(ContractSnapshotMessage snapshot)
@@ -983,6 +1051,9 @@ internal sealed class MultiplayerContractCoordinator
         this.SeenClientResponses.Clear();
         this.ClientResponseOrder.Clear();
         this.RecoveryStateHealthy = true;
+        this.RemoteHostSettings = ContractSettingsSnapshot.Default;
+        this.HostSettingsVersion = 0;
+        this.RemoteSettingsVersion = 0;
     }
 
     private void LoadRecoveryState()

@@ -23,7 +23,8 @@ internal sealed record FarmWorkShiftContext(
     Farmer Requester,
     NpcWorkLease Lease,
     WorkContractPreview BillingPreview,
-    HarvestDestinationMode HarvestDestination);
+    HarvestDestinationMode HarvestDestination,
+    FarmWorkStageSelection EnabledStages);
 
 internal static class FarmWorkStagePolicy
 {
@@ -39,13 +40,42 @@ internal static class FarmWorkStagePolicy
 
     public static FarmWorkStage GetNext(FarmWorkStage? completed)
     {
-        if (completed is null)
-            return OrderedStages[0];
+        return GetNext(completed, FarmWorkStageSelection.All);
+    }
 
-        int index = Array.IndexOf(OrderedStages, completed.Value);
-        return index < 0 || index + 1 >= OrderedStages.Length
-            ? FarmWorkStage.Complete
-            : OrderedStages[index + 1];
+    public static FarmWorkStage GetNext(
+        FarmWorkStage? completed,
+        FarmWorkStageSelection enabledStages)
+    {
+        int startIndex = 0;
+        if (completed is not null)
+        {
+            int completedIndex = Array.IndexOf(OrderedStages, completed.Value);
+            if (completedIndex < 0)
+                return FarmWorkStage.Complete;
+            startIndex = completedIndex + 1;
+        }
+
+        for (int index = startIndex; index < OrderedStages.Length; index++)
+        {
+            if (IsEnabled(OrderedStages[index], enabledStages))
+                return OrderedStages[index];
+        }
+
+        return FarmWorkStage.Complete;
+    }
+
+    public static bool IsEnabled(FarmWorkStage stage, FarmWorkStageSelection enabledStages)
+    {
+        FarmWorkStageSelection flag = stage switch
+        {
+            FarmWorkStage.Harvesting => FarmWorkStageSelection.Harvesting,
+            FarmWorkStage.Watering => FarmWorkStageSelection.Watering,
+            FarmWorkStage.AnimalCare => FarmWorkStageSelection.AnimalCare,
+            FarmWorkStage.StorageSorting => FarmWorkStageSelection.StorageSorting,
+            _ => FarmWorkStageSelection.None
+        };
+        return flag != FarmWorkStageSelection.None && (enabledStages & flag) != 0;
     }
 
     public static bool IsEmptyStageFailure(FarmWorkStage stage, string? failureKey)

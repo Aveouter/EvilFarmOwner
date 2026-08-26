@@ -26,9 +26,12 @@ public sealed class ModEntry : Mod
     public override void Entry(IModHelper helper)
     {
         this.Config = helper.ReadConfig<ModConfig>();
+        this.Config.Normalize();
         helper.WriteConfig(this.Config);
         this.RefreshHotkeyConflict();
-        this.WorkerRoster = new WorkerRosterService(this.Monitor);
+        this.WorkerRoster = new WorkerRosterService(
+            this.Monitor,
+            () => this.GetEffectiveContractSettings());
         this.WateringContracts = new WateringContractExecutionController(
             helper.Translation,
             this.Monitor,
@@ -52,7 +55,8 @@ public sealed class ModEntry : Mod
             this.HarvestingContracts,
             this.WateringContracts,
             this.AnimalCareContracts,
-            this.StorageSortContracts);
+            this.StorageSortContracts,
+            () => this.Config.CreateSnapshot());
         this.MultiplayerContracts = new MultiplayerContractCoordinator(
             helper,
             this.ModManifest,
@@ -61,13 +65,15 @@ public sealed class ModEntry : Mod
             this.WateringContracts,
             this.HarvestingContracts,
             this.StorageSortContracts,
-            this.FarmWorkContracts);
+            this.FarmWorkContracts,
+            () => this.Config.CreateSnapshot());
         this.RecurringContracts = new RecurringContractCoordinator(
             helper,
             helper.Translation,
             this.Monitor,
             this.WorkerRoster,
-            this.MultiplayerContracts);
+            this.MultiplayerContracts,
+            () => this.Config.CreateSnapshot());
 
         if (this.HasKnownHotkeyConflict)
             this.Monitor.Log(helper.Translation.Get("hud.hotkey-conflict"), LogLevel.Warn);
@@ -179,8 +185,10 @@ public sealed class ModEntry : Mod
 
     private void SaveConfigFromMenu()
     {
+        this.Config.Normalize();
         this.Helper.WriteConfig(this.Config);
         this.RefreshHotkeyConflict();
+        this.MultiplayerContracts?.NotifyHostContractSettingsChanged();
 
         if (this.HasKnownHotkeyConflict)
             this.Monitor.Log(this.Helper.Translation.Get("hud.hotkey-conflict"), LogLevel.Warn);
@@ -254,11 +262,13 @@ public sealed class ModEntry : Mod
             return;
 
         int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(worker.InternalName);
+        ContractSettingsSnapshot settings = this.GetEffectiveContractSettings();
         WorkContractPreview preview = ContractPreviewService.Create(
             friendshipHearts,
             Game1.dayOfMonth,
             worker.InternalName,
-            task);
+            task,
+            settings);
 
         Game1.activeClickableMenu = new WorkContractPreviewMenu(
             worker,
@@ -269,7 +279,16 @@ public sealed class ModEntry : Mod
             destinationMode => this.TryStartNamedContract(
                 worker.InternalName,
                 task,
-                destinationMode));
+                destinationMode),
+            settings.DefaultHarvestDestination);
+    }
+
+    private ContractSettingsSnapshot GetEffectiveContractSettings()
+    {
+        return Context.IsWorldReady && !Context.IsMainPlayer
+            ? this.MultiplayerContracts?.GetHostContractSettings()
+                ?? ContractSettingsSnapshot.Default
+            : this.Config.CreateSnapshot();
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -413,7 +432,8 @@ public sealed class ModEntry : Mod
             this.RecurringContracts,
             this.Helper.Translation,
             () => this.OpenRecurringWorkerRoster(rosterPage),
-            this.OpenRecurringContractMenu);
+            this.OpenRecurringContractMenu,
+            this.Config.CreateSnapshot());
     }
 
     private void OnModMessageReceived(object? sender, ModMessageReceivedEventArgs e)

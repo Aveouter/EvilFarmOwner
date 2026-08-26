@@ -41,7 +41,7 @@
 4. 通过 SMAPI 启动游戏，载入存档并站在主农场。
 5. 按 `K`，选择一名工人，确认工资和产物去向，然后开始班次。
 
-需要 Stardew Valley 1.6 或更高版本。Generic Mod Config Menu 是可选的，可用于修改打开名单的按键。
+需要 Stardew Valley 1.6 或更高版本。Generic Mod Config Menu 是可选的，可用于修改按键、工资和综合班次偏好。
 
 ### 一次雇佣会做什么？
 
@@ -60,18 +60,18 @@
 ### 工资
 
 - 名单会显示 NPC 的好感度和今日最高授权工资。
-- 当前基础工资为每小时 100g；好感度越高，工资越低。
+- 默认基础工资为每小时 100g；好感度越高，工资越低。
 - 普通班次最多按六个已开始的小时结算。
 - 休息日需要明确授权三倍工资。
 - 开工时暂时预留最高工资，工人返回后按实际工时收费并退回剩余金币。
 
-工资与班次偏好设置正在设计中，见 [Issue #108](https://github.com/Aveouter/EvilFarmOwner/issues/108)。
+安装可选的 Generic Mod Config Menu 后，主机可以调整基础时薪（50g–500g）、好感度影响（0%–40%）、休息日倍率（1.0–5.0 倍）、默认产物去向，并启用或关闭收获、浇水、动物照料和箱子整理。至少保留一个工作阶段；已经开工的班次不会被中途修改。
 
 ### 收获物去向
 
 确认雇佣时可以选择：
 
-- **分类箱**（默认）：寻找主农场上的普通玩家箱子，依次优先同品质可堆叠物品、同物品、同 `Item.Category`，最后才使用容量最大的空箱。
+- **分类箱**（默认设置）：寻找主农场上的普通玩家箱子，依次优先同品质可堆叠物品、同物品、同 `Item.Category`，最后才使用容量最大的空箱。
 - **玩家背包**：只要请求合同的玩家仍在线且背包能完整放下当前物品，即使已经离开农场也能接收。
 
 一份合同开始后不会偷偷切换目的地。所选位置无法接收完整物品堆叠时，合同会安全停止；已经取得的物品会保存在背包、箱子、可见掉落或恢复存储中，不会静默消失，也不会自动出售。
@@ -106,7 +106,7 @@ efo_quarantine   查看需要人工取回的应急保护物品
 efo_netstatus    查看联机合同状态
 ```
 
-如果旧配置使用 `H` 并与 UI Info Suite 2 冲突，请通过 Generic Mod Config Menu 改回 `K`，或编辑 `Mods/EvilFarmOwner/config.json`。
+如果旧配置使用 `H` 并与 UI Info Suite 2 冲突，请通过 Generic Mod Config Menu 改回 `K`，或编辑 `Mods/EvilFarmOwner/config.json`。多人游戏中的合同始终使用主机设置；农场工会在联机同步后看到相同的工资预览和默认去向。
 
 ### 当前限制
 
@@ -135,7 +135,7 @@ NPCs who are busy with festivals, events, work schedules, or other protected act
 4. Launch through SMAPI, load a save, and stand on the main farm.
 5. Press `K`, choose a worker, review the wage and delivery destination, then confirm.
 
-Stardew Valley 1.6 or later is required. Generic Mod Config Menu is optional and can change the roster hotkey.
+Stardew Valley 1.6 or later is required. Generic Mod Config Menu is optional and exposes the hotkey, wage, and complete-shift preferences.
 
 ### What does one hire do?
 
@@ -154,18 +154,18 @@ The NPC continues working on the farm when the player changes maps. Only one con
 ### Wages
 
 - The roster shows friendship and today's maximum authorization.
-- The current base wage is 100g per hour; higher friendship reduces the rate.
+- The default base wage is 100g per hour; higher friendship reduces the rate.
 - A normal shift charges at most six started hours.
 - Rest-day work requires explicit authorization for triple pay.
 - The maximum is reserved at dispatch, then unused gold is refunded after the worker returns.
 
-Player-facing wage and shift preferences are being designed in [Issue #108](https://github.com/Aveouter/EvilFarmOwner/issues/108).
+With the optional Generic Mod Config Menu installed, the host can adjust the base rate (50g–500g), friendship impact (0%–40%), rest-day multiplier (1.0x–5.0x), default harvest destination, and which of harvesting, watering, animal care, and chest sorting are included. At least one stage remains enabled, and a running shift keeps its starting snapshot.
 
 ### Harvest delivery
 
 Choose one destination at confirmation:
 
-- **Classified chests** (default): ordinary player chests on the main farm are ranked by compatible quality stack, same item, exact `Item.Category`, then the empty chest with the most capacity.
+- **Classified chests** (default setting): ordinary player chests on the main farm are ranked by compatible quality stack, same item, exact `Item.Category`, then the empty chest with the most capacity.
 - **Requester inventory**: delivery continues while that player is online on any map and can accept the complete current stack.
 
 A running contract never changes destination silently. If the selected destination cannot accept the whole stack, the contract stops safely. Already owned items remain in inventory, a chest, a visible drop, or recovery storage; they are never silently deleted or automatically shipped.
@@ -195,7 +195,7 @@ efo_quarantine
 efo_netstatus
 ```
 
-If an old `H` hotkey conflicts with UI Info Suite 2, change it to `K` through Generic Mod Config Menu or edit `Mods/EvilFarmOwner/config.json`.
+If an old `H` hotkey conflicts with UI Info Suite 2, change it to `K` through Generic Mod Config Menu or edit `Mods/EvilFarmOwner/config.json`. In multiplayer, contracts always use the host's settings; farmhands receive the same wage preview and default destination after synchronization.
 
 ### Current limitations
 

@@ -26,7 +26,7 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
     private readonly ClickableComponent BackButton;
     private readonly ClickableComponent ConfirmButton;
     private readonly ClickableComponent? DestinationButton;
-    private HarvestDestinationMode DestinationMode = HarvestDestinationPolicy.DefaultManualMode;
+    private HarvestDestinationMode DestinationMode;
 
     public WorkContractPreviewMenu(
         WorkerRosterEntry worker,
@@ -34,7 +34,8 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         NamedFarmTask task,
         ITranslationHelper translation,
         Action returnToRoster,
-        Func<HarvestDestinationMode, bool> confirmContract)
+        Func<HarvestDestinationMode, bool> confirmContract,
+        HarvestDestinationMode defaultDestination = HarvestDestinationMode.ClassifiedChests)
         : base(GetMenuX(), GetMenuY(), GetMenuWidth(), GetMenuHeight(), showUpperRightCloseButton: true)
     {
         this.Worker = worker;
@@ -43,6 +44,9 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         this.Translation = translation;
         this.ReturnToRoster = returnToRoster;
         this.ConfirmContract = confirmContract;
+        this.DestinationMode = Enum.IsDefined(defaultDestination)
+            ? defaultDestination
+            : HarvestDestinationMode.ClassifiedChests;
 
         int buttonY = this.yPositionOnScreen + this.height - ButtonHeight - 28;
         this.BackButton = new ClickableComponent(

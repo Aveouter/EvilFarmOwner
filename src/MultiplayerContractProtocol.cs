@@ -2,7 +2,7 @@ namespace EvilFarmOwner;
 
 internal static class MultiplayerContractProtocol
 {
-    public const int SchemaVersion = 9;
+    public const int SchemaVersion = 10;
     public const int ProcessedRequestCapacity = 256;
     public const string StartRequestType = "Contract/StartRequest";
     public const string StartResponseType = "Contract/StartResponse";
@@ -10,6 +10,7 @@ internal static class MultiplayerContractProtocol
     public const string ResultType = "Contract/Result";
     public const string SyncRequestType = "Contract/SyncRequest";
     public const string SyncStateType = "Contract/SyncState";
+    public const string SettingsType = "Contract/Settings";
 }
 
 internal sealed class ContractStartRequestMessage
@@ -141,6 +142,33 @@ internal sealed class ContractSyncStateMessage
     public bool HasActiveContract { get; set; }
     public ContractSnapshotMessage? ActiveContract { get; set; }
     public ContractResultMessage? RecentResult { get; set; }
+    public ContractSettingsMessage Settings { get; set; } = new();
+}
+
+internal sealed class ContractSettingsMessage
+{
+    public int SchemaVersion { get; set; }
+    public ulong SaveId { get; set; }
+    public string HostSessionId { get; set; } = "";
+    public long SettingsVersion { get; set; }
+    public int BaseHourlyWage { get; set; }
+    public int FriendshipWageImpactPercent { get; set; }
+    public decimal RestDayMultiplier { get; set; }
+    public HarvestDestinationMode DefaultHarvestDestination { get; set; }
+    public FarmWorkStageSelection EnabledStages { get; set; }
+
+    public bool TryGetSnapshot(out ContractSettingsSnapshot settings)
+    {
+        settings = new ContractSettingsSnapshot(
+            this.BaseHourlyWage,
+            this.FriendshipWageImpactPercent,
+            this.RestDayMultiplier,
+            this.DefaultHarvestDestination,
+            this.EnabledStages);
+        return this.SchemaVersion == MultiplayerContractProtocol.SchemaVersion
+            && this.SettingsVersion >= 0
+            && settings.IsValid;
+    }
 }
 
 internal sealed record ContractProtocolContext(

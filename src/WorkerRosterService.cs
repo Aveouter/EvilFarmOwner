@@ -30,10 +30,14 @@ internal sealed class WorkerRosterService
     };
 
     private readonly IMonitor Monitor;
+    private readonly Func<ContractSettingsSnapshot> GetSettings;
 
-    public WorkerRosterService(IMonitor monitor)
+    public WorkerRosterService(
+        IMonitor monitor,
+        Func<ContractSettingsSnapshot>? getSettings = null)
     {
         this.Monitor = monitor;
+        this.GetSettings = getSettings ?? (() => ContractSettingsSnapshot.Default);
     }
 
     public IReadOnlyList<WorkerRosterEntry> GetRoster()
@@ -125,7 +129,10 @@ internal sealed class WorkerRosterService
         string displayName = string.IsNullOrWhiteSpace(npc.displayName) ? npc.Name : npc.displayName;
         Texture2D portrait = npc.Portrait;
         int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(npc.Name);
-        WorkContractPreview wagePreview = ContractPreviewService.Create(friendshipHearts, Game1.dayOfMonth);
+        WorkContractPreview wagePreview = ContractPreviewService.Create(
+            friendshipHearts,
+            Game1.dayOfMonth,
+            this.GetSettings());
 
         return new WorkerRosterEntry(
             npc.Name,

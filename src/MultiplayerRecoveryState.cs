@@ -23,6 +23,7 @@ internal static class MultiplayerRecoveryState
     private const int LegacyEfficiencyProtocolSchemaVersion = 6;
     private const int LegacyDestinationProtocolSchemaVersion = 7;
     private const int LegacyStorageSortingProtocolSchemaVersion = 8;
+    private const int LegacyFarmWorkProtocolSchemaVersion = 9;
 
     public static MultiplayerRecoverySaveData Create(
         string modVersion,
@@ -129,14 +130,16 @@ internal static class MultiplayerRecoveryState
         // quarantine destination count. Protocol 6 adds efficiency only to live snapshots.
         // Protocol 7 adds a harvest destination whose zero value preserves legacy classified-
         // chest behavior. Protocol 8 adds storage sorting as a task. Protocol 9 replaces
-        // task-specific starts with one farm-work shift. Persisted transaction identities
-        // remain compatible after validation.
+        // task-specific starts with one farm-work shift. Protocol 10 adds synchronized
+        // host settings only to live messages. Persisted transaction identities remain
+        // compatible after validation.
         return protocolSchemaVersion is LegacyHandshakeProtocolSchemaVersion
             or LegacyQuarantineProtocolSchemaVersion
             or LegacyPlacementProtocolSchemaVersion
             or LegacyEfficiencyProtocolSchemaVersion
             or LegacyDestinationProtocolSchemaVersion
             or LegacyStorageSortingProtocolSchemaVersion
+            or LegacyFarmWorkProtocolSchemaVersion
             or MultiplayerContractProtocol.SchemaVersion;
     }
 
@@ -176,7 +179,7 @@ internal static class MultiplayerRecoveryState
             || string.IsNullOrWhiteSpace(result.WorkerName)
             || result.WorkerName.Length > 100
             || !Enum.IsDefined(result.Task)
-            || (result.SchemaVersion >= MultiplayerContractProtocol.SchemaVersion
+            || (result.SchemaVersion >= LegacyFarmWorkProtocolSchemaVersion
                 && result.Task != NamedFarmTask.FarmWork)
             || !HarvestDestinationPolicy.IsValidForTask(
                 result.Task,
