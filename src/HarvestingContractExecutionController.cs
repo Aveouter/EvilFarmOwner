@@ -1132,7 +1132,7 @@ internal sealed class HarvestingContractExecutionController
                 onlyOnline: true);
             return requester is not null
                 && ReferenceEquals(requester.currentLocation, contract.Farm)
-                && AnimalProductTransferService.CanInventoryAcceptCompleteStack(
+                && RequesterInventoryCapacity.CanAcceptCompleteStack(
                     requester,
                     item);
         }
@@ -1326,7 +1326,7 @@ internal sealed class HarvestingContractExecutionController
         bool requesterIsOnMainFarm = requesterIsOnline
             && ReferenceEquals(requester!.currentLocation, contract.Farm);
         bool canAcceptCompleteStack = requesterIsOnline
-            && CanInventoryAcceptCompleteStack(requester!, entry.Item);
+            && RequesterInventoryCapacity.CanAcceptCompleteStack(requester!, entry.Item);
         HarvestDestinationAction action = HarvestDestinationPolicy.SelectAction(
             contract.DestinationMode,
             requesterIsOnline,
@@ -1427,27 +1427,6 @@ internal sealed class HarvestingContractExecutionController
         return requester.Items
             .Where(item => item is not null && sample.canStackWith(item))
             .Sum(item => item?.Stack ?? 0);
-    }
-
-    private static bool CanInventoryAcceptCompleteStack(Farmer requester, Item item)
-    {
-        if (item.IsRecipe
-            || item.QualifiedItemId is "(O)73" or "(O)930" or "(O)102" or "(O)858" or "(O)GoldCoin")
-            return true;
-
-        for (int index = 0; index < requester.MaxItems && index < requester.Items.Count; index++)
-        {
-            Item? existing = requester.Items[index];
-            if (existing is null)
-                return true;
-            if (item is StardewValley.Object
-                && existing is StardewValley.Object
-                && existing.Stack + item.Stack <= existing.maximumStackSize()
-                && existing.canStackWith(item))
-                return true;
-        }
-
-        return false;
     }
 
     private void OnChestLockAcquired(Guid contractId, HarvestChestRoute route)

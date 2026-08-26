@@ -156,7 +156,7 @@ internal sealed class AnimalProductTransferService
         if (!TryCreateCurrentProduct(house, target, out Item? product, out FarmAnimal? animal)
             || product is null)
             return AnimalProductTransferFailure.SourceChanged;
-        if (!CanInventoryAcceptCompleteStack(requester, product))
+        if (!RequesterInventoryCapacity.CanAcceptCompleteStack(requester, product))
             return AnimalProductTransferFailure.InsufficientCapacity;
 
         InventorySnapshot snapshot = InventorySnapshot.Capture(requester.Items);
@@ -186,27 +186,6 @@ internal sealed class AnimalProductTransferService
             snapshot.Restore(requester.Items);
             return AnimalProductTransferFailure.CommitFailed;
         }
-    }
-
-    public static bool CanInventoryAcceptCompleteStack(Farmer requester, Item item)
-    {
-        ArgumentNullException.ThrowIfNull(requester);
-        ArgumentNullException.ThrowIfNull(item);
-        if (item.IsRecipe
-            || item.QualifiedItemId is "(O)73" or "(O)930" or "(O)102" or "(O)858" or "(O)GoldCoin")
-            return true;
-
-        for (int index = 0; index < requester.MaxItems && index < requester.Items.Count; index++)
-        {
-            Item? existing = requester.Items[index];
-            if (existing is null)
-                return true;
-            if (existing.canStackWith(item)
-                && existing.Stack + item.Stack <= existing.maximumStackSize())
-                return true;
-        }
-
-        return false;
     }
 
     private static bool TryCreateCurrentProduct(
