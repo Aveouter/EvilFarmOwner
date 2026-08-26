@@ -275,6 +275,7 @@
   "storage-sort.hud.dispatched": "{{worker}} 已开始执行 {{transfers}} 项箱子转移计划；结算前暂时预留 {{gold}}g。",
   "storage-sort.hud.completed": "{{worker}} 已返回：移动 {{transfers}} 堆、共 {{items}} 件，跳过 {{skipped}} 项；{{hours}} 小时实付 {{paid}}g，退还 {{refunded}}g。",
   "storage-sort.hud.stopped": "{{worker}} 已停止：{{reason}} 已移动 {{transfers}} 堆、共 {{items}} 件，跳过 {{skipped}} 项，应急恢复 {{recovery}} 件；{{hours}} 小时实付 {{paid}}g，退还 {{refunded}}g。",
+  "storage-sort.hud.route-stopped": "{{worker}} 已停止整理箱子：{{reason}}；物品若未回滚或进入恢复区，绝不会从源箱移除。",
   "harvest.drop-location.farmhouse": "农舍交付区",
   "harvest.drop-location.entrance": "本次选定的农场入口",
   "harvest.drop-location.worker": "工人所在位置",

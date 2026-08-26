@@ -94,6 +94,7 @@ List<(string Name, Action Test)> tests = new()
     ("storage sort interaction ordering", TestStorageSortInteractionOrdering),
     ("storage sort report accounting", TestStorageSortReportAccounting),
     ("storage sort save-boundary policy", TestStorageSortSaveBoundaryPolicy),
+    ("storage sort route failure ownership", TestStorageSortRouteFailureOwnership),
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("harvest chest release deferral", TestHarvestChestReleaseDeferral),
     ("harvest cargo batch threshold", TestHarvestCargoBatchThreshold),
@@ -2142,6 +2143,22 @@ static void TestStorageSortSaveBoundaryPolicy()
         hasUnresolvedItem: true,
         unresolvedItemDetached: true,
         Guid.Empty));
+}
+
+static void TestStorageSortRouteFailureOwnership()
+{
+    Equal(StorageSortRouteFailureDisposition.AbortBeforeDetach,
+        StorageSortRouteFailurePolicy.Decide(
+            hasUnresolvedItem: false,
+            unresolvedItemDetached: false));
+    Equal(StorageSortRouteFailureDisposition.AbortBeforeDetach,
+        StorageSortRouteFailurePolicy.Decide(
+            hasUnresolvedItem: true,
+            unresolvedItemDetached: false));
+    Equal(StorageSortRouteFailureDisposition.ResolveDetachedCargo,
+        StorageSortRouteFailurePolicy.Decide(
+            hasUnresolvedItem: true,
+            unresolvedItemDetached: true));
 }
 
 static StorageSortChestSnapshot SortChest(

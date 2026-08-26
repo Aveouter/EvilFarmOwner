@@ -150,6 +150,47 @@ internal sealed class StorageSortRoutePlanner
             Plan: null);
     }
 
+    public bool TryCreateChestRoute(
+        Farm farm,
+        NPC worker,
+        Point start,
+        GridPoint chestTile,
+        TravelObstacleLedger obstacles,
+        out Point interaction,
+        out Stack<Point>? path)
+    {
+        Dictionary<GridPoint, GridRouteMap> routeCache = new();
+        bool found = this.TryCreateChestRoute(
+            farm,
+            worker,
+            new GridPoint(start.X, start.Y),
+            chestTile,
+            routeCache,
+            obstacles,
+            out GridPoint interactionTile,
+            out path);
+        interaction = new Point(interactionTile.X, interactionTile.Y);
+        return found;
+    }
+
+    public bool TryCreateDirectRoute(
+        Farm farm,
+        NPC worker,
+        Point start,
+        Point destination,
+        TravelObstacleLedger obstacles,
+        out Stack<Point>? path)
+    {
+        return this.TryCreateDirectRoute(
+            farm,
+            worker,
+            new GridPoint(start.X, start.Y),
+            new GridPoint(destination.X, destination.Y),
+            new Dictionary<GridPoint, GridRouteMap>(),
+            obstacles,
+            out path);
+    }
+
     private bool TryCreateFromArrival(
         Farm farm,
         NPC worker,
@@ -169,6 +210,7 @@ internal sealed class StorageSortRoutePlanner
                     current,
                     transfer.SourceChest,
                     routeCache,
+                    obstacles: null,
                     out GridPoint sourceInteraction,
                     out Stack<Point>? sourcePath)
                 || sourcePath is null
@@ -178,6 +220,7 @@ internal sealed class StorageSortRoutePlanner
                     sourceInteraction,
                     transfer.DestinationChest,
                     routeCache,
+                    obstacles: null,
                     out GridPoint destinationInteraction,
                     out Stack<Point>? destinationPath)
                 || destinationPath is null)
@@ -200,6 +243,7 @@ internal sealed class StorageSortRoutePlanner
                 current,
                 arrival,
                 routeCache,
+                obstacles: null,
                 out Stack<Point>? returnPath)
             || returnPath is null)
         {
@@ -223,12 +267,13 @@ internal sealed class StorageSortRoutePlanner
         GridPoint start,
         GridPoint chestTile,
         Dictionary<GridPoint, GridRouteMap> routeCache,
+        TravelObstacleLedger? obstacles,
         out GridPoint interaction,
         out Stack<Point>? path)
     {
         interaction = default;
         path = null;
-        if (!this.TryGetRoutes(farm, worker, start, routeCache, out GridRouteMap? routes)
+        if (!this.TryGetRoutes(farm, worker, start, routeCache, obstacles, out GridRouteMap? routes)
             || routes is null)
         {
             return false;
@@ -273,10 +318,11 @@ internal sealed class StorageSortRoutePlanner
         GridPoint start,
         GridPoint destination,
         Dictionary<GridPoint, GridRouteMap> routeCache,
+        TravelObstacleLedger? obstacles,
         out Stack<Point>? path)
     {
         path = null;
-        if (!this.TryGetRoutes(farm, worker, start, routeCache, out GridRouteMap? routes)
+        if (!this.TryGetRoutes(farm, worker, start, routeCache, obstacles, out GridRouteMap? routes)
             || routes is null
             || !routes.TryGetPath(destination, out IReadOnlyList<GridPoint> gridPath))
         {
@@ -303,16 +349,27 @@ internal sealed class StorageSortRoutePlanner
         NPC worker,
         GridPoint start,
         Dictionary<GridPoint, GridRouteMap> routeCache,
+        TravelObstacleLedger? obstacles,
         out GridRouteMap? routes)
     {
         if (routeCache.TryGetValue(start, out routes))
             return true;
-        if (!FarmNavigationMap.TryBuild(
+        bool built = obstacles is null
+            ? FarmNavigationMap.TryBuild(
                 farm,
                 worker,
                 new Point(start.X, start.Y),
                 this.Monitor,
                 out routes)
+            : FarmNavigationMap.TryBuild(
+                farm,
+                worker,
+                new Point(start.X, start.Y),
+                this.Monitor,
+                farm.NameOrUniqueName,
+                obstacles,
+                out routes);
+        if (!built
             || routes is null)
         {
             return false;

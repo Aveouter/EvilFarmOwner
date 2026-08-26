@@ -74,6 +74,24 @@ internal static class StorageSortSaveBoundaryPolicy
     }
 }
 
+internal enum StorageSortRouteFailureDisposition
+{
+    AbortBeforeDetach,
+    ResolveDetachedCargo
+}
+
+internal static class StorageSortRouteFailurePolicy
+{
+    public static StorageSortRouteFailureDisposition Decide(
+        bool hasUnresolvedItem,
+        bool unresolvedItemDetached)
+    {
+        return hasUnresolvedItem && unresolvedItemDetached
+            ? StorageSortRouteFailureDisposition.ResolveDetachedCargo
+            : StorageSortRouteFailureDisposition.AbortBeforeDetach;
+    }
+}
+
 internal sealed class StorageSortContractExecutionController
 {
     private const int LatestStartTime = 1600;
@@ -82,6 +100,7 @@ internal sealed class StorageSortContractExecutionController
     private const int DestinationActionTicks = 24;
     private const int MaximumTravelTicks = 3600;
     private const int MaximumStalledTravelTicks = 180;
+    private const int MaximumRouteFailures = 3;
     private const int MaximumLockWaitTicks = 300;
 
     private readonly ITranslationHelper Translation;
@@ -487,28 +506,74 @@ internal sealed class StorageSortContractExecutionController
         if (!ReferenceEquals(this.ActiveContract, contract))
             return;
 
-        StorageSortRouteStep step = contract.CurrentStep;
         contract.Phase = StorageSortContractPhase.TravelingToSource;
         contract.PhaseTicks = 0;
+        NPC worker = contract.Lease.Worker;
+        StorageSortRouteStep step = contract.CurrentStep;
+        if (!this.RoutePlanner.TryCreateChestRoute(
+                contract.Farm,
+                worker,
+                worker.TilePoint,
+                step.Transfer.SourceChest,
+                contract.RouteObstacles,
+                out Point interaction,
+                out Stack<Point>? path)
+            || path is null)
+        {
+            this.HandleTravelInterruption(
+                contract,
+                TravelInterruptionKind.ControllerSetupFailed,
+                explicitCollisionProbe: "no safe route to source chest");
+            return;
+        }
+
+        contract.RouteOverride = step with
+        {
+            SourceInteractionTile = interaction,
+            SourcePath = path
+        };
         this.BeginPath(
             contract,
-            step.SourcePath,
-            step.SourceInteractionTile,
-            GetFacingDirection(step.SourceInteractionTile, ToPoint(step.Transfer.SourceChest)),
+            path,
+            interaction,
+            GetFacingDirection(interaction, ToPoint(step.Transfer.SourceChest)),
             this.OnArrivedAtSource);
     }
 
     private void BeginDestinationTravel(ActiveStorageSortContract contract)
     {
-        StorageSortRouteStep step = contract.CurrentStep;
         contract.Phase = StorageSortContractPhase.TravelingToDestination;
         contract.PhaseTicks = 0;
+        NPC worker = contract.Lease.Worker;
+        StorageSortRouteStep step = contract.CurrentStep;
+        if (!this.RoutePlanner.TryCreateChestRoute(
+                contract.Farm,
+                worker,
+                worker.TilePoint,
+                step.Transfer.DestinationChest,
+                contract.RouteObstacles,
+                out Point interaction,
+                out Stack<Point>? path)
+            || path is null)
+        {
+            this.HandleTravelInterruption(
+                contract,
+                TravelInterruptionKind.ControllerSetupFailed,
+                explicitCollisionProbe: "no safe route to destination chest");
+            return;
+        }
+
+        contract.RouteOverride = step with
+        {
+            DestinationInteractionTile = interaction,
+            DestinationPath = path
+        };
         this.BeginPath(
             contract,
-            step.DestinationPath,
-            step.DestinationInteractionTile,
+            path,
+            interaction,
             GetFacingDirection(
-                step.DestinationInteractionTile,
+                interaction,
                 ToPoint(step.Transfer.DestinationChest)),
             this.OnArrivedAtDestination);
     }
@@ -536,7 +601,12 @@ internal sealed class StorageSortContractExecutionController
                     path,
                     out string failure))
             {
-                throw new InvalidOperationException(failure);
+                this.HandleTravelInterruption(
+                    contract,
+                    TravelInterruptionKind.FirstStepRejected,
+                    path,
+                    failure);
+                return;
             }
 
             PathFindController controller = new(
@@ -551,28 +621,29 @@ internal sealed class StorageSortContractExecutionController
                 NPCSchedule = true
             };
             if (controller.pathToEndPoint is not { Count: > 0 })
-                throw new InvalidOperationException($"No path to {destination}.");
+            {
+                this.HandleTravelInterruption(
+                    contract,
+                    TravelInterruptionKind.ControllerSetupFailed,
+                    path,
+                    $"controller produced no path to {destination}");
+                return;
+            }
 
             contract.Controller = controller;
             contract.Lease.AttachController(controller);
-            contract.TravelWatchdog.Reset(worker.Position.X, worker.Position.Y);
+            contract.TravelWatchdog.Reset(
+                worker.Position.X,
+                worker.Position.Y,
+                new GridPoint(worker.TilePoint.X, worker.TilePoint.Y));
         }
         catch (Exception ex)
         {
-            this.Monitor.Log(
-                $"Storage-sort route failed during {contract.Phase}: {ex.Message}",
-                LogLevel.Warn);
-            if (contract.Phase == StorageSortContractPhase.Returning)
-            {
-                this.FinishContract(
-                    contract,
-                    succeeded: false,
-                    contract.FailureKey ?? "contract.failure.return-path");
-            }
-            else
-            {
-                this.BeginReturn(contract, "contract.failure.route-interrupted");
-            }
+            this.HandleTravelInterruption(
+                contract,
+                TravelInterruptionKind.ControllerSetupFailed,
+                path,
+                ex.Message);
         }
     }
 
@@ -582,7 +653,7 @@ internal sealed class StorageSortContractExecutionController
             return;
         if (contract.PhaseTicks > MaximumTravelTicks)
         {
-            this.HandleTravelFailure(contract, "contract.failure.route-timeout");
+            this.HandleTravelInterruption(contract, TravelInterruptionKind.Timeout);
             return;
         }
 
@@ -591,20 +662,21 @@ internal sealed class StorageSortContractExecutionController
             && worker.controller is not null
             && !ReferenceEquals(worker.controller, contract.Controller))
         {
-            this.HandleTravelFailure(contract, "contract.failure.controller-conflict");
+            this.HandleTravelInterruption(contract, TravelInterruptionKind.ControllerReplaced);
             return;
         }
         if ((Game1.activeClickableMenu is null || Game1.IsMultiplayer)
             && contract.TravelWatchdog.Tick(
                 worker.Position.X,
                 worker.Position.Y,
+                new GridPoint(worker.TilePoint.X, worker.TilePoint.Y),
                 MaximumStalledTravelTicks))
         {
-            this.HandleTravelFailure(contract, "contract.failure.route-interrupted");
+            this.HandleTravelInterruption(contract, TravelInterruptionKind.ProgressStall);
             return;
         }
         if (contract.PhaseTicks > 1 && worker.controller is null)
-            this.HandleTravelFailure(contract, "contract.failure.route-interrupted");
+            this.HandleTravelInterruption(contract, TravelInterruptionKind.ControllerEnded);
     }
 
     private bool TryCompleteTravelAtDestination(ActiveStorageSortContract contract)
@@ -627,12 +699,13 @@ internal sealed class StorageSortContractExecutionController
 
         if (worker.controller is not null && !ReferenceEquals(worker.controller, contract.Controller))
         {
-            this.HandleTravelFailure(contract, "contract.failure.controller-conflict");
+            this.HandleTravelInterruption(contract, TravelInterruptionKind.ControllerReplaced);
             return true;
         }
         if (ReferenceEquals(worker.controller, contract.Controller))
             worker.controller = null;
         contract.Controller = null;
+        contract.RouteFailures.Reset(GetRouteFailureKey(contract));
         worker.Position = FarmNavigationMap.GetAlignedCharacterPosition(destination.Value);
         worker.Halt();
 
@@ -651,20 +724,139 @@ internal sealed class StorageSortContractExecutionController
         return true;
     }
 
-    private void HandleTravelFailure(ActiveStorageSortContract contract, string failureKey)
+    private void HandleTravelInterruption(
+        ActiveStorageSortContract contract,
+        TravelInterruptionKind kind,
+        Stack<Point>? explicitPath = null,
+        string? explicitCollisionProbe = null)
     {
         NPC worker = contract.Lease.Worker;
+        Point destination = GetPhaseDestination(contract);
+        TravelInterruptionSnapshot diagnostic = TravelInterruptionRuntime.Capture(
+            contract.Farm,
+            worker,
+            contract.Controller,
+            destination,
+            kind,
+            contract.TravelWatchdog.PreviousProgressTile,
+            explicitPath,
+            explicitCollisionProbe);
+        string routeKey = GetRouteFailureKey(contract);
+        this.Monitor.Log(
+            $"Storage-sort travel interrupted: contract={contract.Id:N}, "
+            + $"worker={worker.Name}, phase={contract.Phase}, routeKey={routeKey}, "
+            + diagnostic.ToTechnicalReason() + ".",
+            LogLevel.Debug);
+        TravelObstacleSelection obstacle = TravelRouteExclusionPolicy.Select(
+            diagnostic.LocationKey,
+            diagnostic.Origin,
+            diagnostic.PreviousProgressTile,
+            diagnostic.NextWaypoint);
+        contract.RouteObstacles.Add(obstacle);
+
         if (ReferenceEquals(worker.controller, contract.Controller))
             worker.controller = null;
         contract.Controller = null;
-        worker.Halt();
-        if (contract.Phase == StorageSortContractPhase.Returning)
+        if (kind == TravelInterruptionKind.ControllerReplaced)
         {
-            this.FinishContract(contract, succeeded: false, failureKey);
+            this.Monitor.Log(
+                $"Storage-sort route {routeKey} was replaced by an external controller; "
+                + "the contract will stop without overwriting it.",
+                LogLevel.Warn);
+            if (this.MustResolveDetachedCargo(contract, "contract.failure.controller-conflict"))
+                return;
+            this.FinishContract(contract, false, "contract.failure.controller-conflict");
             return;
         }
 
-        this.BeginReturn(contract, failureKey);
+        worker.Halt();
+        TravelFailureDecision decision = contract.RouteFailures.Record(routeKey);
+        if (decision.CanRetry)
+        {
+            this.Monitor.Log(
+                $"Storage-sort route {routeKey} will replan around tile={obstacle.Tile}, "
+                + $"edge={obstacle.Edge} [{decision.FailureCount}/{decision.MaximumFailures}].",
+                LogLevel.Debug);
+            switch (contract.Phase)
+            {
+                case StorageSortContractPhase.TravelingToSource:
+                    this.BeginSourceTravel(contract);
+                    return;
+                case StorageSortContractPhase.TravelingToDestination:
+                    this.BeginDestinationTravel(contract);
+                    return;
+                case StorageSortContractPhase.Returning:
+                    this.BeginReturn(contract, contract.FailureKey, retry: true);
+                    return;
+            }
+        }
+
+        this.Monitor.Log(
+            $"Storage-sort route {routeKey} exhausted {MaximumRouteFailures} attempts; "
+            + diagnostic.ToTechnicalReason() + ".",
+            LogLevel.Warn);
+        Game1.addHUDMessage(new HUDMessage(
+            this.Translation.Get("storage-sort.hud.route-stopped", new
+            {
+                worker = worker.displayName,
+                reason = this.Translation.Get(diagnostic.ReasonTranslationKey)
+            }),
+            HUDMessage.error_type));
+
+        if (contract.Phase == StorageSortContractPhase.Returning)
+        {
+            this.FinishContract(contract, false, "contract.failure.return-path");
+            return;
+        }
+
+        if (this.MustResolveDetachedCargo(contract, "contract.failure.route-interrupted"))
+            return;
+
+        // Normally no item has left its source chest during either travel phase.
+        // The locked transfer is synchronous and must rollback or enter recovery
+        // before it can return control to this route state machine.
+        this.BeginReturn(contract, "contract.failure.route-interrupted");
+    }
+
+    private bool MustResolveDetachedCargo(
+        ActiveStorageSortContract contract,
+        string failureKey)
+    {
+        if (StorageSortRouteFailurePolicy.Decide(
+                contract.UnresolvedItem is not null,
+                contract.UnresolvedItemDetached)
+            != StorageSortRouteFailureDisposition.ResolveDetachedCargo)
+        {
+            return false;
+        }
+
+        contract.FailureKey ??= failureKey;
+        contract.Phase = StorageSortContractPhase.RecoveryBlocked;
+        contract.PhaseTicks = 0;
+        this.TryResolveBlockedRecovery(contract);
+        return true;
+    }
+
+    private static Point GetPhaseDestination(ActiveStorageSortContract contract)
+    {
+        return contract.Phase switch
+        {
+            StorageSortContractPhase.TravelingToSource => contract.CurrentStep.SourceInteractionTile,
+            StorageSortContractPhase.TravelingToDestination => contract.CurrentStep.DestinationInteractionTile,
+            StorageSortContractPhase.Returning => contract.RoutePlan.ArrivalTile,
+            _ => contract.Lease.Worker.TilePoint
+        };
+    }
+
+    private static string GetRouteFailureKey(ActiveStorageSortContract contract)
+    {
+        return contract.Phase switch
+        {
+            StorageSortContractPhase.TravelingToSource => $"source:{contract.CurrentStep.Transfer.Sequence}",
+            StorageSortContractPhase.TravelingToDestination => $"destination:{contract.CurrentStep.Transfer.Sequence}",
+            StorageSortContractPhase.Returning => "return",
+            _ => contract.Phase.ToString()
+        };
     }
 
     private void OnArrivedAtSource(Character character, GameLocation location)
@@ -885,9 +1077,10 @@ internal sealed class StorageSortContractExecutionController
     private void AdvanceOrReturn(ActiveStorageSortContract contract)
     {
         contract.StepIndex++;
+        contract.RouteOverride = null;
         if (contract.StepIndex >= contract.RoutePlan.Steps.Count)
         {
-            this.BeginReturn(contract, failureKey: null, usePlannedReturn: true);
+            this.BeginReturn(contract, failureKey: null);
             return;
         }
 
@@ -921,42 +1114,33 @@ internal sealed class StorageSortContractExecutionController
     private void BeginReturn(
         ActiveStorageSortContract contract,
         string? failureKey,
-        bool usePlannedReturn = false)
+        bool retry = false)
     {
         if (!ReferenceEquals(this.ActiveContract, contract)
-            || contract.Phase is StorageSortContractPhase.Returning
-                or StorageSortContractPhase.Returned)
+            || contract.Phase == StorageSortContractPhase.Returned
+            || (contract.Phase == StorageSortContractPhase.Returning && !retry))
         {
             return;
         }
 
         this.ReleaseLocks(contract);
         contract.FailureKey ??= failureKey;
-        Stack<Point>? returnPath = null;
-        if (usePlannedReturn)
-        {
-            returnPath = contract.RoutePlan.ReturnPath;
-        }
-        else if (FarmNavigationMap.TryBuild(
-                     contract.Farm,
-                     contract.Lease.Worker,
-                     contract.Lease.Worker.TilePoint,
-                     this.Monitor,
-                     out GridRouteMap? routes)
-            && routes is not null
-            && routes.TryGetPath(
-                new GridPoint(contract.RoutePlan.ArrivalTile.X, contract.RoutePlan.ArrivalTile.Y),
-                out IReadOnlyList<GridPoint> gridPath))
-        {
-            returnPath = FarmNavigationMap.ToPath(gridPath);
-        }
+        this.RoutePlanner.TryCreateDirectRoute(
+            contract.Farm,
+            contract.Lease.Worker,
+            contract.Lease.Worker.TilePoint,
+            contract.RoutePlan.ArrivalTile,
+            contract.RouteObstacles,
+            out Stack<Point>? returnPath);
 
         if (returnPath is null)
         {
-            this.FinishContract(
+            contract.Phase = StorageSortContractPhase.Returning;
+            contract.PhaseTicks = 0;
+            this.HandleTravelInterruption(
                 contract,
-                succeeded: false,
-                contract.FailureKey ?? "contract.failure.return-path");
+                TravelInterruptionKind.ControllerSetupFailed,
+                explicitCollisionProbe: "no safe route to farm entrance");
             return;
         }
 
@@ -1409,7 +1593,11 @@ internal sealed class StorageSortContractExecutionController
         public Dictionary<int, Guid> TransferIds { get; }
         public List<StorageSortCompletedTransfer> CompletedTransfers { get; } = new();
         public TravelProgressWatchdog TravelWatchdog { get; } = new();
-        public StorageSortRouteStep CurrentStep => this.RoutePlan.Steps[this.StepIndex];
+        public TravelObstacleLedger RouteObstacles { get; } = new();
+        public TravelFailureLedger RouteFailures { get; } = new(MaximumRouteFailures);
+        public StorageSortRouteStep CurrentStep => this.RouteOverride
+            ?? this.RoutePlan.Steps[this.StepIndex];
+        public StorageSortRouteStep? RouteOverride { get; set; }
         public StorageSortContractPhase Phase { get; set; }
         public PathFindController? Controller { get; set; }
         public Chest? FirstLockChest { get; set; }
