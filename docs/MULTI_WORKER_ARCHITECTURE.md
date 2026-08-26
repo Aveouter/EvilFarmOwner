@@ -23,3 +23,16 @@ The host owns this ledger. Multiplayer messages will carry shift, assignment, wo
 Each assignment will own its NPC lease, route controller, tool/cargo state, availability result, wage authorization, elapsed-time settlement, and recovery path. Storage remains protected by the existing ordered chest locks. A worker failure cannot release another worker's lock or lease.
 
 The shift report contains per-worker authorization and charge records plus a checked aggregate total. Concurrent dispatch stays disabled until runtime save/reconnect, route collision, storage lock, and settlement coverage is complete.
+
+## Route reservation gate
+
+Future concurrent movement uses a host-owned, shift-scoped route ledger before a controller receives a path:
+
+- every proposed route carries worker and assignment IDs, a requested start slot, and one tile for each movement slot;
+- simultaneous proposals are sorted by requested slot, worker ID, then assignment ID, so caller or network arrival order cannot choose a winner;
+- a tile can have only one owner in a slot, and two workers cannot traverse one edge in opposite directions in the same slot;
+- a losing proposal may shift forward only within a fixed wait budget; exhausting that budget returns a rejection instead of waiting forever;
+- the host advances one monotonic committed-through slot. Elapsed reservations remain immutable history, while worker failure releases only that worker's future tiles and edges;
+- the existing single-worker route is the one-proposal case and receives its requested start slot without delay.
+
+The deterministic ledger is implemented and covered by pure tests, but is not yet wired to live NPC controllers. Concurrent dispatch remains disabled until controller integration, save/reconnect representation, and multi-worker runtime acceptance are complete.
