@@ -17,6 +17,7 @@ internal sealed class FarmWorkContractExecutionController
     private readonly AnimalCareContractExecutionController AnimalCare;
     private readonly StorageSortContractExecutionController StorageSorting;
     private readonly Func<ContractSettingsSnapshot> GetSettings;
+    private readonly bool ShowCompletionHud;
     private ActiveFarmWorkShift? ActiveShift;
     private NamedContractCompletionState? LastCompletion;
     private NpcWorkLease? DeferredScheduleLease;
@@ -29,7 +30,8 @@ internal sealed class FarmWorkContractExecutionController
         WateringContractExecutionController watering,
         AnimalCareContractExecutionController animalCare,
         StorageSortContractExecutionController storageSorting,
-        Func<ContractSettingsSnapshot>? getSettings = null)
+        Func<ContractSettingsSnapshot>? getSettings = null,
+        bool showCompletionHud = true)
     {
         this.Translation = translation;
         this.Monitor = monitor;
@@ -39,6 +41,7 @@ internal sealed class FarmWorkContractExecutionController
         this.AnimalCare = animalCare;
         this.StorageSorting = storageSorting;
         this.GetSettings = getSettings ?? (() => ContractSettingsSnapshot.Default);
+        this.ShowCompletionHud = showCompletionHud;
     }
 
     public bool HasActiveContract => this.ActiveShift is not null;
@@ -419,18 +422,21 @@ internal sealed class FarmWorkContractExecutionController
         };
         this.ActiveShift = null;
 
-        Game1.addHUDMessage(new HUDMessage(
-            this.Translation.Get(succeeded ? "farm-work.hud.completed" : "farm-work.hud.stopped", new
-            {
-                worker = shift.Context.Lease.Worker.displayName,
-                reason = succeeded ? "" : this.Translation.Get(reasonKey),
-                stages = stages.Count(result => result.Succeeded),
-                work = stages.Sum(result => result.CompletedWork),
-                hours = settlement.BillableHours,
-                paid = settlement.ChargedGold,
-                refunded = settlement.RefundedGold
-            }),
-            succeeded ? HUDMessage.newQuest_type : HUDMessage.error_type));
+        if (this.ShowCompletionHud)
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Translation.Get(succeeded ? "farm-work.hud.completed" : "farm-work.hud.stopped", new
+                {
+                    worker = shift.Context.Lease.Worker.displayName,
+                    reason = succeeded ? "" : this.Translation.Get(reasonKey),
+                    stages = stages.Count(result => result.Succeeded),
+                    work = stages.Sum(result => result.CompletedWork),
+                    hours = settlement.BillableHours,
+                    paid = settlement.ChargedGold,
+                    refunded = settlement.RefundedGold
+                }),
+                succeeded ? HUDMessage.newQuest_type : HUDMessage.error_type));
+        }
     }
 
     private bool FailStart(string key)

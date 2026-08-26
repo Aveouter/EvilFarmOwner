@@ -136,9 +136,10 @@ internal sealed class DeterministicWorkClaimLedger
         return releasable.Length;
     }
 
-    public bool IsOwnedBy(WorkTargetIdentity target, string workerId)
+    public bool IsUncommittedOwnedBy(WorkTargetIdentity target, string workerId)
     {
         return this.Claims.TryGetValue(target.StableKey, out WorkClaimSnapshot? claim)
+            && claim.State == WorkClaimState.Claimed
             && string.Equals(claim.WorkerId, workerId, StringComparison.Ordinal);
     }
 
@@ -166,13 +167,14 @@ internal sealed class RuntimeWorkClaimCoordinator
     public bool IsAvailable(string location, int x, int y, string workerId)
     {
         WorkTargetIdentity target = CreateTarget(location, x, y);
-        return !this.Ledger.IsClaimed(target) || this.Ledger.IsOwnedBy(target, workerId);
+        return !this.Ledger.IsClaimed(target)
+            || this.Ledger.IsUncommittedOwnedBy(target, workerId);
     }
 
     public bool TryClaim(string location, int x, int y, string workerId)
     {
         WorkTargetIdentity target = CreateTarget(location, x, y);
-        return this.Ledger.IsOwnedBy(target, workerId)
+        return this.Ledger.IsUncommittedOwnedBy(target, workerId)
             || this.Ledger.TryClaim(target, workerId);
     }
 

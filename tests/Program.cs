@@ -22,7 +22,9 @@ List<(string Name, Action Test)> tests = new()
     ("runtime work claims coordinate shared tiles", TestRuntimeWorkClaims),
     ("workforce final reconciliation", TestWorkforceFinalReconciliation),
     ("workforce settlement aggregation", TestWorkforceSettlementAggregation),
+    ("group transfer report normalization", TestGroupTransferReportNormalization),
     ("workforce route same-tile arbitration", TestWorkforceRouteSameTileArbitration),
+    ("workforce route map isolation", TestWorkforceRouteMapIsolation),
     ("workforce route opposing-edge arbitration", TestWorkforceRouteOpposingEdgeArbitration),
     ("workforce route stable batch order", TestWorkforceRouteStableBatchOrder),
     ("workforce route bounded wait", TestWorkforceRouteBoundedWait),
@@ -461,6 +463,8 @@ static void TestRuntimeWorkClaims()
     Equal(true, claims.Release("Farm", 10, 12, "Alex"));
     Equal(true, claims.TryClaim("Farm", 10, 12, "Leah"));
     Equal(true, claims.TryCommit("Farm", 10, 12, "Leah"));
+    Equal(false, claims.IsAvailable("Farm", 10, 12, "Leah"));
+    Equal(false, claims.TryClaim("Farm", 10, 12, "Leah"));
     Equal(false, claims.Release("Farm", 10, 12, "Leah"));
     Equal(0, claims.ReleaseWorker("Leah"));
 }
@@ -506,6 +510,39 @@ static void TestWorkforceSettlementAggregation()
     }));
 }
 
+static void TestGroupTransferReportNormalization()
+{
+    NamedContractTransferState first = NewTransfer(sequence: 1, sourceX: 1);
+    NamedContractTransferState recovery = NewTransfer(sequence: 1, sourceX: 2);
+    NamedContractTransferState remaining = NewTransfer(sequence: 2, sourceX: 3);
+
+    GroupTransferReportSet recovered = GroupTransferReportPolicy.Create(
+        new[] { first, recovery },
+        new[] { remaining },
+        groupSucceeded: true);
+    Equal("1,2", string.Join(',', recovered.Completed.Select(item => item.Sequence)));
+    Equal(0, recovered.Skipped.Count);
+
+    GroupTransferReportSet failed = GroupTransferReportPolicy.Create(
+        new[] { first, recovery },
+        new[] { remaining },
+        groupSucceeded: false);
+    Equal("1,2", string.Join(',', failed.Completed.Select(item => item.Sequence)));
+    Equal(3, failed.Skipped[0].Sequence);
+}
+
+static NamedContractTransferState NewTransfer(int sequence, int sourceX) => new(
+    sequence,
+    "(O)24",
+    "Parsnip",
+    -75,
+    0,
+    1,
+    sourceX,
+    1,
+    10,
+    10);
+
 static void TestWorkforceRouteSameTileArbitration()
 {
     DeterministicWorkforceRouteLedger ledger = new();
@@ -520,6 +557,19 @@ static void TestWorkforceRouteSameTileArbitration()
     Equal("Leah", results[1].WorkerId);
     Equal(1, results[1].WaitSlots);
     Equal(4, ledger.Snapshot().Count);
+}
+
+static void TestWorkforceRouteMapIsolation()
+{
+    DeterministicWorkforceRouteLedger ledger = new();
+    IReadOnlyList<WorkforceRouteReservationResult> results = ledger.ReserveBatch(new[]
+    {
+        RouteIn("Barn-a", "Alex", "shift/alex", 0, (4, 4), (5, 4)),
+        RouteIn("Barn-b", "Leah", "shift/leah", 0, (4, 4), (5, 4))
+    }, maximumWaitSlots: 0);
+
+    Equal(true, results.All(result => result.Accepted));
+    Equal(true, results.All(result => result.WaitSlots == 0));
 }
 
 static void TestWorkforceRouteOpposingEdgeArbitration()
@@ -671,22 +721,52 @@ static void TestWorkStagePartition()
     IReadOnlyList<FarmWorkStageSelection> two = WorkStagePartitionPolicy.Partition(
         FarmWorkStageSelection.All,
         2);
-    Equal(FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare, two[0]);
-    Equal(FarmWorkStageSelection.Watering | FarmWorkStageSelection.StorageSorting, two[1]);
+    Equal(
+        FarmWorkStageSelection.Harvesting
+            | FarmWorkStageSelection.Watering
+            | FarmWorkStageSelection.AnimalCare,
+        two[0]);
+    Equal(
+        FarmWorkStageSelection.Harvesting
+            | FarmWorkStageSelection.Watering
+            | FarmWorkStageSelection.StorageSorting,
+        two[1]);
     Equal(FarmWorkStageSelection.All, two.Aggregate(FarmWorkStageSelection.None, (all, item) => all | item));
-    Equal(FarmWorkStageSelection.None, two[0] & two[1]);
+    Equal(
+        FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.Watering,
+        two[0] & two[1]);
 
-    IReadOnlyList<FarmWorkStageSelection> tooMany = WorkStagePartitionPolicy.Partition(
+    IReadOnlyList<FarmWorkStageSelection> parallel = WorkStagePartitionPolicy.Partition(
         FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.Watering,
         3);
-    Equal(FarmWorkStageSelection.None, tooMany[2]);
+    Equal(true, parallel.All(stages => stages
+        == (FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.Watering)));
+
+    IReadOnlyList<FarmWorkStageSelection> exclusive = WorkStagePartitionPolicy.Partition(
+        FarmWorkStageSelection.AnimalCare | FarmWorkStageSelection.StorageSorting,
+        3);
+    Equal(FarmWorkStageSelection.None, exclusive[2]);
     Equal(0, WorkStagePartitionPolicy.Partition(FarmWorkStageSelection.All, 0).Count);
     Equal(4, WorkStagePartitionPolicy.CountEnabled(FarmWorkStageSelection.All));
     Equal(2, WorkStagePartitionPolicy.CountEnabled(
         FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare));
+    Equal(4, WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
+        FarmWorkStageSelection.Harvesting,
+        4));
+    Equal(2, WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
+        FarmWorkStageSelection.AnimalCare | FarmWorkStageSelection.StorageSorting,
+        4));
 }
 
 static WorkforceRouteProposal Route(
+    string worker,
+    string assignment,
+    int startSlot,
+    params (int X, int Y)[] tiles) =>
+    RouteIn("Farm", worker, assignment, startSlot, tiles);
+
+static WorkforceRouteProposal RouteIn(
+    string location,
     string worker,
     string assignment,
     int startSlot,
@@ -696,7 +776,7 @@ static WorkforceRouteProposal Route(
         worker,
         assignment,
         startSlot,
-        tiles.Select(tile => new WorkforceRouteTile(tile.X, tile.Y)).ToArray());
+        tiles.Select(tile => new WorkforceRouteTile(location, tile.X, tile.Y)).ToArray());
 }
 
 static void TestAnimalPettingIdempotency()

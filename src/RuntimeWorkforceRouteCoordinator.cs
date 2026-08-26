@@ -15,15 +15,16 @@ internal sealed class RuntimeWorkforceRouteCoordinator
     public bool TryReserve(NpcWorkLease lease, Stack<Point> path)
     {
         string workerId = lease.Worker.Name;
+        string location = lease.Worker.currentLocation.NameOrUniqueName;
         this.ReleaseWorker(workerId);
         List<WorkforceRouteTile> expanded = new()
         {
-            new(lease.Worker.TilePoint.X, lease.Worker.TilePoint.Y)
+            new(location, lease.Worker.TilePoint.X, lease.Worker.TilePoint.Y)
         };
         foreach (Point tile in path)
         {
             for (int tick = 0; tick < TicksPerTile; tick++)
-                expanded.Add(new WorkforceRouteTile(tile.X, tile.Y));
+                expanded.Add(new WorkforceRouteTile(location, tile.X, tile.Y));
         }
 
         string assignmentId = $"route-{++this.AssignmentSequence}";

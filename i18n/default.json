@@ -168,6 +168,8 @@
   "animal-care.start.no-work": "There are no awake, unpetted animals or empty troughs available for this shift.",
   "farm-work.hud.completed": "{{worker}} completed the farm-work shift: {{stages}} active stage(s), {{work}} action(s). Paid {{paid}}g / {{hours}}h; refunded {{refunded}}g.",
   "farm-work.hud.stopped": "{{worker}} stopped the farm-work shift: {{reason}} Completed {{stages}} stage(s), {{work}} action(s). Paid {{paid}}g / {{hours}}h; refunded {{refunded}}g.",
+  "farm-work.group-hud.completed": "{{workers}} completed the farm shift: {{work}} action(s). Paid {{paid}}g / {{hours}} worker-hour(s); refunded {{refunded}}g.",
+  "farm-work.group-hud.stopped": "{{workers}} stopped the farm shift: {{reason}} Completed {{work}} action(s). Paid {{paid}}g / {{hours}} worker-hour(s); refunded {{refunded}}g.",
   "contract.start.host-only": "Only the host player can start an NPC work contract.",
   "contract.start.already-active": "A named NPC contract is already in progress.",
   "contract.start.too-late": "Watering contracts must start by 4:00 PM.",

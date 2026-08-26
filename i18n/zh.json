@@ -168,6 +168,8 @@
   "animal-care.start.no-work": "当前没有清醒且尚未抚摸的牲畜，也没有可处理的空食槽。",
   "farm-work.hud.completed": "{{worker}} 已完成农活班次：执行 {{stages}} 个有效阶段，共 {{work}} 次动作；{{hours}} 小时实付 {{paid}}g，退还 {{refunded}}g。",
   "farm-work.hud.stopped": "{{worker}} 已停止农活班次：{{reason}} 已完成 {{stages}} 个阶段、{{work}} 次动作；{{hours}} 小时实付 {{paid}}g，退还 {{refunded}}g。",
+  "farm-work.group-hud.completed": "{{workers}} 已完成农活班次：共 {{work}} 次动作；{{hours}} 工时实付 {{paid}}g，退还 {{refunded}}g。",
+  "farm-work.group-hud.stopped": "{{workers}} 已停止农活班次：{{reason}} 共完成 {{work}} 次动作；{{hours}} 工时实付 {{paid}}g，退还 {{refunded}}g。",
   "contract.start.host-only": "只有主机玩家可以开始 NPC 工作合同。",
   "contract.start.already-active": "已有一份具名 NPC 合同正在执行。",
   "contract.start.too-late": "浇水合同最迟必须在下午 4:00 开始。",

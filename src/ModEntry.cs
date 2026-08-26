@@ -290,9 +290,9 @@ public sealed class ModEntry : Mod
 
         IReadOnlyList<WorkerRosterEntry> roster = this.WorkerRoster.GetRoster();
         ContractSettingsSnapshot settings = this.GetEffectiveContractSettings();
-        int selectableWorkers = Math.Min(
-            settings.MaximumConcurrentWorkers,
-            WorkStagePartitionPolicy.CountEnabled(settings.EnabledStages));
+        int selectableWorkers = WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
+            settings.EnabledStages,
+            settings.MaximumConcurrentWorkers);
         if (selectableWorkers <= 1)
         {
             Game1.activeClickableMenu = new WorkerRosterMenu(
@@ -690,10 +690,15 @@ public sealed class ModEntry : Mod
         string items = NamedContractReportFormatter.FormatItems(
             result.ProducedItems,
             this.Helper.Translation.Get("report.items.none"));
+        IReadOnlyList<string> workerNames = result.WorkerNames.Length > 0
+            ? result.WorkerNames
+            : new[] { result.WorkerName };
+        string workers = string.Join(", ", workerNames.Select(name =>
+            Game1.getCharacterFromName(name)?.displayName ?? name));
 
         this.Monitor.Log(this.Helper.Translation.Get("report.header", new
         {
-            worker = result.WorkerName,
+            worker = workers,
             task,
             status
         }), LogLevel.Info);

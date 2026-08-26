@@ -835,13 +835,14 @@ internal sealed class MultiplayerContractCoordinator
             this.PendingRequest = null;
             this.PendingTicks = 0;
         }
+        string workerNames = GetWorkerDisplayNames(result);
 
         if (result.Succeeded)
         {
             Game1.addHUDMessage(new HUDMessage(
                 this.Translation.Get("multiplayer.hud.result", new
                 {
-                    worker = result.WorkerName,
+                    worker = workerNames,
                     task = GetTaskText(result.Task),
                     completed = result.CompletedWork,
                     player = result.PlayerItems,
@@ -861,7 +862,7 @@ internal sealed class MultiplayerContractCoordinator
             Game1.addHUDMessage(new HUDMessage(
                 this.Translation.Get("multiplayer.hud.result-stopped", new
                 {
-                    worker = result.WorkerName,
+                    worker = workerNames,
                     reason,
                     player = result.PlayerItems,
                     chest = result.ChestItems,
@@ -1221,6 +1222,15 @@ internal sealed class MultiplayerContractCoordinator
     private string GetEntranceText(FarmBoundarySide side)
     {
         return this.Translation.Get($"contract.entrance.{side.ToString().ToLowerInvariant()}");
+    }
+
+    private static string GetWorkerDisplayNames(ContractResultMessage result)
+    {
+        IReadOnlyList<string> names = result.WorkerNames.Length > 0
+            ? result.WorkerNames
+            : new[] { result.WorkerName };
+        return string.Join(", ", names.Select(name =>
+            Game1.getCharacterFromName(name)?.displayName ?? name));
     }
 
     private static string NormalizeFailureKey(string? failureKey)

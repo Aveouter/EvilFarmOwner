@@ -130,8 +130,10 @@ internal sealed class RecurringContractCoordinator
         string[] authorizedWorkers = new[] { preferredWorkerName }.Concat(substitutes).ToArray();
         ContractSettingsSnapshot settings = this.GetSettings();
         int maximumWorkers = Math.Min(
-            Math.Min(settings.MaximumConcurrentWorkers, authorizedWorkers.Length),
-            WorkStagePartitionPolicy.CountEnabled(settings.EnabledStages));
+            WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
+                settings.EnabledStages,
+                settings.MaximumConcurrentWorkers),
+            authorizedWorkers.Length);
         int maximumRegularGold = authorizedWorkers
             .Select(name => this.GetMaximumWage(name, task, dayOfMonth: 1))
             .OrderByDescending(gold => gold)
@@ -327,9 +329,9 @@ internal sealed class RecurringContractCoordinator
                 string.Equals(worker.Name, template.PreviousSelectedWorkerName, StringComparison.OrdinalIgnoreCase)));
         }
 
-        int maximumWorkers = Math.Min(
-            settings.MaximumConcurrentWorkers,
-            WorkStagePartitionPolicy.CountEnabled(settings.EnabledStages));
+        int maximumWorkers = WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
+            settings.EnabledStages,
+            settings.MaximumConcurrentWorkers);
         IReadOnlyList<ConcurrentWorkerCandidate> selected = ConcurrentWorkerSelectionPolicy.Select(
             candidates.Select(candidate => new ConcurrentWorkerCandidate(
                 candidate.WorkerName,

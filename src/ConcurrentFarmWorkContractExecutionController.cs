@@ -254,7 +254,8 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             watering,
             animalCare,
             storage,
-            () => settings);
+            () => settings,
+            showCompletionHud: false);
         return new WorkerRuntime(
             watering,
             harvesting,
@@ -328,6 +329,14 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             .ToArray();
         NamedContractCompletionState[] initialResults = results.Take(group.InitialWorkerCount).ToArray();
         bool succeeded = initialResults.All(result => result.Succeeded) || group.RecoverySatisfied;
+        NamedContractCompletionState[] recoveryResults = results.Skip(group.InitialWorkerCount).ToArray();
+        IEnumerable<NamedContractTransferState> terminalSkipped = recoveryResults.Length > 0
+            ? recoveryResults.SelectMany(result => result.SkippedTransfers)
+            : initialResults.SelectMany(result => result.SkippedTransfers);
+        GroupTransferReportSet transferReports = GroupTransferReportPolicy.Create(
+            results.SelectMany(result => result.CompletedTransfers),
+            terminalSkipped,
+            succeeded);
         NamedContractCompletionState[] workerSettlements = initialResults
             .Select(initial => MergeWorkerResults(
                 initial,
@@ -358,12 +367,30 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             results.Sum(result => result.RefundedGold),
             results.SelectMany(result => result.ProducedItems).ToArray(),
             results.SelectMany(result => result.CompletedTransferIds).Distinct(StringComparer.Ordinal).ToArray(),
-            results.SelectMany(result => result.CompletedTransfers).ToArray(),
-            results.SelectMany(result => result.SkippedTransfers).ToArray())
+            transferReports.Completed,
+            transferReports.Skipped)
         {
             HarvestDestination = group.HarvestDestination,
             WorkerSettlements = workerSettlements
         };
+        string workerNames = string.Join(", ", initialResults
+            .Select(result => Game1.getCharacterFromName(result.WorkerName)?.displayName
+                ?? result.WorkerName));
+        Game1.addHUDMessage(new HUDMessage(
+            this.Translation.Get(
+                succeeded ? "farm-work.group-hud.completed" : "farm-work.group-hud.stopped",
+                new
+                {
+                    workers = workerNames,
+                    reason = succeeded
+                        ? ""
+                        : this.Translation.Get(this.LastCompletion.ReasonKey),
+                    work = this.LastCompletion.CompletedWork,
+                    hours = this.LastCompletion.BillableHours,
+                    paid = this.LastCompletion.ChargedGold,
+                    refunded = this.LastCompletion.RefundedGold
+                }),
+            succeeded ? HUDMessage.newQuest_type : HUDMessage.error_type));
         this.ResumeDeferredSchedules(group.Workers);
         this.ActiveGroup = null;
     }
