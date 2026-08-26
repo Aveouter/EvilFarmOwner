@@ -22,12 +22,18 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.x
+
       - name: Validate repository source
         shell: bash
         run: |
           set -euo pipefail
 
-          bash -n scripts/verify-release.sh scripts/verify-release-asset.sh
+          bash -n scripts/verify-release.sh scripts/verify-release-asset.sh scripts/verify-core-boundary.sh
+          scripts/verify-core-boundary.sh
           git diff --check 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD
 
           jq empty manifest.json i18n/default.json i18n/zh.json
@@ -53,3 +59,9 @@ jobs:
           jq -r 'keys[]' i18n/default.json | LC_ALL=C sort > "$RUNNER_TEMP/efo-default-keys.txt"
           jq -r 'keys[]' i18n/zh.json | LC_ALL=C sort > "$RUNNER_TEMP/efo-zh-keys.txt"
           diff -u "$RUNNER_TEMP/efo-default-keys.txt" "$RUNNER_TEMP/efo-zh-keys.txt"
+
+      - name: Build deterministic core
+        run: dotnet build EvilFarmOwner.Core.csproj --configuration Release
+
+      - name: Run deterministic logic tests
+        run: dotnet run --project tests/EvilFarmOwner.LogicTests.csproj --configuration Release

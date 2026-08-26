@@ -25,13 +25,7 @@ internal sealed record AnimalProductTargetPlan(
     string? RequiredTool,
     Stack<Point> Path);
 
-internal sealed record AnimalProductRouteOption(
-    string StableKey,
-    GridPoint Target,
-    GridPoint Interaction,
-    int Distance);
-
-internal sealed class AnimalProductTargetPlanner
+internal sealed partial class AnimalProductTargetPlanner
 {
     private static readonly Point[] InteractionOffsets =
     {
@@ -120,20 +114,6 @@ internal sealed class AnimalProductTargetPlanner
             FacingDirection = GetFacingDirection(interaction, target.TargetTile),
             Path = FarmNavigationMap.ToPath(path)
         };
-    }
-
-    public static IReadOnlyList<AnimalProductRouteOption> OrderOptions(
-        IEnumerable<AnimalProductRouteOption> options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        return options
-            .OrderBy(option => option.Distance)
-            .ThenBy(option => option.Target.Y)
-            .ThenBy(option => option.Target.X)
-            .ThenBy(option => option.Interaction.Y)
-            .ThenBy(option => option.Interaction.X)
-            .ThenBy(option => option.StableKey, StringComparer.Ordinal)
-            .ToArray();
     }
 
     public static bool HasAutoGrabber(AnimalHouse house)

@@ -5,14 +5,6 @@ using StardewValley.Pathfinding;
 
 namespace EvilFarmOwner;
 
-internal enum NpcLeaseRestoreResult
-{
-    Restored,
-    Relinquished,
-    LeaseOwnershipLost,
-    ConflictingController
-}
-
 internal sealed class NpcWorkLease
 {
     private const string LeaseDataKey = "Aveouter.EvilFarmOwner/WorkLease";

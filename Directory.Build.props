@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'EvilFarmOwner.Core'">
+    <BaseIntermediateOutputPath>obj/Core/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>obj/Core/</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+</Project>
