@@ -59,6 +59,7 @@ List<(string Name, Action Test)> tests = new()
     ("map-scoped travel obstacle ledger", TestMapScopedTravelObstacleLedger),
     ("directed travel edge detour", TestDirectedTravelEdgeDetour),
     ("travel interruption snapshot", TestTravelInterruptionSnapshot),
+    ("bounded keyed travel failures", TestBoundedKeyedTravelFailures),
     ("consecutive route failure budget", TestConsecutiveRouteFailureBudget),
     ("target route failure isolation", TestTargetRouteFailureIsolation),
     ("NPC protected activity policy", TestNpcProtectedActivityPolicy),
@@ -1132,6 +1133,19 @@ static void TestTravelInterruptionSnapshot()
     Equal(true, reason.Contains("location=Farm", StringComparison.Ordinal));
     Equal(true, reason.Contains("next=GridPoint { X = 8, Y = 8 }", StringComparison.Ordinal));
     Equal(true, reason.Contains("liveProbe=object collision", StringComparison.Ordinal));
+}
+
+static void TestBoundedKeyedTravelFailures()
+{
+    TravelFailureLedger ledger = new(maximumFailures: 3);
+    Equal(true, ledger.Record("animal:1").CanRetry);
+    Equal(true, ledger.Record("animal:1").CanRetry);
+    TravelFailureDecision exhausted = ledger.Record("animal:1");
+    Equal(false, exhausted.CanRetry);
+    Equal(3, exhausted.FailureCount);
+    Equal(1, ledger.Record("building:a").FailureCount);
+    ledger.Reset("animal:1");
+    Equal(1, ledger.Record("animal:1").FailureCount);
 }
 
 static void TestConsecutiveRouteFailureBudget()

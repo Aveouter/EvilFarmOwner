@@ -67,9 +67,15 @@ internal sealed class AnimalHouseRoutePlanner
         Farm farm,
         NPC worker,
         Point startTile,
-        IReadOnlySet<Guid> visitedBuildingIds)
+        IReadOnlySet<Guid> visitedBuildingIds,
+        TravelObstacleLedger? obstacles = null)
     {
-        if (!FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
+        bool builtRoutes = obstacles is null
+            ? FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
+            : FarmNavigationMap.TryBuild(
+                farm, worker, startTile, this.Monitor,
+                farm.NameOrUniqueName, obstacles, out routes);
+        if (!builtRoutes
             || routes is null)
             return null;
 
