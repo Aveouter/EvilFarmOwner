@@ -1621,7 +1621,7 @@ internal sealed class HarvestingContractExecutionController
             HarvestDestinationMode.RequesterInventory;
         bool acquisitionClosed = Game1.timeOfDay >= StopAcquiringTime;
         if (deliverImmediately || HarvestCargoBatchPolicy.ShouldDeliver(
-                contract.Cargo.Count,
+                this.CountCarriedSlots(contract),
                 acquisitionClosed,
                 noRemainingTarget: false))
         {
@@ -1686,7 +1686,7 @@ internal sealed class HarvestingContractExecutionController
                     LogLevel.Warn);
             }
             if (HarvestCargoBatchPolicy.ShouldDeliver(
-                    contract.Cargo.Count,
+                    this.CountCarriedSlots(contract),
                     acquisitionClosed: false,
                     noRemainingTarget: true))
                 this.BeginDeliveryOrReturn(contract);
@@ -1738,6 +1738,15 @@ internal sealed class HarvestingContractExecutionController
                 contract,
                 $"controller setup failed: {ex.Message}");
         }
+    }
+
+    private int CountCarriedSlots(ActiveHarvestContract contract)
+    {
+        return HarvestCargoBatchPolicy.CountCarriedSlots(
+            contract.Cargo,
+            entry => entry.Item.Stack,
+            entry => entry.Item.maximumStackSize(),
+            (left, right) => left.Item.canStackWith(right.Item));
     }
 
     private void BeginReturn(ActiveHarvestContract contract, bool depositOverflowOnReturn)

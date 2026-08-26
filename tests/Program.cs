@@ -91,6 +91,7 @@ List<(string Name, Action Test)> tests = new()
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("harvest chest release deferral", TestHarvestChestReleaseDeferral),
     ("harvest cargo batch threshold", TestHarvestCargoBatchThreshold),
+    ("harvest cargo carried slot count", TestHarvestCargoCarriedSlotCount),
     ("harvest cargo destination grouping", TestHarvestCargoDestinationGrouping),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("ready tapper target semantics", TestReadyTapperTargetSemantics),
@@ -2130,6 +2131,38 @@ static void TestHarvestCargoBatchThreshold()
         noRemainingTarget: true));
 }
 
+static void TestHarvestCargoCarriedSlotCount()
+{
+    CargoSlotSample[] identical = Enumerable.Range(0, 12)
+        .Select(_ => new CargoSlotSample("cauliflower-q0", 1, 999))
+        .ToArray();
+    Equal(1, CountCargoSlots(identical));
+
+    CargoSlotSample[] qualities =
+    {
+        new("cauliflower-q0", 8, 999),
+        new("cauliflower-q1", 3, 999),
+        new("cauliflower-q2", 1, 999)
+    };
+    Equal(3, CountCargoSlots(qualities));
+
+    CargoSlotSample[] overflow =
+    {
+        new("wood", 1200, 999),
+        new("wood", 900, 999)
+    };
+    Equal(3, CountCargoSlots(overflow));
+}
+
+static int CountCargoSlots(IEnumerable<CargoSlotSample> cargo)
+{
+    return HarvestCargoBatchPolicy.CountCarriedSlots(
+        cargo,
+        entry => entry.Quantity,
+        entry => entry.MaximumStack,
+        (left, right) => left.StackingKey == right.StackingKey);
+}
+
 static void TestHarvestCargoDestinationGrouping()
 {
     GridPoint vegetables = new(10, 4);
@@ -3264,3 +3297,8 @@ static void Throws<TException>(Action action, [CallerLineNumber] int line = 0)
     throw new InvalidOperationException(
         $"line={line}, expected exception={typeof(TException).Name}");
 }
+
+readonly record struct CargoSlotSample(
+    string StackingKey,
+    int Quantity,
+    int MaximumStack);
