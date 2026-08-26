@@ -196,6 +196,8 @@ internal static partial class FarmNavigationMap
 
     private static bool IsPassable(GameLocation farm, NPC worker, GridPoint tile)
     {
+        if (IsOccupiedByOtherLeasedWorker(farm, worker, tile))
+            return false;
         if (farm.warps.Any(warp => warp.X == tile.X && warp.Y == tile.Y)
             || farm.doors.ContainsKey(new Point(tile.X, tile.Y)))
             return false;
@@ -222,5 +224,17 @@ internal static partial class FarmNavigationMap
             glider: false,
             worker,
             pathfinding: true);
+    }
+
+    public static bool IsOccupiedByOtherLeasedWorker(
+        GameLocation location,
+        NPC worker,
+        GridPoint tile)
+    {
+        return location.characters.Any(candidate =>
+            !ReferenceEquals(candidate, worker)
+            && NpcWorkLease.IsLeasedWorker(candidate)
+            && candidate.TilePoint.X == tile.X
+            && candidate.TilePoint.Y == tile.Y);
     }
 }

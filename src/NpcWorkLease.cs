@@ -54,6 +54,8 @@ internal sealed class NpcWorkLease
 
     public int StartTotalDays { get; }
 
+    public static bool IsLeasedWorker(NPC npc) => npc.modData.ContainsKey(LeaseDataKey);
+
     public static bool TryAcquire(
         NPC worker,
         int reservedWage,

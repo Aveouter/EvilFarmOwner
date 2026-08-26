@@ -87,6 +87,7 @@ internal sealed partial class WateringTargetPlanner
             Vector2 candidateTile = new(candidate.X, candidate.Y);
             if (farm.warps.Any(warp => warp.X == candidate.X && warp.Y == candidate.Y)
                 || farm.doors.ContainsKey(new Point(candidate.X, candidate.Y))
+                || FarmNavigationMap.IsOccupiedByOtherLeasedWorker(farm, worker, candidate)
                 || !farm.CanSpawnCharacterHere(candidateTile))
                 continue;
 

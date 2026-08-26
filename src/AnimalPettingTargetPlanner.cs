@@ -43,6 +43,7 @@ internal sealed partial class AnimalPettingTargetPlanner
             Vector2 tile = new(candidate.X, candidate.Y);
             if (farm.warps.Any(warp => warp.X == candidate.X && warp.Y == candidate.Y)
                 || farm.doors.ContainsKey(new Point(candidate.X, candidate.Y))
+                || FarmNavigationMap.IsOccupiedByOtherLeasedWorker(farm, worker, candidate)
                 || !farm.CanSpawnCharacterHere(tile))
                 continue;
 
