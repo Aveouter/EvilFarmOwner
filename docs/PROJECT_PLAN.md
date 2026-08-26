@@ -10,31 +10,30 @@ Every implementation starts from an issue with one `type`, `priority`, `area`, a
 
 - `v0.3.0` provides complete single-worker shifts, configurable wages and stages, batched lossless harvest delivery, animal care, chest sorting, and host-authoritative protocol 9 behavior.
 - `v0.3.1` is the narrow harvest-delivery hotfix: vanilla-compatible 12-slot accounting plus detailed classified-chest delivery recovery.
+- `v0.3.2` unifies route interruption diagnostics and bounded non-destructive replanning, and moves deterministic logic tests into the standalone .NET 8 Core project used by CI.
 
-## Current release: v0.3.2 - Route reliability
+## Current development: v0.5.0 - Concurrent workers
 
-`v0.3.2` is a single-worker stability release. It does not change the multiplayer protocol, save schema, hiring flow, or worker limit.
+Concurrent execution remains opt-in: the host-owned `MaximumConcurrentWorkers` setting accepts 1–4 and defaults to 1. A shift keeps an immutable settings snapshot, and old single-worker settings migrate to the default limit of one.
 
-Completed implementation gates:
+Implemented on the draft feature branch:
 
-- shared route interruption classification and diagnostic snapshots;
-- location-scoped blocked tiles and directed edges;
-- three-attempt bounded replanning for harvest, watering, animal care, and chest sorting;
-- non-destructive farm routing with gate opening;
-- explicit target-skip, safe-return, and lossless cargo recovery policies;
-- a standalone .NET 8 Core project with all deterministic tests running on Ubuntu CI.
+- manual selection and stable budget-aware automatic selection for up to four available adult NPCs;
+- host validation, immutable settings synchronization, protocol migration, and per-worker reconnect snapshots;
+- independent worker leases, stage controllers, cargo state, wage settlement, and aggregate result conservation checks;
+- deterministic stage partitioning, occupied-worker route avoidance, existing non-destructive replanning, gate handling, and mutex-backed chest access;
+- one bounded reassignment pass for failed stages, with no second wage charge;
+- automatic-contract save migration and multiworker selection within the saved total authorization cap.
 
-Release gates still requiring recorded evidence:
+Remaining release gates:
 
-- disposable-save route matrix covering dynamic obstacles, dense/trellis crops, animal-house doors, player map changes, sorting routes, and return travel;
-- forced storage recovery matrix covering overflow, visible drop, quarantine, recovery records, save, and reload;
-- clean production package, allowlist, command scan, SHA-256 re-download audit, and exact-ZIP SMAPI load smoke test.
+- finish live target claims and explicit route/entrance reservations for same-tile, opposing-edge, narrow animal-house entrance, and chest-lock contention;
+- record deterministic 1–4 worker and one-worker-equivalence evidence, including failed-worker reassignment;
+- record save/reload, day end, host restart, farmhand reconnect, storage contention, and player-leaves-farm evidence;
+- complete a real two-process host/farmhand acceptance run;
+- run the clean release verifier, package allowlist and command scan, SHA-256 re-download audit, and exact-ZIP SMAPI load smoke test.
 
-## Next release: v0.5.0 - Concurrent workers
-
-Concurrent execution remains disabled by default and the current limit remains one worker. `v0.5.0` will add a host-owned `MaximumConcurrentWorkers` setting with a range of 1–4 and default 1, stable automatic hiring, independent worker leases/routes/cargo/settlement, task claims and reassignment, route and entrance reservations, chest locks, protocol migration, and old-save compatibility.
-
-The release gate includes deterministic 1–4 worker behavior, one-worker equivalence, save/reload, day end, host restart, farmhand reconnect, storage contention, and a real two-process host/farmhand acceptance run. Until that gate passes, documentation must not claim concurrent or fully verified remote multiplayer support.
+Until every release gate passes, README and release notes must not claim concurrent workers or fully verified remote multiplayer support.
 
 ## Deferred ideas
 
