@@ -28,6 +28,8 @@ List<(string Name, Action Test)> tests = new()
     ("workforce route worker release", TestWorkforceRouteWorkerRelease),
     ("workforce route committed history", TestWorkforceRouteCommittedHistory),
     ("workforce route single-worker equivalence", TestWorkforceRouteSingleWorkerEquivalence),
+    ("concurrent worker deterministic selection", TestConcurrentWorkerDeterministicSelection),
+    ("concurrent worker budget selection", TestConcurrentWorkerBudgetSelection),
     ("animal petting idempotency", TestAnimalPettingIdempotency),
     ("animal petting route ordering", TestAnimalPettingRouteOrdering),
     ("animal finite hay conservation", TestAnimalFiniteHayConservation),
@@ -604,6 +606,46 @@ static void TestWorkforceRouteSingleWorkerEquivalence()
     Equal(
         "7:2,3|8:3,3|9:3,4",
         string.Join("|", ledger.Snapshot().Select(item => $"{item.Slot}:{item.Tile.X},{item.Tile.Y}")));
+}
+
+static void TestConcurrentWorkerDeterministicSelection()
+{
+    ConcurrentWorkerCandidate[] candidates =
+    {
+        new("Robin", 1.05m, 600, 4),
+        new("Leah", 1.10m, 720, 0),
+        new("Linus", 1.10m, 600, 4),
+        new("Alex", 1.10m, 600, 2),
+        new("alex", 1.10m, 540, 8),
+        new("Invalid", 9m, 1, 0)
+    };
+
+    string[] first = ConcurrentWorkerSelectionPolicy.Select(candidates, 3, 5000)
+        .Select(candidate => candidate.WorkerName)
+        .ToArray();
+    string[] second = ConcurrentWorkerSelectionPolicy.Select(candidates.Reverse(), 3, 5000)
+        .Select(candidate => candidate.WorkerName)
+        .ToArray();
+
+    Equal("alex,Linus,Leah", string.Join(',', first));
+    Equal(string.Join(',', first), string.Join(',', second));
+    Equal(1, ConcurrentWorkerSelectionPolicy.Select(candidates, 0, 5000).Count);
+    Equal(4, ConcurrentWorkerSelectionPolicy.Select(candidates, 9, 5000).Count);
+}
+
+static void TestConcurrentWorkerBudgetSelection()
+{
+    ConcurrentWorkerCandidate[] candidates =
+    {
+        new("Alex", 1.10m, 720, 0),
+        new("Leah", 1.05m, 480, 8),
+        new("Robin", 1.00m, 600, 4)
+    };
+
+    IReadOnlyList<ConcurrentWorkerCandidate> selected =
+        ConcurrentWorkerSelectionPolicy.Select(candidates, 3, 1200);
+    Equal("Alex,Leah", string.Join(',', selected.Select(candidate => candidate.WorkerName)));
+    Equal(0, ConcurrentWorkerSelectionPolicy.Select(candidates, 4, -1).Count);
 }
 
 static WorkforceRouteProposal Route(
