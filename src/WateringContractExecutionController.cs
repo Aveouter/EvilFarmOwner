@@ -288,6 +288,10 @@ internal sealed class WateringContractExecutionController
             return;
         }
 
+        if (contract.Phase is WateringContractPhase.TravelingToTarget or WateringContractPhase.Returning
+            && this.WorkforceRoutes?.IsWaiting(contract.Lease.Worker.Name) == true)
+            return;
+
         contract.PhaseTicks++;
         switch (contract.Phase)
         {

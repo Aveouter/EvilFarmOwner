@@ -100,6 +100,13 @@ internal sealed class AnimalCareContractExecutionController
             return;
         }
 
+        if (stage.Phase is AnimalCarePhase.Traveling
+                or AnimalCarePhase.TravelingToBuilding
+                or AnimalCarePhase.TravelingToHouseExit
+                or AnimalCarePhase.Returning
+            && this.WorkforceRoutes?.IsWaiting(stage.Context.Lease.Worker.Name) == true)
+            return;
+
         stage.PhaseTicks++;
         switch (stage.Phase)
         {

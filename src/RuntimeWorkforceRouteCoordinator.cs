@@ -6,7 +6,7 @@ namespace EvilFarmOwner;
 internal sealed class RuntimeWorkforceRouteCoordinator
 {
     private const int TicksPerTile = 32;
-    private const int MaximumWaitTicks = 128;
+    private const int MaximumWaitTicks = 3600;
     private readonly DeterministicWorkforceRouteLedger Ledger = new();
     private readonly Dictionary<string, MovementGate> Gates = new(StringComparer.Ordinal);
     private int CurrentSlot;
@@ -58,6 +58,10 @@ internal sealed class RuntimeWorkforceRouteCoordinator
             this.Gates.Remove(workerId);
         }
     }
+
+    public bool IsWaiting(string workerId) =>
+        this.Gates.TryGetValue(workerId, out MovementGate? gate)
+        && this.CurrentSlot < gate.ReadyAtSlot;
 
     public void ReleaseWorker(string workerId)
     {

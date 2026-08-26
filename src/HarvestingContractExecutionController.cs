@@ -362,6 +362,12 @@ internal sealed class HarvestingContractExecutionController
             return;
         }
 
+        if (contract.Phase is HarvestContractPhase.TravelingToTarget
+                or HarvestContractPhase.TravelingToChest
+                or HarvestContractPhase.Returning
+            && this.WorkforceRoutes?.IsWaiting(contract.Lease.Worker.Name) == true)
+            return;
+
         contract.PhaseTicks++;
         switch (contract.Phase)
         {

@@ -22,12 +22,12 @@ Implemented on the draft feature branch:
 - host validation, immutable settings synchronization, protocol migration, and per-worker reconnect snapshots;
 - independent worker leases, stage controllers, cargo state, wage settlement, and aggregate result conservation checks;
 - deterministic stage partitioning, occupied-worker route avoidance, existing non-destructive replanning, gate handling, and mutex-backed chest access;
+- live crop/resource claims plus deterministic same-tile, opposing-edge, entrance, and interior route reservations with bounded waiting;
 - one bounded reassignment pass for failed stages, with no second wage charge;
 - automatic-contract save migration and multiworker selection within the saved total authorization cap.
 
 Remaining release gates:
 
-- finish live target claims and explicit route/entrance reservations for same-tile, opposing-edge, narrow animal-house entrance, and chest-lock contention;
 - record deterministic 1–4 worker and one-worker-equivalence evidence, including failed-worker reassignment;
 - record save/reload, day end, host restart, farmhand reconnect, storage contention, and player-leaves-farm evidence;
 - complete a real two-process host/farmhand acceptance run;

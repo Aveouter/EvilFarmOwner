@@ -338,6 +338,12 @@ internal sealed class StorageSortContractExecutionController
             return;
         }
 
+        if (contract.Phase is StorageSortContractPhase.TravelingToSource
+                or StorageSortContractPhase.TravelingToDestination
+                or StorageSortContractPhase.Returning
+            && this.WorkforceRoutes?.IsWaiting(contract.Lease.Worker.Name) == true)
+            return;
+
         contract.PhaseTicks++;
         switch (contract.Phase)
         {
