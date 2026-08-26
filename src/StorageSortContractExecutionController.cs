@@ -39,6 +39,7 @@ internal sealed class StorageSortContractExecutionController
     private readonly WorkerRosterService WorkerRoster;
     private readonly StorageSortRoutePlanner RoutePlanner;
     private readonly StorageSortRecoveryManager RecoveryManager;
+    private readonly RuntimeWorkforceRouteCoordinator? WorkforceRoutes;
     private ActiveStorageSortContract? ActiveContract;
     private NamedContractCompletionState? LastCompletion;
 
@@ -46,13 +47,15 @@ internal sealed class StorageSortContractExecutionController
         ITranslationHelper translation,
         IMonitor monitor,
         WorkerRosterService workerRoster,
-        StorageSortRecoveryManager recoveryManager)
+        StorageSortRecoveryManager recoveryManager,
+        RuntimeWorkforceRouteCoordinator? workforceRoutes = null)
     {
         this.Translation = translation;
         this.Monitor = monitor;
         this.WorkerRoster = workerRoster;
         this.RoutePlanner = new StorageSortRoutePlanner(monitor);
         this.RecoveryManager = recoveryManager;
+        this.WorkforceRoutes = workforceRoutes;
     }
 
     public bool HasActiveContract => this.ActiveContract is not null;
@@ -558,6 +561,15 @@ internal sealed class StorageSortContractExecutionController
                     TravelInterruptionKind.ControllerSetupFailed,
                     path,
                     $"controller produced no path to {destination}");
+                return;
+            }
+            if (this.WorkforceRoutes?.TryReserve(contract.Lease, controller.pathToEndPoint) == false)
+            {
+                this.HandleTravelInterruption(
+                    contract,
+                    TravelInterruptionKind.ControllerSetupFailed,
+                    path,
+                    "the shared workforce route could not be reserved");
                 return;
             }
 
@@ -1121,6 +1133,7 @@ internal sealed class StorageSortContractExecutionController
 
         if (!contract.FinalizationPrepared)
         {
+            this.WorkforceRoutes?.ReleaseWorker(contract.Lease.Worker.Name);
             contract.FinalizationPrepared = true;
             contract.PendingSucceeded = succeeded;
             contract.FailureKey ??= failureKey;

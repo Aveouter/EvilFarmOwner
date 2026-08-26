@@ -56,6 +56,14 @@ internal sealed class NpcWorkLease
 
     public static bool IsLeasedWorker(NPC npc) => npc.modData.ContainsKey(LeaseDataKey);
 
+    public void SetRoutePaused(bool paused)
+    {
+        this.Worker.speed = paused ? 0 : this.OriginalSpeed;
+        this.Worker.addedSpeed = paused ? 0f : this.OriginalAddedSpeed;
+        if (paused)
+            this.Worker.Halt();
+    }
+
     public static bool TryAcquire(
         NPC worker,
         int reservedWage,

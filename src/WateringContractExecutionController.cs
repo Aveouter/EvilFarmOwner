@@ -23,18 +23,24 @@ internal sealed class WateringContractExecutionController
     private readonly IMonitor Monitor;
     private readonly WorkerRosterService WorkerRoster;
     private readonly WateringTargetPlanner TargetPlanner;
+    private readonly RuntimeWorkClaimCoordinator? WorkClaims;
+    private readonly RuntimeWorkforceRouteCoordinator? WorkforceRoutes;
     private ActiveWateringContract? ActiveContract;
     private NamedContractCompletionState? LastCompletion;
 
     public WateringContractExecutionController(
         ITranslationHelper translation,
         IMonitor monitor,
-        WorkerRosterService workerRoster)
+        WorkerRosterService workerRoster,
+        RuntimeWorkClaimCoordinator? workClaims = null,
+        RuntimeWorkforceRouteCoordinator? workforceRoutes = null)
     {
         this.Translation = translation;
         this.Monitor = monitor;
         this.WorkerRoster = workerRoster;
         this.TargetPlanner = new WateringTargetPlanner(monitor);
+        this.WorkClaims = workClaims;
+        this.WorkforceRoutes = workforceRoutes;
     }
 
     public bool HasActiveContract => this.ActiveContract is not null;
@@ -91,9 +97,14 @@ internal sealed class WateringContractExecutionController
             return false;
         }
 
-        WateringPlanResult planResult = this.TargetPlanner.TryCreate(mainFarm, worker);
+        WateringPlanResult planResult = this.TargetPlanner.TryCreate(
+            mainFarm,
+            worker,
+            isTargetAvailable: target => this.IsTargetAvailable(mainFarm, worker, target));
         if (!planResult.IsSuccess || planResult.Plan is null)
             return this.FailStart(this.GetPlanFailureTranslationKey(planResult.Failure));
+        if (!this.TryClaimTarget(mainFarm, worker, planResult.Plan.FirstTarget.TargetTile))
+            return this.FailStart("farm-work.start.no-work");
 
         if (!NpcWorkLease.TryAcquire(
                 worker,
@@ -189,9 +200,14 @@ internal sealed class WateringContractExecutionController
 
         Farm farm = Game1.getFarm();
         NPC worker = shift.Lease.Worker;
-        WateringPlanResult planResult = this.TargetPlanner.TryCreate(farm, worker);
+        WateringPlanResult planResult = this.TargetPlanner.TryCreate(
+            farm,
+            worker,
+            isTargetAvailable: target => this.IsTargetAvailable(farm, worker, target));
         if (!planResult.IsSuccess || planResult.Plan is null)
             return this.FailStart(this.GetPlanFailureTranslationKey(planResult.Failure));
+        if (!this.TryClaimTarget(farm, worker, planResult.Plan.FirstTarget.TargetTile))
+            return this.FailStart("farm-work.start.no-work");
 
         WorkContractPreview preview = ContractPreviewService.Create(
             shift.Requester.getFriendshipHeartLevelForNPC(worker.Name),
@@ -328,6 +344,7 @@ internal sealed class WateringContractExecutionController
                         contract.WateredTargets++;
                     }
                     contract.CompletedTargets.Add(contract.CurrentTarget.TargetTile);
+                    this.ReleaseCurrentClaim(contract);
                 }
 
                 if (contract.PhaseTicks >= contract.ActionDurationTicks)
@@ -738,6 +755,7 @@ internal sealed class WateringContractExecutionController
         Point skippedTarget = contract.CurrentTarget.TargetTile;
         if (contract.CompletedTargets.Add(skippedTarget))
             contract.UnreachableTargets++;
+        this.ReleaseTarget(contract, skippedTarget);
         if (decision.Action == TargetRouteFailureAction.SkipTarget)
         {
             this.Monitor.Log(
@@ -788,7 +806,8 @@ internal sealed class WateringContractExecutionController
         WateringPlanResult replacement = this.TargetPlanner.TryCreate(
             contract.Farm,
             worker,
-            contract.FailedArrivalSides);
+            contract.FailedArrivalSides,
+            target => this.IsTargetAvailable(contract.Farm, worker, target));
         if (!replacement.IsSuccess || replacement.Plan is null)
         {
             this.Monitor.Log(
@@ -807,6 +826,8 @@ internal sealed class WateringContractExecutionController
         try
         {
             WateringWorkPlan nextPlan = replacement.Plan;
+            if (!this.TryClaimTarget(contract.Farm, worker, nextPlan.FirstTarget.TargetTile))
+                throw new InvalidOperationException("Fallback watering target was claimed by another worker.");
             contract.Plan = nextPlan;
             contract.CurrentTarget = nextPlan.FirstTarget;
             contract.ActionApplied = false;
@@ -915,7 +936,8 @@ internal sealed class WateringContractExecutionController
             contract.Plan.ArrivalTile,
             contract.CompletedTargets,
             contract.FailedEdges,
-            contract.TargetObstacles);
+            contract.TargetObstacles,
+            target => this.IsTargetAvailable(contract.Farm, contract.Lease.Worker, target));
 
         if (!next.IsSuccess || next.Target is null)
         {
@@ -928,6 +950,14 @@ internal sealed class WateringContractExecutionController
 
         try
         {
+            if (!this.TryClaimTarget(
+                    contract.Farm,
+                    contract.Lease.Worker,
+                    next.Target.TargetTile))
+            {
+                this.BeginNextOrReturn(contract);
+                return;
+            }
             contract.CurrentTarget = next.Target;
             contract.ActionApplied = false;
             contract.Phase = WateringContractPhase.TravelingToTarget;
@@ -1016,6 +1046,8 @@ internal sealed class WateringContractExecutionController
 
         if (controller.pathToEndPoint is not { Count: > 0 })
             throw new InvalidOperationException($"No path to {destination}.");
+        if (this.WorkforceRoutes?.TryReserve(contract.Lease, controller.pathToEndPoint) == false)
+            throw new InvalidOperationException("The shared workforce route could not be reserved.");
 
         return controller;
     }
@@ -1031,6 +1063,8 @@ internal sealed class WateringContractExecutionController
 
         if (!contract.FinalizationPrepared)
         {
+            this.WorkClaims?.ReleaseWorker(contract.Lease.Worker.Name);
+            this.WorkforceRoutes?.ReleaseWorker(contract.Lease.Worker.Name);
             contract.FinalizationPrepared = true;
             contract.PendingSucceeded = succeeded;
             contract.PendingFailureTranslationKey = failureTranslationKey;
@@ -1045,6 +1079,39 @@ internal sealed class WateringContractExecutionController
         }
 
         this.ContinueFinalization(contract, mustFinalizeNow);
+    }
+
+    private bool IsTargetAvailable(Farm farm, NPC worker, Point target) =>
+        this.WorkClaims?.IsAvailable(
+            farm.NameOrUniqueName,
+            target.X,
+            target.Y,
+            worker.Name) != false;
+
+    private bool TryClaimTarget(Farm farm, NPC worker, Point target) =>
+        this.WorkClaims?.TryClaim(
+            farm.NameOrUniqueName,
+            target.X,
+            target.Y,
+            worker.Name) != false;
+
+    private void ReleaseCurrentClaim(ActiveWateringContract contract)
+    {
+        Point target = contract.CurrentTarget.TargetTile;
+        this.WorkClaims?.Release(
+            contract.Farm.NameOrUniqueName,
+            target.X,
+            target.Y,
+            contract.Lease.Worker.Name);
+    }
+
+    private void ReleaseTarget(ActiveWateringContract contract, Point target)
+    {
+        this.WorkClaims?.Release(
+            contract.Farm.NameOrUniqueName,
+            target.X,
+            target.Y,
+            contract.Lease.Worker.Name);
     }
 
     private void CompleteManagedStage(ActiveWateringContract contract)

@@ -22,10 +22,14 @@ internal sealed class AnimalCareContractExecutionController
     private readonly AnimalFeedingTargetPlanner FeedingPlanner;
     private readonly AnimalProductTargetPlanner ProductPlanner;
     private readonly AnimalProductTransferService ProductTransfer = new();
+    private readonly RuntimeWorkforceRouteCoordinator? WorkforceRoutes;
     private ActiveAnimalCareStage? ActiveStage;
     private NamedContractCompletionState? LastCompletion;
 
-    public AnimalCareContractExecutionController(IMonitor monitor, ITranslationHelper translation)
+    public AnimalCareContractExecutionController(
+        IMonitor monitor,
+        ITranslationHelper translation,
+        RuntimeWorkforceRouteCoordinator? workforceRoutes = null)
     {
         this.Monitor = monitor;
         this.Translation = translation;
@@ -33,6 +37,7 @@ internal sealed class AnimalCareContractExecutionController
         this.HousePlanner = new AnimalHouseRoutePlanner(monitor);
         this.FeedingPlanner = new AnimalFeedingTargetPlanner(monitor);
         this.ProductPlanner = new AnimalProductTargetPlanner(monitor);
+        this.WorkforceRoutes = workforceRoutes;
     }
 
     public string? LastStartFailureKey { get; private set; }
@@ -341,6 +346,7 @@ internal sealed class AnimalCareContractExecutionController
             stage.AttemptedAnimalIds.Add(stage.CurrentTarget!.AnimalId);
         if (ReferenceEquals(stage.Context.Lease.Worker.controller, stage.Controller))
             stage.Context.Lease.Worker.controller = null;
+        this.WorkforceRoutes?.ReleaseWorker(stage.Context.Lease.Worker.Name);
         stage.Controller = null;
         this.BeginNextOrReturn(stage);
     }
@@ -1008,6 +1014,8 @@ internal sealed class AnimalCareContractExecutionController
         };
         if (controller.pathToEndPoint is not { Count: > 0 })
             throw new InvalidOperationException($"No animal-care path to {destination}.");
+        if (this.WorkforceRoutes?.TryReserve(stage.Context.Lease, controller.pathToEndPoint) == false)
+            throw new InvalidOperationException("The shared workforce route could not be reserved.");
         stage.TravelWatchdog.Reset(
             stage.Context.Lease.Worker.Position.X,
             stage.Context.Lease.Worker.Position.Y,
@@ -1044,6 +1052,7 @@ internal sealed class AnimalCareContractExecutionController
             placementBalanced ? LogLevel.Debug : LogLevel.Error);
         if (ReferenceEquals(stage.Context.Lease.Worker.controller, stage.Controller))
             stage.Context.Lease.Worker.controller = null;
+        this.WorkforceRoutes?.ReleaseWorker(stage.Context.Lease.Worker.Name);
         stage.Controller = null;
         this.ActiveStage = null;
         this.LastCompletion = new NamedContractCompletionState(

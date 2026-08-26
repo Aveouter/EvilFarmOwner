@@ -63,7 +63,8 @@ internal sealed partial class WateringTargetPlanner
     public WateringPlanResult TryCreate(
         Farm farm,
         NPC worker,
-        IReadOnlySet<FarmBoundarySide>? excludedArrivalSides = null)
+        IReadOnlySet<FarmBoundarySide>? excludedArrivalSides = null,
+        Func<Point, bool>? isTargetAvailable = null)
     {
         int width = farm.Map.Layers[0].LayerWidth;
         int height = farm.Map.Layers[0].LayerHeight;
@@ -101,7 +102,9 @@ internal sealed partial class WateringTargetPlanner
                 arrivalTile,
                 arrivalTile,
                 new HashSet<Point>(),
-                new HashSet<FarmTaskRouteEdge>());
+                new HashSet<FarmTaskRouteEdge>(),
+                obstacles: null,
+                isTargetAvailable: isTargetAvailable);
             if (firstTarget.IsSuccess && firstTarget.Target is { } firstPlan)
             {
                 if (FarmNavigationMap.CanBeginPath(
@@ -140,7 +143,8 @@ internal sealed partial class WateringTargetPlanner
         Point arrivalTile,
         IReadOnlySet<Point> completedTargets,
         IReadOnlySet<FarmTaskRouteEdge> failedEdges,
-        TravelObstacleLedger? obstacles = null)
+        TravelObstacleLedger? obstacles = null,
+        Func<Point, bool>? isTargetAvailable = null)
     {
         int width = farm.Map.Layers[0].LayerWidth;
         int height = farm.Map.Layers[0].LayerHeight;
@@ -174,7 +178,9 @@ internal sealed partial class WateringTargetPlanner
             {
                 Vector2 target = new(x, y);
                 Point targetPoint = new(x, y);
-                if (completedTargets.Contains(targetPoint) || !IsDryCrop(farm, target))
+                if (completedTargets.Contains(targetPoint)
+                    || isTargetAvailable?.Invoke(targetPoint) == false
+                    || !IsDryCrop(farm, target))
                     continue;
 
                 candidateTargets.Add(targetPoint);

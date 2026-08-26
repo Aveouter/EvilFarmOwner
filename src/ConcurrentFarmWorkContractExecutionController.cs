@@ -97,7 +97,9 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
                 workerSettings,
                 workers[index].Name,
                 assignments[index],
-                isRecovery: false);
+                isRecovery: false,
+                workClaims: group.WorkClaims,
+                workforceRoutes: group.WorkforceRoutes);
             if (!runtime.FarmWork.TryStart(
                     requestingPlayerId,
                     workers[index].Name,
@@ -131,6 +133,7 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         if (this.ActiveGroup is not { } group)
             return;
 
+        group.WorkforceRoutes.Tick();
         foreach (WorkerRuntime runtime in group.Workers.Where(worker => worker.Completion is null))
         {
             runtime.Watering.Update();
@@ -204,20 +207,33 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         ContractSettingsSnapshot settings,
         string workerName,
         FarmWorkStageSelection assignedStages,
-        bool isRecovery)
+        bool isRecovery,
+        RuntimeWorkClaimCoordinator workClaims,
+        RuntimeWorkforceRouteCoordinator workforceRoutes)
     {
-        WateringContractExecutionController watering = new(this.Translation, this.Monitor, this.WorkerRoster);
+        WateringContractExecutionController watering = new(
+            this.Translation,
+            this.Monitor,
+            this.WorkerRoster,
+            workClaims,
+            workforceRoutes);
         HarvestingContractExecutionController harvesting = new(
             this.Translation,
             this.Monitor,
             this.WorkerRoster,
-            this.AcceptanceFaults);
-        AnimalCareContractExecutionController animalCare = new(this.Monitor, this.Translation);
+            this.AcceptanceFaults,
+            workClaims,
+            workforceRoutes);
+        AnimalCareContractExecutionController animalCare = new(
+            this.Monitor,
+            this.Translation,
+            workforceRoutes);
         StorageSortContractExecutionController storage = new(
             this.Translation,
             this.Monitor,
             this.WorkerRoster,
-            this.StorageRecovery);
+            this.StorageRecovery,
+            workforceRoutes);
         FarmWorkContractExecutionController farmWork = new(
             this.Translation,
             this.Monitor,
@@ -263,7 +279,9 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
                     settings,
                     recoveryWorker.WorkerName,
                     failedStages,
-                    isRecovery: true);
+                    isRecovery: true,
+                    workClaims: group.WorkClaims,
+                    workforceRoutes: group.WorkforceRoutes);
                 if (recovery.FarmWork.TryStart(
                         group.RequestingPlayerId,
                         recoveryWorker.WorkerName,
@@ -411,6 +429,8 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         public long RequestingPlayerId { get; }
         public HarvestDestinationMode HarvestDestination { get; }
         public List<WorkerRuntime> Workers { get; } = new();
+        public RuntimeWorkClaimCoordinator WorkClaims { get; } = new();
+        public RuntimeWorkforceRouteCoordinator WorkforceRoutes { get; } = new();
         public int InitialWorkerCount { get; set; }
         public bool RecoveryAttempted { get; set; }
         public bool RecoverySatisfied { get; set; }

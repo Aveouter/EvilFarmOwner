@@ -19,6 +19,7 @@ List<(string Name, Action Test)> tests = new()
     ("farm-work stage order", TestFarmWorkStageOrder),
     ("deterministic workforce partition", TestDeterministicWorkforcePartition),
     ("workforce claim ownership", TestWorkforceClaimOwnership),
+    ("runtime work claims coordinate shared tiles", TestRuntimeWorkClaims),
     ("workforce final reconciliation", TestWorkforceFinalReconciliation),
     ("workforce settlement aggregation", TestWorkforceSettlementAggregation),
     ("workforce route same-tile arbitration", TestWorkforceRouteSameTileArbitration),
@@ -447,6 +448,21 @@ static void TestWorkforceClaimOwnership()
     Equal(WorkClaimState.Committed, ledger.Snapshot()[0].State);
     Equal(false, ledger.TryClaim(first, "Leah"));
     Equal(true, ledger.TryClaim(second, "Leah"));
+}
+
+static void TestRuntimeWorkClaims()
+{
+    RuntimeWorkClaimCoordinator claims = new();
+    Equal(true, claims.IsAvailable("Farm", 10, 12, "Alex"));
+    Equal(true, claims.TryClaim("Farm", 10, 12, "Alex"));
+    Equal(true, claims.IsAvailable("Farm", 10, 12, "Alex"));
+    Equal(false, claims.IsAvailable("Farm", 10, 12, "Leah"));
+    Equal(false, claims.TryClaim("Farm", 10, 12, "Leah"));
+    Equal(true, claims.Release("Farm", 10, 12, "Alex"));
+    Equal(true, claims.TryClaim("Farm", 10, 12, "Leah"));
+    Equal(true, claims.TryCommit("Farm", 10, 12, "Leah"));
+    Equal(false, claims.Release("Farm", 10, 12, "Leah"));
+    Equal(0, claims.ReleaseWorker("Leah"));
 }
 
 static void TestWorkforceFinalReconciliation()
