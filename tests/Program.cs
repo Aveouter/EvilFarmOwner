@@ -54,6 +54,7 @@ List<(string Name, Action Test)> tests = new()
     ("controller path skips current tile", TestControllerPathSkipsCurrentTile),
     ("destination tile alignment", TestDestinationTileAlignment),
     ("travel progress watchdog", TestTravelProgressWatchdog),
+    ("delivery stalled tile exclusion", TestDeliveryStalledTileExclusion),
     ("consecutive route failure budget", TestConsecutiveRouteFailureBudget),
     ("target route failure isolation", TestTargetRouteFailureIsolation),
     ("NPC protected activity policy", TestNpcProtectedActivityPolicy),
@@ -1026,6 +1027,31 @@ static void TestTravelProgressWatchdog()
     Equal(false, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
     Equal(true, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
     Equal(false, watchdog.Tick(102f, 200f, maximumStalledTicks: 3));
+}
+
+static void TestDeliveryStalledTileExclusion()
+{
+    GridPoint origin = new(0, 1);
+    GridPoint stalled = new(1, 1);
+    Equal(
+        true,
+        DeliveryRouteExclusionPolicy.TrySelectFailedTile(origin, stalled, out GridPoint selected));
+    Equal(stalled, selected);
+    Equal(
+        false,
+        DeliveryRouteExclusionPolicy.TrySelectFailedTile(origin, new GridPoint(2, 1), out _));
+    Equal(
+        false,
+        DeliveryRouteExclusionPolicy.TrySelectFailedTile(origin, nextWaypoint: null, out _));
+
+    GridRouteMap routes = GridRouteMap.Build(
+        width: 4,
+        height: 3,
+        start: origin,
+        isPassable: tile => tile != stalled);
+    Equal(true, routes.TryGetPath(new GridPoint(3, 1), out IReadOnlyList<GridPoint> detour));
+    Equal(false, detour.Contains(stalled));
+    Equal(5, detour.Count - 1);
 }
 
 static void TestConsecutiveRouteFailureBudget()
