@@ -1322,7 +1322,7 @@ internal sealed class HarvestingContractExecutionController
         bool requesterIsOnline = requester is not null;
         bool requesterIsOnMainFarm = requesterIsOnline
             && ReferenceEquals(requester!.currentLocation, contract.Farm);
-        bool canAcceptCompleteStack = requesterIsOnMainFarm
+        bool canAcceptCompleteStack = requesterIsOnline
             && CanInventoryAcceptCompleteStack(requester!, entry.Item);
         HarvestDestinationAction action = HarvestDestinationPolicy.SelectAction(
             contract.DestinationMode,
@@ -1333,7 +1333,7 @@ internal sealed class HarvestingContractExecutionController
         {
             this.StopForUnavailableStorage(
                 contract,
-                "the contract-selected requester inventory is offline, off-farm, or cannot accept the complete stack",
+                "the contract-selected requester inventory is offline or cannot accept the complete stack",
                 "harvest.failure.requester-destination-unavailable");
             return;
         }

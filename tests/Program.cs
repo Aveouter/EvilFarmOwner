@@ -1325,11 +1325,18 @@ static void TestHarvestContractDestinationPolicy()
             requesterIsOnMainFarm: true,
             requesterCanAcceptCompleteStack: true));
     Equal(
+        HarvestDestinationAction.DeliverToRequester,
+        HarvestDestinationPolicy.SelectAction(
+            HarvestDestinationMode.RequesterInventory,
+            requesterIsOnline: true,
+            requesterIsOnMainFarm: false,
+            requesterCanAcceptCompleteStack: true));
+    Equal(
         HarvestDestinationAction.StopUnavailable,
         HarvestDestinationPolicy.SelectAction(
             HarvestDestinationMode.RequesterInventory,
             requesterIsOnline: true,
-            requesterIsOnMainFarm: true,
+            requesterIsOnMainFarm: false,
             requesterCanAcceptCompleteStack: false));
     Equal(
         HarvestDestinationAction.StopUnavailable,
