@@ -3011,6 +3011,18 @@ static void TestMultiplayerRestartRecoveryState()
     legacyFarmWork.RecentResults[0].Task = NamedFarmTask.Watering;
     Equal(false, MultiplayerRecoveryState.IsValid(legacyFarmWork, 445566));
 
+    MultiplayerRecoverySaveData legacySettings =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json)!;
+    legacySettings.ProtocolSchemaVersion = 10;
+    foreach (ContractStartResponseMessage legacyResponse in legacySettings.ProcessedRequests)
+        legacyResponse.SchemaVersion = 10;
+    foreach (ContractResultMessage legacyResult in legacySettings.RecentResults)
+    {
+        legacyResult.SchemaVersion = 10;
+        legacyResult.Task = NamedFarmTask.FarmWork;
+    }
+    Equal(true, MultiplayerRecoveryState.IsValid(legacySettings, 445566));
+
     MultiplayerRecoveryState.RebindResponse(
         restored!.ProcessedRequests[0],
         "new-host-session",

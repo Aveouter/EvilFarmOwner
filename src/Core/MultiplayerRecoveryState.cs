@@ -24,6 +24,7 @@ internal static class MultiplayerRecoveryState
     private const int LegacyDestinationProtocolSchemaVersion = 7;
     private const int LegacyStorageSortingProtocolSchemaVersion = 8;
     private const int LegacyFarmWorkProtocolSchemaVersion = 9;
+    private const int LegacySettingsProtocolSchemaVersion = 10;
 
     public static MultiplayerRecoverySaveData Create(
         string modVersion,
@@ -140,6 +141,7 @@ internal static class MultiplayerRecoveryState
             or LegacyDestinationProtocolSchemaVersion
             or LegacyStorageSortingProtocolSchemaVersion
             or LegacyFarmWorkProtocolSchemaVersion
+            or LegacySettingsProtocolSchemaVersion
             or MultiplayerContractProtocol.SchemaVersion;
     }
 
