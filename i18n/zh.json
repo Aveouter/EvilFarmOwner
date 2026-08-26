@@ -223,6 +223,8 @@
   "route-reason.first-step": "实时碰撞检查拒绝了路线的第一步。",
   "route-reason.controller-setup": "游戏无法创建寻路控制器。",
   "route-reason.unknown": "路线因未知原因结束。",
+  "animal-care.hud.target-route-skipped": "{{worker}} 在三次安全路线尝试后跳过一个动物照料目标：{{reason}}",
+  "animal-care.hud.return-route-stopped": "{{worker}} 因棚舍出口或返程路线持续受阻而停止动物照料：{{reason}}",
   "contract.failure.storage-lock": "无法同时取得并验证两个箱子的锁；本次转移没有提交。",
   "contract.failure.storage-changed": "箱子在预检后发生变化；转移中的堆叠已恢复或被精确保全一次。",
   "contract.failure.storage-audit": "最终箱子转移账目未能平衡；保存前请检查 SMAPI 日志。",

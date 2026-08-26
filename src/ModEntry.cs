@@ -41,7 +41,9 @@ public sealed class ModEntry : Mod
             this.Monitor,
             this.WorkerRoster,
             this.AcceptanceFaults);
-        this.AnimalCareContracts = new AnimalCareContractExecutionController(this.Monitor);
+        this.AnimalCareContracts = new AnimalCareContractExecutionController(
+            this.Monitor,
+            this.Helper.Translation);
         this.StorageSortRecovery = new StorageSortRecoveryManager(this.Monitor);
         this.StorageSortContracts = new StorageSortContractExecutionController(
             helper.Translation,

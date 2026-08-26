@@ -65,6 +65,43 @@ internal sealed class TravelObstacleLedger
     }
 }
 
+internal readonly record struct TravelFailureDecision(
+    string RouteKey,
+    int FailureCount,
+    int MaximumFailures)
+{
+    public bool CanRetry => this.FailureCount < this.MaximumFailures;
+}
+
+internal sealed class TravelFailureLedger
+{
+    private readonly int MaximumFailures;
+    private readonly Dictionary<string, int> Failures = new(StringComparer.Ordinal);
+
+    public TravelFailureLedger(int maximumFailures = 3)
+    {
+        if (maximumFailures <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maximumFailures));
+        this.MaximumFailures = maximumFailures;
+    }
+
+    public TravelFailureDecision Record(string routeKey)
+    {
+        if (string.IsNullOrWhiteSpace(routeKey))
+            throw new ArgumentException("A route key is required.", nameof(routeKey));
+        int count = this.Failures.TryGetValue(routeKey, out int existing)
+            ? existing + 1
+            : 1;
+        this.Failures[routeKey] = count;
+        return new TravelFailureDecision(routeKey, count, this.MaximumFailures);
+    }
+
+    public void Reset(string routeKey)
+    {
+        this.Failures.Remove(routeKey);
+    }
+}
+
 internal readonly record struct TravelInterruptionSnapshot(
     TravelInterruptionKind Kind,
     string LocationKey,

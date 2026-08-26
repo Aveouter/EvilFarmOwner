@@ -12,8 +12,11 @@ internal sealed class AnimalCareContractExecutionController
     private const int ActionStartTicks = 8;
     private const int ActionDurationTicks = 32;
     private const int MaximumTravelTicks = 3600;
+    private const int MaximumStalledTravelTicks = 180;
+    private const int MaximumRouteFailures = 3;
     private const int MaximumProductLockWaitTicks = 300;
     private readonly IMonitor Monitor;
+    private readonly ITranslationHelper Translation;
     private readonly AnimalPettingTargetPlanner Planner;
     private readonly AnimalHouseRoutePlanner HousePlanner;
     private readonly AnimalFeedingTargetPlanner FeedingPlanner;
@@ -22,9 +25,10 @@ internal sealed class AnimalCareContractExecutionController
     private ActiveAnimalCareStage? ActiveStage;
     private NamedContractCompletionState? LastCompletion;
 
-    public AnimalCareContractExecutionController(IMonitor monitor)
+    public AnimalCareContractExecutionController(IMonitor monitor, ITranslationHelper translation)
     {
         this.Monitor = monitor;
+        this.Translation = translation;
         this.Planner = new AnimalPettingTargetPlanner(monitor);
         this.HousePlanner = new AnimalHouseRoutePlanner(monitor);
         this.FeedingPlanner = new AnimalFeedingTargetPlanner(monitor);
@@ -98,13 +102,14 @@ internal sealed class AnimalCareContractExecutionController
                 if (stage.Context.Lease.Worker.controller is not null
                     && !ReferenceEquals(stage.Context.Lease.Worker.controller, stage.Controller))
                 {
+                    this.LogControllerConflict(stage);
                     this.Complete(stage, false, "contract.failure.controller-conflict");
                     return;
                 }
                 if (this.TryFinishTravel(stage, GetCurrentInteractionTile(stage), this.OnArrivedAtWork))
                     return;
-                if (stage.PhaseTicks > MaximumTravelTicks || stage.Context.Lease.Worker.controller is null)
-                    this.SkipCurrentAndContinue(stage);
+                if (this.TryGetTravelInterruption(stage, out TravelInterruptionKind targetKind))
+                    this.HandleTravelInterruption(stage, targetKind);
                 break;
             case AnimalCarePhase.TravelingToBuilding:
                 if (this.HasControllerConflict(stage))
@@ -114,13 +119,8 @@ internal sealed class AnimalCareContractExecutionController
                         stage.CurrentHouseRoute!.ExteriorInteractionTile,
                         this.OnArrivedAtBuilding))
                     return;
-                if (stage.PhaseTicks > MaximumTravelTicks
-                    || stage.Context.Lease.Worker.controller is null)
-                {
-                    stage.VisitedBuildingIds.Add(stage.CurrentHouseRoute!.BuildingId);
-                    stage.CurrentHouseRoute = null;
-                    this.BeginNextOrReturn(stage);
-                }
+                if (this.TryGetTravelInterruption(stage, out TravelInterruptionKind buildingKind))
+                    this.HandleTravelInterruption(stage, buildingKind);
                 break;
             case AnimalCarePhase.TravelingToHouseExit:
                 if (this.HasControllerConflict(stage))
@@ -130,9 +130,8 @@ internal sealed class AnimalCareContractExecutionController
                         stage.CurrentHouseRoute!.InteriorEntryTile,
                         this.OnArrivedAtHouseExit))
                     return;
-                if (stage.PhaseTicks > MaximumTravelTicks
-                    || stage.Context.Lease.Worker.controller is null)
-                    this.Complete(stage, false, "contract.failure.return-unreachable");
+                if (this.TryGetTravelInterruption(stage, out TravelInterruptionKind exitKind))
+                    this.HandleTravelInterruption(stage, exitKind);
                 break;
             case AnimalCarePhase.Acting:
                 if (!stage.ActionApplied && stage.PhaseTicks >= ActionStartTicks)
@@ -177,13 +176,14 @@ internal sealed class AnimalCareContractExecutionController
                 if (stage.Context.Lease.Worker.controller is not null
                     && !ReferenceEquals(stage.Context.Lease.Worker.controller, stage.Controller))
                 {
+                    this.LogControllerConflict(stage);
                     this.Complete(stage, false, "contract.failure.controller-conflict");
                     return;
                 }
                 if (this.TryFinishTravel(stage, stage.Plan.ArrivalTile, this.OnReturned))
                     return;
-                if (stage.PhaseTicks > MaximumTravelTicks || stage.Context.Lease.Worker.controller is null)
-                    this.Complete(stage, false, "contract.failure.return-unreachable");
+                if (this.TryGetTravelInterruption(stage, out TravelInterruptionKind returnKind))
+                    this.HandleTravelInterruption(stage, returnKind);
                 break;
             case AnimalCarePhase.Returned:
                 this.Complete(stage, true, "");
@@ -255,10 +255,28 @@ internal sealed class AnimalCareContractExecutionController
         }
         if (!FarmNavigationMap.CanBeginPath(
                 stage.WorkLocation, worker, worker.TilePoint, target.Path, out string failure))
-            throw new InvalidOperationException($"Animal-care first step is unsafe: {failure}.");
-        stage.Controller = this.CreateController(stage, target.Path, target.InteractionTile,
-            target.FacingDirection, this.OnArrivedAtWork);
-        stage.Context.Lease.AttachController(stage.Controller);
+        {
+            this.HandleTravelInterruption(
+                stage,
+                TravelInterruptionKind.FirstStepRejected,
+                target.Path,
+                failure);
+            return;
+        }
+        try
+        {
+            stage.Controller = this.CreateController(stage, target.Path, target.InteractionTile,
+                target.FacingDirection, this.OnArrivedAtWork);
+            stage.Context.Lease.AttachController(stage.Controller);
+        }
+        catch (Exception ex)
+        {
+            this.HandleTravelInterruption(
+                stage,
+                TravelInterruptionKind.ControllerSetupFailed,
+                target.Path,
+                ex.Message);
+        }
     }
 
     private void OnArrivedAtWork(Character character, GameLocation location)
@@ -321,7 +339,8 @@ internal sealed class AnimalCareContractExecutionController
             stage.AttemptedProductTargets.Add(product.StableKey);
         else
             stage.AttemptedAnimalIds.Add(stage.CurrentTarget!.AnimalId);
-        stage.Context.Lease.Worker.controller = null;
+        if (ReferenceEquals(stage.Context.Lease.Worker.controller, stage.Controller))
+            stage.Context.Lease.Worker.controller = null;
         stage.Controller = null;
         this.BeginNextOrReturn(stage);
     }
@@ -334,7 +353,8 @@ internal sealed class AnimalCareContractExecutionController
                 house,
                 stage.Context.Lease.Worker,
                 stage.Context.Lease.Worker.TilePoint,
-                stage.AttemptedTroughTiles);
+                stage.AttemptedTroughTiles,
+                stage.RouteObstacles);
             if (feeding is not null)
             {
                 try
@@ -355,7 +375,8 @@ internal sealed class AnimalCareContractExecutionController
 
         AnimalPettingTargetPlan? next = this.Planner.TryFindNext(
             stage.WorkLocation, stage.Context.Lease.Worker,
-            stage.Context.Lease.Worker.TilePoint, stage.AttemptedAnimalIds);
+            stage.Context.Lease.Worker.TilePoint, stage.AttemptedAnimalIds,
+            stage.RouteObstacles);
         if (next is not null)
         {
             try
@@ -379,7 +400,8 @@ internal sealed class AnimalCareContractExecutionController
                 productHouse,
                 stage.Context.Lease.Worker,
                 stage.Context.Lease.Worker.TilePoint,
-                stage.AttemptedProductTargets);
+                stage.AttemptedProductTargets,
+                stage.RouteObstacles);
             if (product is not null)
             {
                 try
@@ -407,8 +429,16 @@ internal sealed class AnimalCareContractExecutionController
         if (this.TryBeginNextHouse(stage))
             return;
 
+        this.BeginFarmReturn(stage);
+    }
+
+    private void BeginFarmReturn(ActiveAnimalCareStage stage)
+    {
         Stack<Point>? path = this.Planner.TryCreateReturnPath(
-            stage.Farm, stage.Context.Lease.Worker, stage.Plan.ArrivalTile);
+            stage.Farm,
+            stage.Context.Lease.Worker,
+            stage.Plan.ArrivalTile,
+            stage.RouteObstacles);
         if (path is null)
         {
             this.Complete(stage, false, "contract.failure.return-unreachable");
@@ -429,15 +459,25 @@ internal sealed class AnimalCareContractExecutionController
                     stage.Context.Lease.Worker.TilePoint,
                     path,
                     out string failure))
-                throw new InvalidOperationException($"Animal-care return step is unsafe: {failure}.");
+            {
+                this.HandleTravelInterruption(
+                    stage,
+                    TravelInterruptionKind.FirstStepRejected,
+                    path,
+                    failure);
+                return;
+            }
             stage.Controller = this.CreateController(stage, path, stage.Plan.ArrivalTile,
                 Game1.down, this.OnReturned);
             stage.Context.Lease.AttachController(stage.Controller);
         }
         catch (Exception ex)
         {
-            this.Monitor.Log($"Animal-care return route failed: {ex.Message}", LogLevel.Warn);
-            this.Complete(stage, false, "contract.failure.return-unreachable");
+            this.HandleTravelInterruption(
+                stage,
+                TravelInterruptionKind.ControllerSetupFailed,
+                path,
+                ex.Message);
         }
     }
 
@@ -460,14 +500,32 @@ internal sealed class AnimalCareContractExecutionController
         }
         if (!FarmNavigationMap.CanBeginPath(
                 stage.WorkLocation, worker, worker.TilePoint, target.Path, out string failure))
-            throw new InvalidOperationException($"Feeding first step is unsafe: {failure}.");
-        stage.Controller = this.CreateController(
-            stage,
-            target.Path,
-            target.InteractionTile,
-            target.FacingDirection,
-            this.OnArrivedAtWork);
-        stage.Context.Lease.AttachController(stage.Controller);
+        {
+            this.HandleTravelInterruption(
+                stage,
+                TravelInterruptionKind.FirstStepRejected,
+                target.Path,
+                failure);
+            return;
+        }
+        try
+        {
+            stage.Controller = this.CreateController(
+                stage,
+                target.Path,
+                target.InteractionTile,
+                target.FacingDirection,
+                this.OnArrivedAtWork);
+            stage.Context.Lease.AttachController(stage.Controller);
+        }
+        catch (Exception ex)
+        {
+            this.HandleTravelInterruption(
+                stage,
+                TravelInterruptionKind.ControllerSetupFailed,
+                target.Path,
+                ex.Message);
+        }
     }
 
     private bool TryFeedTrough(ActiveAnimalCareStage stage, AnimalFeedingTargetPlan target)
@@ -496,6 +554,178 @@ internal sealed class AnimalCareContractExecutionController
         return true;
     }
 
+    private bool TryGetTravelInterruption(
+        ActiveAnimalCareStage stage,
+        out TravelInterruptionKind kind)
+    {
+        kind = default;
+        if (stage.PhaseTicks > MaximumTravelTicks)
+        {
+            kind = TravelInterruptionKind.Timeout;
+            return true;
+        }
+
+        NPC worker = stage.Context.Lease.Worker;
+        if ((Game1.activeClickableMenu is null || Game1.IsMultiplayer)
+            && stage.TravelWatchdog.Tick(
+                worker.Position.X,
+                worker.Position.Y,
+                new GridPoint(worker.TilePoint.X, worker.TilePoint.Y),
+                MaximumStalledTravelTicks))
+        {
+            kind = TravelInterruptionKind.ProgressStall;
+            return true;
+        }
+
+        if (stage.PhaseTicks > 1 && worker.controller is null)
+        {
+            kind = TravelInterruptionKind.ControllerEnded;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void HandleTravelInterruption(
+        ActiveAnimalCareStage stage,
+        TravelInterruptionKind kind,
+        Stack<Point>? explicitPath = null,
+        string? explicitCollisionProbe = null)
+    {
+        Point destination = this.GetPhaseDestination(stage);
+        TravelInterruptionSnapshot diagnostic = TravelInterruptionRuntime.Capture(
+            stage.WorkLocation,
+            stage.Context.Lease.Worker,
+            stage.Controller,
+            destination,
+            kind,
+            stage.TravelWatchdog.PreviousProgressTile,
+            explicitPath,
+            explicitCollisionProbe);
+        string routeKey = GetRouteFailureKey(stage);
+        this.Monitor.Log(
+            $"Animal-care travel interrupted: shift={stage.Context.Id:N}, "
+            + $"worker={stage.Context.Lease.Worker.Name}, phase={stage.Phase}, "
+            + $"routeKey={routeKey}, {diagnostic.ToTechnicalReason()}.",
+            LogLevel.Debug);
+        TravelObstacleSelection obstacle = TravelRouteExclusionPolicy.Select(
+            diagnostic.LocationKey,
+            diagnostic.Origin,
+            diagnostic.PreviousProgressTile,
+            diagnostic.NextWaypoint);
+        stage.RouteObstacles.Add(obstacle);
+
+        if (ReferenceEquals(stage.Context.Lease.Worker.controller, stage.Controller))
+            stage.Context.Lease.Worker.controller = null;
+        stage.Controller = null;
+        stage.Context.Lease.Worker.Halt();
+        TravelFailureDecision decision = stage.RouteFailures.Record(routeKey);
+        if (decision.CanRetry)
+        {
+            this.Monitor.Log(
+                $"Animal-care route {routeKey} will replan around tile={obstacle.Tile}, "
+                + $"edge={obstacle.Edge} [{decision.FailureCount}/{decision.MaximumFailures}].",
+                LogLevel.Debug);
+            switch (stage.Phase)
+            {
+                case AnimalCarePhase.Traveling:
+                    this.BeginNextOrReturn(stage);
+                    return;
+                case AnimalCarePhase.TravelingToBuilding:
+                    if (!this.TryBeginNextHouse(stage))
+                        this.BeginFarmReturn(stage);
+                    return;
+                case AnimalCarePhase.TravelingToHouseExit:
+                    this.BeginExitHouse(stage);
+                    return;
+                case AnimalCarePhase.Returning:
+                    this.BeginFarmReturn(stage);
+                    return;
+            }
+        }
+
+        this.Monitor.Log(
+            $"Animal-care route {routeKey} exhausted {MaximumRouteFailures} attempts; "
+            + diagnostic.ToTechnicalReason() + ".",
+            LogLevel.Warn);
+        if (stage.Phase == AnimalCarePhase.Traveling)
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Translation.Get("animal-care.hud.target-route-skipped", new
+                {
+                    worker = stage.Context.Lease.Worker.displayName,
+                    reason = this.Translation.Get(diagnostic.ReasonTranslationKey)
+                }),
+                HUDMessage.error_type));
+            this.SkipCurrentAndContinue(stage);
+            return;
+        }
+        if (stage.Phase == AnimalCarePhase.TravelingToBuilding)
+        {
+            stage.VisitedBuildingIds.Add(stage.CurrentHouseRoute!.BuildingId);
+            stage.CurrentHouseRoute = null;
+            this.BeginNextOrReturn(stage);
+            return;
+        }
+
+        Game1.addHUDMessage(new HUDMessage(
+            this.Translation.Get("animal-care.hud.return-route-stopped", new
+            {
+                worker = stage.Context.Lease.Worker.displayName,
+                reason = this.Translation.Get(diagnostic.ReasonTranslationKey)
+            }),
+            HUDMessage.error_type));
+        this.Complete(stage, false, "contract.failure.return-unreachable");
+    }
+
+    private void LogControllerConflict(ActiveAnimalCareStage stage)
+    {
+        TravelInterruptionSnapshot diagnostic = TravelInterruptionRuntime.Capture(
+            stage.WorkLocation,
+            stage.Context.Lease.Worker,
+            stage.Controller,
+            this.GetPhaseDestination(stage),
+            TravelInterruptionKind.ControllerReplaced,
+            stage.TravelWatchdog.PreviousProgressTile);
+        this.Monitor.Log(
+            $"Animal-care controller conflict: shift={stage.Context.Id:N}, "
+            + diagnostic.ToTechnicalReason() + ".",
+            LogLevel.Warn);
+    }
+
+    private Point GetPhaseDestination(ActiveAnimalCareStage stage)
+    {
+        return stage.Phase switch
+        {
+            AnimalCarePhase.Traveling => GetCurrentInteractionTile(stage),
+            AnimalCarePhase.TravelingToBuilding =>
+                stage.CurrentHouseRoute!.ExteriorInteractionTile,
+            AnimalCarePhase.TravelingToHouseExit =>
+                stage.CurrentHouseRoute!.InteriorEntryTile,
+            AnimalCarePhase.Returning => stage.Plan.ArrivalTile,
+            _ => stage.Context.Lease.Worker.TilePoint
+        };
+    }
+
+    private static string GetRouteFailureKey(ActiveAnimalCareStage stage)
+    {
+        return stage.Phase switch
+        {
+            AnimalCarePhase.Traveling when stage.CurrentFeedingTarget is { } feeding =>
+                $"feed:{stage.WorkLocation.NameOrUniqueName}:{feeding.TargetTile.X}:{feeding.TargetTile.Y}",
+            AnimalCarePhase.Traveling when stage.CurrentProductTarget is { } product =>
+                $"product:{product.StableKey}",
+            AnimalCarePhase.Traveling when stage.CurrentTarget is { } animal =>
+                $"animal:{stage.WorkLocation.NameOrUniqueName}:{animal.AnimalId}",
+            AnimalCarePhase.TravelingToBuilding =>
+                $"building:{stage.CurrentHouseRoute!.BuildingId:N}",
+            AnimalCarePhase.TravelingToHouseExit =>
+                $"exit:{stage.CurrentHouseRoute!.BuildingId:N}",
+            AnimalCarePhase.Returning => "return:Farm",
+            _ => $"phase:{stage.Phase}"
+        };
+    }
+
     private void BeginProductTravel(
         ActiveAnimalCareStage stage,
         AnimalProductTargetPlan target)
@@ -515,14 +745,32 @@ internal sealed class AnimalCareContractExecutionController
         }
         if (!FarmNavigationMap.CanBeginPath(
                 stage.WorkLocation, worker, worker.TilePoint, target.Path, out string failure))
-            throw new InvalidOperationException($"Product first step is unsafe: {failure}.");
-        stage.Controller = this.CreateController(
-            stage,
-            target.Path,
-            target.InteractionTile,
-            target.FacingDirection,
-            this.OnArrivedAtWork);
-        stage.Context.Lease.AttachController(stage.Controller);
+        {
+            this.HandleTravelInterruption(
+                stage,
+                TravelInterruptionKind.FirstStepRejected,
+                target.Path,
+                failure);
+            return;
+        }
+        try
+        {
+            stage.Controller = this.CreateController(
+                stage,
+                target.Path,
+                target.InteractionTile,
+                target.FacingDirection,
+                this.OnArrivedAtWork);
+            stage.Context.Lease.AttachController(stage.Controller);
+        }
+        catch (Exception ex)
+        {
+            this.HandleTravelInterruption(
+                stage,
+                TravelInterruptionKind.ControllerSetupFailed,
+                target.Path,
+                ex.Message);
+        }
     }
 
     private void BeginProductTransfer(
@@ -735,6 +983,7 @@ internal sealed class AnimalCareContractExecutionController
         }
         if (ReferenceEquals(worker.controller, stage.Controller))
             worker.controller = null;
+        stage.RouteFailures.Reset(GetRouteFailureKey(stage));
         stage.Controller = null;
         worker.Position = FarmNavigationMap.GetAlignedCharacterPosition(destination);
         callback(worker, stage.WorkLocation);
@@ -759,6 +1008,12 @@ internal sealed class AnimalCareContractExecutionController
         };
         if (controller.pathToEndPoint is not { Count: > 0 })
             throw new InvalidOperationException($"No animal-care path to {destination}.");
+        stage.TravelWatchdog.Reset(
+            stage.Context.Lease.Worker.Position.X,
+            stage.Context.Lease.Worker.Position.Y,
+            new GridPoint(
+                stage.Context.Lease.Worker.TilePoint.X,
+                stage.Context.Lease.Worker.TilePoint.Y));
         return controller;
     }
 
@@ -787,7 +1042,9 @@ internal sealed class AnimalCareContractExecutionController
             + $"produced={producedItems}, player={stage.PlayerItems}, "
             + $"chest={stage.ChestItems}, balanced={placementBalanced}.",
             placementBalanced ? LogLevel.Debug : LogLevel.Error);
-        stage.Context.Lease.Worker.controller = null;
+        if (ReferenceEquals(stage.Context.Lease.Worker.controller, stage.Controller))
+            stage.Context.Lease.Worker.controller = null;
+        stage.Controller = null;
         this.ActiveStage = null;
         this.LastCompletion = new NamedContractCompletionState(
             stage.Context.Id.ToString("N"), stage.Context.RequestId,
@@ -823,7 +1080,8 @@ internal sealed class AnimalCareContractExecutionController
             stage.Farm,
             stage.Context.Lease.Worker,
             stage.Context.Lease.Worker.TilePoint,
-            stage.VisitedBuildingIds);
+            stage.VisitedBuildingIds,
+            stage.RouteObstacles);
         if (route is null)
             return false;
 
@@ -849,7 +1107,14 @@ internal sealed class AnimalCareContractExecutionController
                     stage.Context.Lease.Worker.TilePoint,
                     route.ExteriorPath,
                     out string failure))
-                throw new InvalidOperationException($"Animal-house first step is unsafe: {failure}.");
+            {
+                this.HandleTravelInterruption(
+                    stage,
+                    TravelInterruptionKind.FirstStepRejected,
+                    route.ExteriorPath,
+                    failure);
+                return ReferenceEquals(this.ActiveStage, stage);
+            }
             stage.Controller = this.CreateController(
                 stage,
                 route.ExteriorPath,
@@ -861,12 +1126,12 @@ internal sealed class AnimalCareContractExecutionController
         }
         catch (Exception ex)
         {
-            this.Monitor.Log(
-                $"Animal-house route {route.BuildingId:N} failed: {ex.Message}",
-                LogLevel.Warn);
-            stage.VisitedBuildingIds.Add(route.BuildingId);
-            stage.CurrentHouseRoute = null;
-            return this.TryBeginNextHouse(stage);
+            this.HandleTravelInterruption(
+                stage,
+                TravelInterruptionKind.ControllerSetupFailed,
+                route.ExteriorPath,
+                ex.Message);
+            return ReferenceEquals(this.ActiveStage, stage);
         }
     }
 
@@ -904,7 +1169,8 @@ internal sealed class AnimalCareContractExecutionController
         Stack<Point>? path = this.Planner.TryCreateReturnPath(
             stage.WorkLocation,
             stage.Context.Lease.Worker,
-            route.InteriorEntryTile);
+            route.InteriorEntryTile,
+            stage.RouteObstacles);
         if (path is null)
         {
             this.Complete(stage, false, "contract.failure.return-unreachable");
@@ -925,7 +1191,14 @@ internal sealed class AnimalCareContractExecutionController
                     stage.Context.Lease.Worker.TilePoint,
                     path,
                     out string failure))
-                throw new InvalidOperationException($"Animal-house exit step is unsafe: {failure}.");
+            {
+                this.HandleTravelInterruption(
+                    stage,
+                    TravelInterruptionKind.FirstStepRejected,
+                    path,
+                    failure);
+                return;
+            }
             stage.Controller = this.CreateController(
                 stage,
                 path,
@@ -936,8 +1209,11 @@ internal sealed class AnimalCareContractExecutionController
         }
         catch (Exception ex)
         {
-            this.Monitor.Log($"Animal-house exit failed: {ex.Message}", LogLevel.Warn);
-            this.Complete(stage, false, "contract.failure.return-unreachable");
+            this.HandleTravelInterruption(
+                stage,
+                TravelInterruptionKind.ControllerSetupFailed,
+                path,
+                ex.Message);
         }
     }
 
@@ -978,6 +1254,7 @@ internal sealed class AnimalCareContractExecutionController
         if (stage.Context.Lease.Worker.controller is null
             || ReferenceEquals(stage.Context.Lease.Worker.controller, stage.Controller))
             return false;
+        this.LogControllerConflict(stage);
         this.Complete(stage, false, "contract.failure.controller-conflict");
         return true;
     }
@@ -1016,6 +1293,9 @@ internal sealed class AnimalCareContractExecutionController
         public HashSet<Point> AttemptedTroughTiles { get; } = new();
         public HashSet<long> AttemptedAnimalIds { get; } = new();
         public HashSet<string> AttemptedProductTargets { get; } = new(StringComparer.Ordinal);
+        public TravelProgressWatchdog TravelWatchdog { get; } = new();
+        public TravelObstacleLedger RouteObstacles { get; } = new();
+        public TravelFailureLedger RouteFailures { get; } = new(MaximumRouteFailures);
         public List<NamedContractCargoState> ProducedItems { get; } = new();
         public HashSet<string> CompletedTransferIds { get; } = new(StringComparer.Ordinal);
         public AnimalCarePhase Phase { get; set; }

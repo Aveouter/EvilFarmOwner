@@ -45,11 +45,17 @@ internal sealed class AnimalProductTargetPlanner
         AnimalHouse house,
         NPC worker,
         Point startTile,
-        IReadOnlySet<string> attemptedTargets)
+        IReadOnlySet<string> attemptedTargets,
+        TravelObstacleLedger? obstacles = null)
     {
-        if (HasAutoGrabber(house)
-            || !FarmNavigationMap.TryBuild(
+        bool builtRoutes = obstacles is null
+            ? FarmNavigationMap.TryBuild(
                 house, worker, startTile, this.Monitor, out GridRouteMap? routes)
+            : FarmNavigationMap.TryBuild(
+                house, worker, startTile, this.Monitor,
+                house.NameOrUniqueName, obstacles, out routes);
+        if (HasAutoGrabber(house)
+            || !builtRoutes
             || routes is null)
             return null;
 

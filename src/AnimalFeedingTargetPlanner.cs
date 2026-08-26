@@ -25,9 +25,15 @@ internal sealed class AnimalFeedingTargetPlanner
         AnimalHouse house,
         NPC worker,
         Point startTile,
-        IReadOnlySet<Point> attemptedTiles)
+        IReadOnlySet<Point> attemptedTiles,
+        TravelObstacleLedger? obstacles = null)
     {
-        if (!FarmNavigationMap.TryBuild(house, worker, startTile, this.Monitor, out GridRouteMap? routes)
+        bool builtRoutes = obstacles is null
+            ? FarmNavigationMap.TryBuild(house, worker, startTile, this.Monitor, out GridRouteMap? routes)
+            : FarmNavigationMap.TryBuild(
+                house, worker, startTile, this.Monitor,
+                house.NameOrUniqueName, obstacles, out routes);
+        if (!builtRoutes
             || routes is null)
             return null;
         List<(Point Target, Point Interaction, int Distance)> options = new();

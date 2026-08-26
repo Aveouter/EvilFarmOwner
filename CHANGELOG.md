@@ -4,6 +4,7 @@
 
 - Added a shared primitive-only travel interruption snapshot and map-scoped tile/edge obstacle ledger for bounded route recovery across farm-work controllers.
 - Applied detailed interruption logs, map-scoped dynamic obstacle avoidance, and a localized final HUD reason to watering and harvest-target travel while preserving the existing bounded target-skip policy.
+- Added a 180-tick animal-care progress watchdog with three bounded, map-scoped replans; isolated animal/building routes are skipped, shed-exit or return failures stop safely, and a conflicting external controller is never cleared.
 
 ## 0.3.1 - 2026-08-26
 

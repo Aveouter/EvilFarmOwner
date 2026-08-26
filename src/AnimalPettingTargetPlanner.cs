@@ -71,9 +71,15 @@ internal sealed class AnimalPettingTargetPlanner
         GameLocation farm,
         NPC worker,
         Point startTile,
-        IReadOnlySet<long> attemptedAnimalIds)
+        IReadOnlySet<long> attemptedAnimalIds,
+        TravelObstacleLedger? obstacles = null)
     {
-        if (!FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
+        bool builtRoutes = obstacles is null
+            ? FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
+            : FarmNavigationMap.TryBuild(
+                farm, worker, startTile, this.Monitor,
+                farm.NameOrUniqueName, obstacles, out routes);
+        if (!builtRoutes
             || routes is null)
             return null;
 
@@ -136,9 +142,19 @@ internal sealed class AnimalPettingTargetPlanner
             .ToArray();
     }
 
-    public Stack<Point>? TryCreateReturnPath(GameLocation farm, NPC worker, Point arrivalTile)
+    public Stack<Point>? TryCreateReturnPath(
+        GameLocation farm,
+        NPC worker,
+        Point arrivalTile,
+        TravelObstacleLedger? obstacles = null)
     {
-        if (!FarmNavigationMap.TryBuild(farm, worker, worker.TilePoint, this.Monitor, out GridRouteMap? routes)
+        bool builtRoutes = obstacles is null
+            ? FarmNavigationMap.TryBuild(
+                farm, worker, worker.TilePoint, this.Monitor, out GridRouteMap? routes)
+            : FarmNavigationMap.TryBuild(
+                farm, worker, worker.TilePoint, this.Monitor,
+                farm.NameOrUniqueName, obstacles, out routes);
+        if (!builtRoutes
             || routes is null
             || !routes.TryGetPath(new GridPoint(arrivalTile.X, arrivalTile.Y), out IReadOnlyList<GridPoint> path))
             return null;
