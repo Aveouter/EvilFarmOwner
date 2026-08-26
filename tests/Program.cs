@@ -34,6 +34,7 @@ List<(string Name, Action Test)> tests = new()
     ("concurrent worker deterministic selection", TestConcurrentWorkerDeterministicSelection),
     ("concurrent worker budget selection", TestConcurrentWorkerBudgetSelection),
     ("work stages partition deterministically", TestWorkStagePartition),
+    ("workforce recovery prefers idle standby", TestWorkforceRecoveryPolicy),
     ("animal petting idempotency", TestAnimalPettingIdempotency),
     ("animal petting route ordering", TestAnimalPettingRouteOrdering),
     ("animal finite hay conservation", TestAnimalFiniteHayConservation),
@@ -756,6 +757,28 @@ static void TestWorkStagePartition()
     Equal(2, WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
         FarmWorkStageSelection.AnimalCare | FarmWorkStageSelection.StorageSorting,
         4));
+}
+
+static void TestWorkforceRecoveryPolicy()
+{
+    WorkforceStageOutcome[] outcomes =
+    {
+        new("Alex", FarmWorkStageSelection.Harvesting, Succeeded: false, NoWork: false),
+        new("Leah", FarmWorkStageSelection.Watering, Succeeded: true, NoWork: false),
+        new("Robin", FarmWorkStageSelection.Harvesting, Succeeded: false, NoWork: true)
+    };
+    WorkforceRecoveryDecision decision = WorkforceRecoveryPolicy.Select(outcomes);
+    Equal(FarmWorkStageSelection.Harvesting, decision.FailedStages);
+    Equal("Robin", decision.RecoveryWorkerId!);
+    Equal(false, WorkforceRecoveryPolicy.AreInitialOutcomesSuccessful(outcomes));
+
+    WorkforceStageOutcome[] idleOnly =
+    {
+        new("Alex", FarmWorkStageSelection.Harvesting, Succeeded: true, NoWork: false),
+        new("Robin", FarmWorkStageSelection.Harvesting, Succeeded: false, NoWork: true)
+    };
+    Equal(false, WorkforceRecoveryPolicy.Select(idleOnly).IsRequired);
+    Equal(true, WorkforceRecoveryPolicy.AreInitialOutcomesSuccessful(idleOnly));
 }
 
 static WorkforceRouteProposal Route(

@@ -118,14 +118,18 @@ internal sealed class FarmWorkContractExecutionController
             isBillable);
         ActiveFarmWorkShift shift = new(context);
         this.ActiveShift = shift;
-        if (isBillable)
-            requester.Money -= preview.MaximumAuthorizedWage;
         this.BeginNextAvailableStage(shift);
         if (this.ActiveShift is not null)
+        {
+            if (isBillable)
+            {
+                requester.Money -= preview.MaximumAuthorizedWage;
+                shift.ReservationCharged = true;
+            }
             return true;
+        }
 
         this.LastStartFailureKey ??= this.LastCompletion?.ReasonKey ?? "contract.failure.unknown";
-        this.LastCompletion = null;
         return false;
     }
 
@@ -212,7 +216,9 @@ internal sealed class FarmWorkContractExecutionController
                 shift.CurrentStage,
                 shift.CurrentPass,
                 stage.Phase),
-            ReservedGold = shift.Context.BillingPreview.MaximumAuthorizedWage,
+            ReservedGold = shift.ReservationCharged
+                ? shift.Context.BillingPreview.MaximumAuthorizedWage
+                : 0,
             StartTime = shift.Context.Lease.StartTime,
             CompletedWork = shift.StageCompletions.Sum(result => result.CompletedWork) + stage.CompletedWork
         };
@@ -380,6 +386,7 @@ internal sealed class FarmWorkContractExecutionController
             restoreResult = shift.Context.Lease.RelinquishToConflictingController();
 
         WateringContractSettlement settlement = shift.Context.IsBillable
+                && shift.ReservationCharged
             ? WateringContractSettlement.Create(
                 shift.Context.BillingPreview,
                 shift.Dispatched,
@@ -463,5 +470,6 @@ internal sealed class FarmWorkContractExecutionController
         public bool PendingSucceeded { get; set; }
         public string PendingReasonKey { get; set; } = "contract.failure.unknown";
         public int RestoreWaitTicks { get; set; }
+        public bool ReservationCharged { get; set; }
     }
 }
