@@ -2732,12 +2732,27 @@ static void TestMultiplayerRequestAuthorization()
         ModVersion: "0.1.0",
         SaveId: 445566,
         TotalDays: 12,
-        KnownPlayerIds: new HashSet<long> { playerId });
+        KnownPlayerIds: new HashSet<long> { playerId },
+        MaximumConcurrentWorkers: 4);
     ContractStartRequestMessage valid = NewMultiplayerRequest(playerId);
 
     Equal(
         ContractRequestValidationFailure.None,
         ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.WorkerNames = new[] { "Leah", "Alex", "Robin", "Linus" };
+    Equal(
+        ContractRequestValidationFailure.None,
+        ContractRequestValidator.Validate(valid, playerId, context));
+    valid.WorkerNames = new[] { "Leah", "Alex", "Robin", "Linus", "Marnie" };
+    Equal(
+        ContractRequestValidationFailure.InvalidWorker,
+        ContractRequestValidator.Validate(valid, playerId, context));
+    valid.WorkerNames = new[] { "Leah", "leah" };
+    Equal(
+        ContractRequestValidationFailure.InvalidWorker,
+        ContractRequestValidator.Validate(valid, playerId, context));
+    valid.WorkerNames = Array.Empty<string>();
 
     valid.RequestingPlayerId = 998877;
     Equal(
@@ -3411,6 +3426,7 @@ static ContractStartRequestMessage NewMultiplayerRequest(long playerId)
         RequestId = Guid.NewGuid().ToString("N"),
         RequestingPlayerId = playerId,
         WorkerName = "Leah",
+        WorkerNames = new[] { "Leah" },
         Task = NamedFarmTask.FarmWork,
         HarvestDestination = HarvestDestinationMode.ClassifiedChests
     };

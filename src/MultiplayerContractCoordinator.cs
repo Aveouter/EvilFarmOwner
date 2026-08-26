@@ -118,9 +118,32 @@ internal sealed class MultiplayerContractCoordinator
         HarvestDestinationMode destinationMode = HarvestDestinationMode.ClassifiedChests,
         string? requestId = null)
     {
+        return this.RequestStart(
+            new[] { workerInternalName },
+            task,
+            destinationMode,
+            requestId);
+    }
+
+    public bool RequestStart(
+        IEnumerable<string> workerInternalNames,
+        NamedFarmTask task,
+        HarvestDestinationMode destinationMode = HarvestDestinationMode.ClassifiedChests,
+        string? requestId = null)
+    {
         this.LastRequestFailureKey = null;
         if (!Context.IsWorldReady)
             return false;
+
+        string[] workers = workerInternalNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (workers.Length == 0)
+        {
+            this.LastRequestFailureKey = "multiplayer.reject.worker";
+            return false;
+        }
 
         if (this.PendingRequest is not null)
         {
@@ -140,7 +163,8 @@ internal sealed class MultiplayerContractCoordinator
                 ? Guid.NewGuid().ToString("N")
                 : requestId,
             RequestingPlayerId = Game1.player.UniqueMultiplayerID,
-            WorkerName = workerInternalName,
+            WorkerName = workers[0],
+            WorkerNames = workers,
             Task = task,
             HarvestDestination = destinationMode
         };
@@ -400,7 +424,8 @@ internal sealed class MultiplayerContractCoordinator
             Game1.Date.TotalDays,
             Game1.getOnlineFarmers()
                 .Select(farmer => farmer.UniqueMultiplayerID)
-                .ToHashSet());
+                .ToHashSet(),
+            this.GetHostContractSettings().MaximumConcurrentWorkers);
         ContractRequestValidationFailure validation = ContractRequestValidator.Validate(
             request,
             senderPlayerId,

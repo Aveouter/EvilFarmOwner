@@ -23,8 +23,18 @@ internal sealed class ContractStartRequestMessage
     public string RequestId { get; set; } = "";
     public long RequestingPlayerId { get; set; }
     public string WorkerName { get; set; } = "";
+    public string[] WorkerNames { get; set; } = Array.Empty<string>();
     public NamedFarmTask Task { get; set; }
     public HarvestDestinationMode HarvestDestination { get; set; }
+
+    public IReadOnlyList<string> GetWorkerNames()
+    {
+        if (this.WorkerNames is { Length: > 0 })
+            return this.WorkerNames;
+        return string.IsNullOrWhiteSpace(this.WorkerName)
+            ? Array.Empty<string>()
+            : new[] { this.WorkerName };
+    }
 }
 
 internal sealed class ContractStartResponseMessage
@@ -183,7 +193,8 @@ internal sealed record ContractProtocolContext(
     string ModVersion,
     ulong SaveId,
     int TotalDays,
-    IReadOnlySet<long> KnownPlayerIds);
+    IReadOnlySet<long> KnownPlayerIds,
+    int MaximumConcurrentWorkers = ContractSettingsPolicy.DefaultMaximumConcurrentWorkers);
 
 internal enum ContractRequestValidationFailure
 {
@@ -221,7 +232,13 @@ internal static class ContractRequestValidator
             return ContractRequestValidationFailure.UnknownPlayer;
         if (!Guid.TryParseExact(request.RequestId, "N", out _))
             return ContractRequestValidationFailure.InvalidRequestId;
-        if (string.IsNullOrWhiteSpace(request.WorkerName) || request.WorkerName.Length > 100)
+        IReadOnlyList<string> workers = request.GetWorkerNames();
+        int workerLimit = ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(
+            context.MaximumConcurrentWorkers);
+        if (workers.Count == 0
+            || workers.Count > workerLimit
+            || workers.Any(name => string.IsNullOrWhiteSpace(name) || name.Length > 100)
+            || workers.Distinct(StringComparer.OrdinalIgnoreCase).Count() != workers.Count)
             return ContractRequestValidationFailure.InvalidWorker;
         if (!Enum.IsDefined(request.Task) || request.Task != NamedFarmTask.FarmWork)
             return ContractRequestValidationFailure.InvalidTask;

@@ -14,20 +14,27 @@ internal sealed class WorkerRosterMenu : IClickableMenu
     private const int ScreenMargin = 64;
     private const int HorizontalPadding = 56;
     private const int HeaderHeight = 92;
-    private const int FooterHeight = 64;
+    private const int SingleFooterHeight = 64;
+    private const int MultiFooterHeight = 116;
     private const int RowHeight = 88;
     private const int ButtonWidth = 144;
     private const int ButtonHeight = 44;
 
     private readonly IReadOnlyList<WorkerRosterEntry> Entries;
     private readonly ITranslationHelper Translation;
-    private readonly Action<WorkerRosterEntry, int> OpenContractPreview;
+    private readonly Action<WorkerRosterEntry, int>? OpenContractPreview;
+    private readonly Action<IReadOnlyList<WorkerRosterEntry>, int>? OpenGroupPreview;
     private readonly Action? OpenRecurringContracts;
     private readonly ClickableComponent PreviousButton;
     private readonly ClickableComponent NextButton;
     private readonly ClickableComponent RecurringButton;
+    private readonly ClickableComponent AutoSelectButton;
+    private readonly ClickableComponent ReviewButton;
     private readonly List<ClickableComponent> RowButtons = new();
+    private readonly HashSet<string> SelectedWorkerNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly int PageSize;
+    private readonly int FooterHeight;
+    private readonly int MaximumSelections;
     private int CurrentPage;
 
     public WorkerRosterMenu(
@@ -36,6 +43,47 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         Action<WorkerRosterEntry, int> openContractPreview,
         Action? openRecurringContracts = null,
         int initialPage = 0)
+        : this(
+            entries,
+            translation,
+            openContractPreview,
+            openGroupPreview: null,
+            openRecurringContracts,
+            maximumSelections: 1,
+            initialPage,
+            initialSelections: null)
+    {
+    }
+
+    public WorkerRosterMenu(
+        IReadOnlyList<WorkerRosterEntry> entries,
+        ITranslationHelper translation,
+        Action<IReadOnlyList<WorkerRosterEntry>, int> openGroupPreview,
+        int maximumSelections,
+        Action? openRecurringContracts = null,
+        int initialPage = 0,
+        IEnumerable<string>? initialSelections = null)
+        : this(
+            entries,
+            translation,
+            openContractPreview: null,
+            openGroupPreview,
+            openRecurringContracts,
+            maximumSelections,
+            initialPage,
+            initialSelections)
+    {
+    }
+
+    private WorkerRosterMenu(
+        IReadOnlyList<WorkerRosterEntry> entries,
+        ITranslationHelper translation,
+        Action<WorkerRosterEntry, int>? openContractPreview,
+        Action<IReadOnlyList<WorkerRosterEntry>, int>? openGroupPreview,
+        Action? openRecurringContracts,
+        int maximumSelections,
+        int initialPage,
+        IEnumerable<string>? initialSelections)
         : base(
             GetMenuX(),
             GetMenuY(),
@@ -46,7 +94,19 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         this.Entries = entries;
         this.Translation = translation;
         this.OpenContractPreview = openContractPreview;
+        this.OpenGroupPreview = openGroupPreview;
         this.OpenRecurringContracts = openRecurringContracts;
+        this.MaximumSelections = openGroupPreview is null
+            ? 1
+            : ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(maximumSelections);
+        this.FooterHeight = openGroupPreview is null ? SingleFooterHeight : MultiFooterHeight;
+        if (initialSelections is not null)
+        {
+            HashSet<string> validNames = entries.Select(entry => entry.InternalName)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in initialSelections.Where(validNames.Contains).Take(this.MaximumSelections))
+                this.SelectedWorkerNames.Add(name);
+        }
         this.PageSize = Math.Max(1, (this.height - HeaderHeight - FooterHeight) / RowHeight);
         this.CurrentPage = Math.Clamp(initialPage, 0, this.PageCount - 1);
 
@@ -64,10 +124,19 @@ internal sealed class WorkerRosterMenu : IClickableMenu
                 220,
                 ButtonHeight),
             translation.Get("roster.recurring"));
+        int groupButtonY = this.yPositionOnScreen + this.height - this.FooterHeight + 8;
+        this.AutoSelectButton = new ClickableComponent(
+            new Rectangle(this.xPositionOnScreen + this.width / 2 - 230, groupButtonY, 220, ButtonHeight),
+            translation.Get("roster.auto-select"));
+        this.ReviewButton = new ClickableComponent(
+            new Rectangle(this.xPositionOnScreen + this.width / 2 + 10, groupButtonY, 220, ButtonHeight),
+            translation.Get("roster.review-selection"));
 
         this.PreviousButton.myID = 100;
         this.NextButton.myID = 101;
         this.RecurringButton.myID = 102;
+        this.AutoSelectButton.myID = 103;
+        this.ReviewButton.myID = 104;
         this.RebuildClickableComponents();
         this.snapToDefaultClickableComponent();
     }
@@ -80,7 +149,26 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         if (selectedRow >= 0)
         {
             Game1.playSound("smallSelect");
-            this.OpenContractPreview(this.GetEntryForRow(selectedRow), this.CurrentPage);
+            WorkerRosterEntry entry = this.GetEntryForRow(selectedRow);
+            if (this.OpenGroupPreview is null)
+                this.OpenContractPreview?.Invoke(entry, this.CurrentPage);
+            else
+                this.ToggleSelection(entry);
+            return;
+        }
+
+        if (this.OpenGroupPreview is not null && this.AutoSelectButton.containsPoint(x, y))
+        {
+            this.AutoSelect();
+            return;
+        }
+
+        if (this.OpenGroupPreview is not null
+            && this.SelectedWorkerNames.Count > 0
+            && this.ReviewButton.containsPoint(x, y))
+        {
+            Game1.playSound("smallSelect");
+            this.OpenGroupPreview(this.GetSelectedEntries(), this.CurrentPage);
             return;
         }
 
@@ -161,6 +249,21 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             new Vector2(contentX, contentY),
             Game1.textColor);
 
+        if (this.OpenGroupPreview is not null)
+        {
+            string selection = this.Translation.Get("roster.selection-summary", new
+            {
+                selected = this.SelectedWorkerNames.Count,
+                maximum = this.MaximumSelections
+            });
+            Vector2 selectionSize = Game1.smallFont.MeasureString(selection);
+            batch.DrawString(
+                Game1.smallFont,
+                selection,
+                new Vector2(contentX + contentWidth - selectionSize.X, contentY + 12),
+                Color.DimGray);
+        }
+
         int rowY = this.yPositionOnScreen + HeaderHeight;
         if (this.Entries.Count == 0)
         {
@@ -178,7 +281,14 @@ internal sealed class WorkerRosterMenu : IClickableMenu
                 ClickableComponent rowButton = this.RowButtons[rowIndex++];
                 bool selected = rowButton == this.currentlySnappedComponent
                     || rowButton.containsPoint(Game1.getMouseX(), Game1.getMouseY());
-                this.DrawRow(batch, entry, contentX, rowY, contentWidth, selected);
+                this.DrawRow(
+                    batch,
+                    entry,
+                    contentX,
+                    rowY,
+                    contentWidth,
+                    selected,
+                    this.SelectedWorkerNames.Contains(entry.InternalName));
                 rowY += RowHeight;
             }
         }
@@ -206,12 +316,24 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             this.DrawButton(batch, this.NextButton);
         if (this.OpenRecurringContracts is not null)
             this.DrawButton(batch, this.RecurringButton);
+        if (this.OpenGroupPreview is not null)
+        {
+            this.DrawButton(batch, this.AutoSelectButton);
+            this.DrawButton(batch, this.ReviewButton, this.SelectedWorkerNames.Count > 0);
+        }
 
         base.draw(batch);
         this.drawMouse(batch);
     }
 
-    private void DrawRow(SpriteBatch batch, WorkerRosterEntry entry, int x, int y, int width, bool selected)
+    private void DrawRow(
+        SpriteBatch batch,
+        WorkerRosterEntry entry,
+        int x,
+        int y,
+        int width,
+        bool hovered,
+        bool checkedWorker)
     {
         IClickableMenu.drawTextureBox(
             batch,
@@ -221,7 +343,9 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             y + 4,
             width,
             RowHeight - 8,
-            selected ? new Color(255, 245, 190) : Color.White,
+            checkedWorker
+                ? new Color(225, 245, 205)
+                : hovered ? new Color(255, 245, 190) : Color.White,
             0.8f,
             drawShadow: false);
 
@@ -247,9 +371,23 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         });
         Vector2 wageSize = Game1.smallFont.MeasureString(wage);
         batch.DrawString(Game1.smallFont, wage, new Vector2(x + width - wageSize.X - 20, y + 31), new Color(35, 110, 45));
+        if (this.OpenGroupPreview is not null)
+        {
+            string marker = checkedWorker ? "✓" : "";
+            batch.DrawString(
+                Game1.dialogueFont,
+                marker,
+                new Vector2(x + 4, y + 20),
+                new Color(35, 110, 45));
+        }
     }
 
     private void DrawButton(SpriteBatch batch, ClickableComponent button)
+    {
+        this.DrawButton(batch, button, enabled: true);
+    }
+
+    private void DrawButton(SpriteBatch batch, ClickableComponent button, bool enabled)
     {
         IClickableMenu.drawTextureBox(
             batch,
@@ -259,7 +397,7 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             button.bounds.Y,
             button.bounds.Width,
             button.bounds.Height,
-            Color.White,
+            enabled ? Color.White : Color.Gray,
             0.8f,
             drawShadow: false);
 
@@ -270,7 +408,43 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             new Vector2(
                 button.bounds.Center.X - labelSize.X / 2,
                 button.bounds.Center.Y - labelSize.Y / 2),
-            Game1.textColor);
+            enabled ? Game1.textColor : Color.DimGray);
+    }
+
+    private void ToggleSelection(WorkerRosterEntry entry)
+    {
+        if (this.SelectedWorkerNames.Remove(entry.InternalName))
+            return;
+        if (this.SelectedWorkerNames.Count >= this.MaximumSelections)
+        {
+            Game1.playSound("cancel");
+            return;
+        }
+        this.SelectedWorkerNames.Add(entry.InternalName);
+    }
+
+    private void AutoSelect()
+    {
+        IReadOnlyList<ConcurrentWorkerCandidate> selected = ConcurrentWorkerSelectionPolicy.Select(
+            this.Entries.Select(entry => new ConcurrentWorkerCandidate(
+                entry.InternalName,
+                entry.WagePreview.EfficiencyMultiplier,
+                entry.WagePreview.MaximumAuthorizedWage,
+                entry.WagePreview.FriendshipHearts)),
+            this.MaximumSelections,
+            Game1.player.Money);
+        this.SelectedWorkerNames.Clear();
+        foreach (ConcurrentWorkerCandidate candidate in selected)
+            this.SelectedWorkerNames.Add(candidate.WorkerName);
+        Game1.playSound(selected.Count > 0 ? "shwip" : "cancel");
+    }
+
+    private IReadOnlyList<WorkerRosterEntry> GetSelectedEntries()
+    {
+        return this.Entries
+            .Where(entry => this.SelectedWorkerNames.Contains(entry.InternalName))
+            .OrderBy(entry => entry.InternalName, StringComparer.Ordinal)
+            .ToArray();
     }
 
     private void ChangePage(int offset)
@@ -335,6 +509,11 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             this.allClickableComponents.Add(this.NextButton);
         if (this.OpenRecurringContracts is not null)
             this.allClickableComponents.Add(this.RecurringButton);
+        if (this.OpenGroupPreview is not null)
+        {
+            this.allClickableComponents.Add(this.AutoSelectButton);
+            this.allClickableComponents.Add(this.ReviewButton);
+        }
         if (this.upperRightCloseButton is not null)
             this.allClickableComponents.Add(this.upperRightCloseButton);
     }
