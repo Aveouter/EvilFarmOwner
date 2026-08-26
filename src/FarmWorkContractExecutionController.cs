@@ -56,25 +56,30 @@ internal sealed class FarmWorkContractExecutionController
         string requestId,
         HarvestDestinationMode harvestDestination,
         bool isBillable = true,
-        bool resumeScheduleOnRestore = true)
+        bool resumeScheduleOnRestore = true,
+        Farmer? authenticatedRequester = null)
     {
         this.LastStartFailureKey = null;
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
             return this.FailStart("contract.start.host-only");
         if (this.ActiveShift is not null)
             return this.FailStart("contract.start.already-active");
-        if (Game1.timeOfDay > LatestStartTime)
+        if (authenticatedRequester is null && Game1.timeOfDay > LatestStartTime)
             return this.FailStart("farm-work.start.too-late");
         if (!Guid.TryParseExact(requestId, "N", out _))
             return this.FailStart("multiplayer.reject.request-id");
         if (!HarvestDestinationPolicy.IsValidForTask(NamedFarmTask.FarmWork, harvestDestination))
             return this.FailStart("multiplayer.reject.destination");
 
-        Farmer? requester = Game1.GetPlayer(requestingPlayerId, onlyOnline: true);
-        if (requester is null)
+        Farmer? requester = authenticatedRequester
+            ?? Game1.GetPlayer(requestingPlayerId, onlyOnline: true);
+        if (requester is null
+            || requester.UniqueMultiplayerID != requestingPlayerId)
             return this.FailStart("multiplayer.reject.player");
         Farm farm = Game1.getFarm();
-        if (requester.currentLocation is not Farm currentFarm || !ReferenceEquals(farm, currentFarm))
+        if (authenticatedRequester is null
+            && (requester.currentLocation is not Farm currentFarm
+                || !ReferenceEquals(farm, currentFarm)))
             return this.FailStart("contract.start.must-be-on-farm");
         if (!this.WorkerRoster.TryGetWorker(
                 workerInternalName,

@@ -88,6 +88,7 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             groupId,
             requestId,
             requestingPlayerId,
+            requester,
             harvestDestination,
             settings);
         IReadOnlyList<FarmWorkStageSelection> assignments = WorkStagePartitionPolicy.Partition(
@@ -312,7 +313,8 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
                         group.RequestId,
                         group.HarvestDestination,
                         isBillable: recoveryIsBillable,
-                        resumeScheduleOnRestore: false))
+                        resumeScheduleOnRestore: false,
+                        authenticatedRequester: group.Requester))
                 {
                     group.Workers.Add(recovery);
                     this.Monitor.Log(
@@ -507,12 +509,14 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             Guid id,
             string requestId,
             long requestingPlayerId,
+            Farmer requester,
             HarvestDestinationMode harvestDestination,
             ContractSettingsSnapshot settings)
         {
             this.Id = id;
             this.RequestId = requestId;
             this.RequestingPlayerId = requestingPlayerId;
+            this.Requester = requester;
             this.HarvestDestination = harvestDestination;
             this.Settings = settings;
         }
@@ -520,6 +524,7 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         public Guid Id { get; }
         public string RequestId { get; }
         public long RequestingPlayerId { get; }
+        public Farmer Requester { get; }
         public HarvestDestinationMode HarvestDestination { get; }
         public ContractSettingsSnapshot Settings { get; }
         public List<WorkerRuntime> Workers { get; } = new();
