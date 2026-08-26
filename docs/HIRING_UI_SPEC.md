@@ -1,6 +1,6 @@
 # Hiring UI layout specification
 
-This specification describes the hiring flow implemented on the draft v0.5.0 branch. The current public release still defaults to one worker; the host may raise the draft setting to four after the live release gates pass.
+This specification describes the v0.5.0 hiring flow. The public default remains one worker, and the host may raise the simultaneous-worker setting to four.
 
 ## Shared layout
 

@@ -11,12 +11,13 @@ Every implementation starts from an issue with one `type`, `priority`, `area`, a
 - `v0.3.0` provides complete single-worker shifts, configurable wages and stages, batched lossless harvest delivery, animal care, chest sorting, and host-authoritative protocol 9 behavior.
 - `v0.3.1` is the narrow harvest-delivery hotfix: vanilla-compatible 12-slot accounting plus detailed classified-chest delivery recovery.
 - `v0.3.2` unifies route interruption diagnostics and bounded non-destructive replanning, and moves deterministic logic tests into the standalone .NET 8 Core project used by CI.
+- `v0.5.0` adds opt-in concurrent hiring for up to four workers, host-owned target and route coordination, independent settlement/recovery, and protocol schema 11.
 
-## Current development: v0.5.0 - Concurrent workers
+## Released scope: v0.5.0 - Concurrent workers
 
 Concurrent execution remains opt-in: the host-owned `MaximumConcurrentWorkers` setting accepts 1–4 and defaults to 1. A shift keeps an immutable settings snapshot, and old single-worker settings migrate to the default limit of one.
 
-Implemented on the draft feature branch:
+Implemented in the release:
 
 - manual selection and stable budget-aware automatic selection for up to four available adult NPCs;
 - host validation, immutable settings synchronization, protocol migration, and per-worker reconnect snapshots;
@@ -31,7 +32,7 @@ Automated acceptance evidence:
 
 - the standalone Core suite already records deterministic selection, partition, claims, route conflicts, one-worker route equivalence, settlement aggregation, protocol migration, restart recovery data, and reconnect serialization;
 - the production Mod builds without warnings or errors, and the current Source validation workflow passes;
-- the release verifier, package allowlist, production-command scan, and SHA-256 audit remain required when the v0.5.0 release package is produced.
+- the release verifier, package allowlist, production-command scan, and SHA-256 audit are required for the published v0.5.0 package.
 
 Maintainer acceptance decision (2026-08-27): the live 1–4 worker matrix, save/reload and reconnect scenarios, real two-process host/farmhand run, and exact-ZIP SMAPI smoke test were explicitly waived for merge without being performed. This is risk acceptance, not evidence that those scenarios passed. User-facing release notes must identify remote multiplayer and live multiworker behavior as unverified until a future recorded run supplies that evidence.
 
