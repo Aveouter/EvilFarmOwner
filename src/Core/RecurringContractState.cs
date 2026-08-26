@@ -115,6 +115,12 @@ internal static class RecurringContractPolicy
             || template.PreviousSelectedWorkerNames.Any(name => !WorkerEfficiencyProfiles.HasExplicitProfile(name))
             || template.PreviousSelectedWorkerNames.Distinct(StringComparer.OrdinalIgnoreCase).Count()
                 != template.PreviousSelectedWorkerNames.Length
+            || (template.PreviousSelectedWorkerNames.Length == 0
+                ? !string.IsNullOrWhiteSpace(template.PreviousSelectedWorkerName)
+                : !string.Equals(
+                    template.PreviousSelectedWorkerName,
+                    template.PreviousSelectedWorkerNames[0],
+                    StringComparison.OrdinalIgnoreCase))
             || !IsValid(template.LastEvaluation))
             return false;
 

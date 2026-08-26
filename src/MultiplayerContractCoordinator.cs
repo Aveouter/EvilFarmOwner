@@ -538,6 +538,12 @@ internal sealed class MultiplayerContractCoordinator
         foreach (string stale in this.CurrentHostSnapshots.Keys
                      .Where(worker => !activeWorkers.Contains(worker)).ToArray())
         {
+            ContractSnapshotMessage retired = this.CurrentHostSnapshots[stale];
+            retired.IsActive = false;
+            retired.Sequence = this.NextHostSequence(retired.ContractId);
+            retired.StateVersion = ++this.HostStateVersion;
+            if (Context.IsMultiplayer)
+                this.BroadcastMessage(retired, MultiplayerContractProtocol.SnapshotType);
             this.CurrentHostSnapshots.Remove(stale);
             this.LastHostStateSignatures.Remove(stale);
         }
@@ -752,6 +758,12 @@ internal sealed class MultiplayerContractCoordinator
 
         this.RemoteStateVersions.Commit(snapshot.StateVersion);
 
+        if (!snapshot.IsActive)
+        {
+            this.RemoteActiveSnapshots.Remove(snapshot.WorkerName);
+            return;
+        }
+
         this.RemoteActiveSnapshots.TryGetValue(snapshot.WorkerName, out ContractSnapshotMessage? previous);
         this.RemoteActiveSnapshots[snapshot.WorkerName] = snapshot;
         if (this.PendingRequest?.RequestId == snapshot.RequestId)
@@ -895,6 +907,7 @@ internal sealed class MultiplayerContractCoordinator
             || !Guid.TryParseExact(state.HostSessionId, "N", out _)
             || state.StateVersion < 0
             || state.HasActiveContract != (activeContracts.Length > 0)
+            || activeContracts.Any(snapshot => !snapshot.IsActive)
             || activeContracts.Any(snapshot => snapshot.StateVersion > state.StateVersion)
             || activeContracts.Select(snapshot => snapshot.WorkerName)
                 .Distinct(StringComparer.OrdinalIgnoreCase).Count() != activeContracts.Length

@@ -3287,6 +3287,7 @@ static void TestMultiplayerSnapshotSerialization()
     Equal("(O)24", restored.Cargo[0].QualifiedItemId);
     Equal(3, restored.Cargo[0].Stack);
     Equal("transfer-0", restored.CompletedTransferIds[0]);
+    Equal(true, restored.IsActive);
 }
 
 static void TestMultiplayerResultSerialization()

@@ -61,6 +61,7 @@ internal sealed class ContractSnapshotMessage
     public string RequestId { get; set; } = "";
     public long RequestingPlayerId { get; set; }
     public string WorkerName { get; set; } = "";
+    public bool IsActive { get; set; } = true;
     public NamedFarmTask Task { get; set; }
     public HarvestDestinationMode HarvestDestination { get; set; }
     public decimal EfficiencyMultiplier { get; set; }
