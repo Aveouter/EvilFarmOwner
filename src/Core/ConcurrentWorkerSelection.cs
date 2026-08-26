@@ -8,6 +8,17 @@ internal sealed record ConcurrentWorkerCandidate(
 
 internal static class ConcurrentWorkerSelectionPolicy
 {
+    public static IReadOnlyList<string> NormalizeManualSelection(
+        IEnumerable<string> workerNames)
+    {
+        ArgumentNullException.ThrowIfNull(workerNames);
+        return workerNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     public static IReadOnlyList<ConcurrentWorkerCandidate> Select(
         IEnumerable<ConcurrentWorkerCandidate> candidates,
         int maximumWorkers,

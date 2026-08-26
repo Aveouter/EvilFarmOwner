@@ -52,9 +52,8 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
         ContractSettingsSnapshot settings = this.GetSettings();
         if (!settings.IsValid)
             settings = ContractSettingsSnapshot.Default;
-        string[] names = workerInternalNames
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        string[] names = ConcurrentWorkerSelectionPolicy
+            .NormalizeManualSelection(workerInternalNames)
             .ToArray();
         if (names.Length == 0 || names.Length > settings.MaximumConcurrentWorkers)
             return this.FailStart("multiplayer.reject.worker-count");
@@ -80,6 +79,7 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
                 NamedFarmTask.FarmWork,
                 settings).MaximumAuthorizedWage;
         }
+        workers.Sort((left, right) => StringComparer.Ordinal.Compare(left.Name, right.Name));
         if (requester.Money < totalReservation)
             return this.FailStart("contract.start.insufficient-funds");
 

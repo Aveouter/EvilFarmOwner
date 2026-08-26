@@ -32,6 +32,7 @@ List<(string Name, Action Test)> tests = new()
     ("workforce route committed history", TestWorkforceRouteCommittedHistory),
     ("workforce route single-worker equivalence", TestWorkforceRouteSingleWorkerEquivalence),
     ("concurrent worker deterministic selection", TestConcurrentWorkerDeterministicSelection),
+    ("concurrent manual worker normalization", TestConcurrentManualWorkerNormalization),
     ("concurrent worker budget selection", TestConcurrentWorkerBudgetSelection),
     ("work stages partition deterministically", TestWorkStagePartition),
     ("workforce recovery prefers idle standby", TestWorkforceRecoveryPolicy),
@@ -701,6 +702,16 @@ static void TestConcurrentWorkerDeterministicSelection()
     Equal(string.Join(',', first), string.Join(',', second));
     Equal(1, ConcurrentWorkerSelectionPolicy.Select(candidates, 0, 5000).Count);
     Equal(4, ConcurrentWorkerSelectionPolicy.Select(candidates, 9, 5000).Count);
+}
+
+static void TestConcurrentManualWorkerNormalization()
+{
+    IReadOnlyList<string> normalized = ConcurrentWorkerSelectionPolicy.NormalizeManualSelection(
+        new[] { "Robin", "alex", "Leah", "Alex", "", "  " });
+
+    Equal("Leah,Robin,alex", string.Join(',', normalized));
+    Throws<ArgumentNullException>(() =>
+        ConcurrentWorkerSelectionPolicy.NormalizeManualSelection(null!));
 }
 
 static void TestConcurrentWorkerBudgetSelection()
