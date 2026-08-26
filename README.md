@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.2.0
+  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.3.0
 </p>
 
 <p align="center">
@@ -55,7 +55,7 @@
 
 没有工作的阶段会自动跳过。个别目标无法到达时，工人会尝试换路或跳过；安全条件失效时合同会明确停止，不会破坏农场摆设。
 
-使用分类箱时，NPC 会连续收集产物，达到 12 个独立堆叠的送货阈值后再集中前往箱子；目标已经采完或接近停止采集时间时也会立即送货。玩家背包模式仍即时交付，因为它不需要 NPC 往返。
+使用分类箱时，NPC 会连续收集产物，达到 12 个独立堆叠的送货阈值后再集中送货，并按目标箱分组，每个箱子只走访和加锁一次；目标已经采完或接近停止采集时间时也会立即送货。玩家背包模式仍即时交付，因为它不需要 NPC 往返。
 
 玩家离开农场后，NPC 仍会在农场继续工作。当前同一时间只能执行一份合同、雇佣一名工人。
 
@@ -151,7 +151,7 @@ A contract performs every currently ready stage in this order:
 
 Empty stages are skipped. The worker replans or skips isolated unreachable targets and stops explicitly when safety conditions change instead of destroying placed objects.
 
-With classified chests selected, the NPC keeps collecting until reaching a 12-stack delivery threshold, then makes a consolidated storage run. Cargo is also delivered when no target remains or the acquisition cutoff is reached. Requester-inventory delivery remains immediate because it requires no NPC round trip.
+With classified chests selected, the NPC keeps collecting until reaching a 12-stack delivery threshold, then groups cargo by destination so each chest is visited and locked once. Cargo is also delivered when no target remains or the acquisition cutoff is reached. Requester-inventory delivery remains immediate because it requires no NPC round trip.
 
 The NPC continues working on the farm when the player changes maps. Only one contract and one worker can run at a time in the current version.
 
