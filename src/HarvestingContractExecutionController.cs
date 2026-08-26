@@ -1477,47 +1477,29 @@ internal sealed class HarvestingContractExecutionController
             }
             else
             {
-                HarvestCargoEntry entry = contract.Cargo[0];
-                HarvestChestContents contents = HarvestChestRouter.GetContents(route.Chest, entry.Item);
-                bool stillMatchesCategory = HarvestChestClassification.Classify(contents).HasValue;
-                bool canFullyAccept = HarvestChestRouter.GetAcceptableCapacity(route.Chest, entry.Item)
-                    >= entry.Item.Stack;
-                if (!stillMatchesCategory || !canFullyAccept)
+                HarvestCargoEntry primary = contract.Cargo[0];
+                storageBecameUnavailable = !this.TryTransferLockedChestEntry(
+                    contract,
+                    route,
+                    primary);
+
+                HarvestChestRoutingContext? routing = this.ChestRouter.CreateRoutingContext(
+                    contract.Farm,
+                    contract.Lease.Worker,
+                    contract.Lease.Worker.TilePoint);
+                while (!storageBecameUnavailable && routing is not null)
                 {
-                    this.MarkCurrentChestAttempted(contract);
-                }
-                else
-                {
-                    int requested = entry.Item.Stack;
-                    Item? remainder = entry.Item;
-                    bool applied = contract.TransferLedger.TryApply(
-                        entry.TransferId,
-                        () => remainder = route.Chest.addItem(entry.Item));
-                    if (!applied)
-                    {
-                        contract.Cargo.RemoveAt(0);
-                    }
-                    else
-                    {
-                        int remaining = remainder?.Stack ?? 0;
-                        int delivered = HarvestTransferMath.GetDeliveredCount(requested, remaining);
-                        contract.ChestDeliveredItems += delivered;
-                        this.Monitor.Log(
-                            $"Placed harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{delivered} "
-                            + $"in chest {route.ChestTile}; remainder={remaining}.",
-                            LogLevel.Debug);
-                        if (remainder is null)
-                        {
-                            contract.Cargo.RemoveAt(0);
-                        }
-                        else
-                        {
-                            entry.Item = remainder;
-                            entry.TransferId = Guid.NewGuid().ToString("N");
-                            contract.GetAttemptedChests(entry.TransferId).Add(route.ChestTile);
-                            storageBecameUnavailable = true;
-                        }
-                    }
+                    HarvestCargoEntry? grouped = this.FindNextEntryForLockedChest(
+                        contract,
+                        route,
+                        routing);
+                    if (grouped is null)
+                        break;
+
+                    storageBecameUnavailable = !this.TryTransferLockedChestEntry(
+                        contract,
+                        route,
+                        grouped);
                 }
             }
         }
@@ -1542,6 +1524,96 @@ internal sealed class HarvestingContractExecutionController
             contract.Phase = HarvestContractPhase.WaitingForChestRelease;
             contract.PhaseTicks = 0;
         }
+    }
+
+    private HarvestCargoEntry? FindNextEntryForLockedChest(
+        ActiveHarvestContract contract,
+        HarvestChestRoute lockedRoute,
+        HarvestChestRoutingContext routing)
+    {
+        if (contract.Cargo.Count == 0)
+            return null;
+
+        HarvestCargoRouteRequest[] requests = contract.Cargo
+            .Select(entry => new HarvestCargoRouteRequest(
+                entry.TransferId,
+                entry.Item,
+                contract.GetAttemptedChests(entry.TransferId),
+                contract.GetAttemptedChestRoutes(entry.TransferId)))
+            .ToArray();
+        IReadOnlyList<HarvestCargoDestination> destinations = HarvestChestRouter.FindBestRoutes(
+                routing,
+                requests)
+            .Select(result => new HarvestCargoDestination(
+                result.TransferId,
+                new GridPoint(result.Route.ChestTile.X, result.Route.ChestTile.Y)))
+            .ToArray();
+
+        string? transferId = HarvestCargoBatchPolicy.SelectForChest(
+                destinations,
+                new GridPoint(lockedRoute.ChestTile.X, lockedRoute.ChestTile.Y))
+            .FirstOrDefault();
+        return transferId is null
+            ? null
+            : contract.Cargo.FirstOrDefault(entry => entry.TransferId == transferId);
+    }
+
+    private bool TryTransferLockedChestEntry(
+        ActiveHarvestContract contract,
+        HarvestChestRoute route,
+        HarvestCargoEntry entry)
+    {
+        HarvestChestContents contents = HarvestChestRouter.GetContents(route.Chest, entry.Item);
+        bool stillMatchesCategory = HarvestChestClassification.Classify(contents).HasValue;
+        bool canFullyAccept = HarvestChestRouter.GetAcceptableCapacity(route.Chest, entry.Item)
+            >= entry.Item.Stack;
+        if (!stillMatchesCategory || !canFullyAccept)
+        {
+            contract.GetAttemptedChests(entry.TransferId).Add(route.ChestTile);
+            return true;
+        }
+
+        int requested = entry.Item.Stack;
+        Item? remainder = entry.Item;
+        bool applied;
+        try
+        {
+            applied = contract.TransferLedger.TryApply(
+                entry.TransferId,
+                () => remainder = route.Chest.addItem(entry.Item));
+        }
+        catch (Exception ex)
+        {
+            contract.GetAttemptedChests(entry.TransferId).Add(route.ChestTile);
+            this.Monitor.Log(
+                $"Grouped harvest transfer {entry.TransferId} failed at chest {route.ChestTile}; "
+                + $"the exact remainder stays in contract cargo: {ex}",
+                LogLevel.Error);
+            return true;
+        }
+        if (!applied)
+        {
+            contract.Cargo.Remove(entry);
+            return true;
+        }
+
+        int remaining = remainder?.Stack ?? 0;
+        int delivered = HarvestTransferMath.GetDeliveredCount(requested, remaining);
+        contract.ChestDeliveredItems += delivered;
+        this.Monitor.Log(
+            $"Placed harvest cargo '{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{delivered} "
+            + $"in grouped chest batch at {route.ChestTile}; remainder={remaining}.",
+            LogLevel.Debug);
+        if (remainder is null)
+        {
+            contract.Cargo.Remove(entry);
+            return true;
+        }
+
+        entry.Item = remainder;
+        entry.TransferId = Guid.NewGuid().ToString("N");
+        contract.GetAttemptedChests(entry.TransferId).Add(route.ChestTile);
+        return false;
     }
 
     private void OnChestLockFailed(Guid contractId, HarvestChestRoute route)
