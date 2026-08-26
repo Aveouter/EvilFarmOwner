@@ -47,6 +47,19 @@ internal static class HarvestDestinationPolicy
                 : HarvestDestinationAction.StopUnavailable;
     }
 
+    public static bool CanRequesterInventoryAccept(
+        bool requesterIsOnline,
+        bool requesterIsOnMainFarm,
+        bool requesterCanAcceptCompleteStack)
+    {
+        return SelectAction(
+                HarvestDestinationMode.RequesterInventory,
+                requesterIsOnline,
+                requesterIsOnMainFarm,
+                requesterCanAcceptCompleteStack)
+            == HarvestDestinationAction.DeliverToRequester;
+    }
+
     public static int GetRetainedCount(
         int compatibleQuantityBefore,
         int compatibleQuantityAfter,

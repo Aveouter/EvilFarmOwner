@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed Crabbing Book bonus preflight so an online requester with sufficient inventory capacity remains eligible after leaving the farm, matching the contract's cross-map delivery rule.
 - Fixed requester-inventory preflight to count aggregate space across every compatible partial stack and usable empty slot for both harvest cargo and animal products.
 - Batched classified-chest harvest cargo behind a 12-stack delivery threshold, then grouped carried outputs by their live best destination so each chest is visited and locked once per batch while retaining independent lossless transfer identities.
 - Added host-authoritative wage and complete-shift preferences through Generic Mod Config Menu: base hourly wage, friendship impact, rest-day multiplier, default harvest destination, and per-stage enablement with immutable contract snapshots and multiplayer synchronization.

@@ -1130,11 +1130,15 @@ internal sealed class HarvestingContractExecutionController
             Farmer? requester = Game1.GetPlayer(
                 contract.Requester.UniqueMultiplayerID,
                 onlyOnline: true);
-            return requester is not null
-                && ReferenceEquals(requester.currentLocation, contract.Farm)
-                && RequesterInventoryCapacity.CanAcceptCompleteStack(
-                    requester,
-                    item);
+            bool requesterIsOnline = requester is not null;
+            bool requesterIsOnMainFarm = requesterIsOnline
+                && ReferenceEquals(requester!.currentLocation, contract.Farm);
+            bool canAcceptCompleteStack = requesterIsOnline
+                && RequesterInventoryCapacity.CanAcceptCompleteStack(requester!, item);
+            return HarvestDestinationPolicy.CanRequesterInventoryAccept(
+                requesterIsOnline,
+                requesterIsOnMainFarm,
+                canAcceptCompleteStack);
         }
 
         return this.ChestRouter.FindBestRoute(
