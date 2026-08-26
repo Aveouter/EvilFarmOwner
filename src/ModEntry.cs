@@ -5,6 +5,7 @@ using StardewValley;
 using StardewValley.Menus;
 using StardewValley.Network;
 using StardewValley.Objects;
+using System.Reflection;
 
 namespace EvilFarmOwner;
 
@@ -103,6 +104,10 @@ public sealed class ModEntry : Mod
             "efo_acceptance_faults",
             "Arm test-only harvest storage failures. This command is excluded from production builds.",
             this.HandleAcceptanceFaultCommand);
+        helper.ConsoleCommands.Add(
+            "efo_acceptance_click",
+            "Click the active game menu at test coordinates. This command is excluded from production builds.",
+            this.HandleAcceptanceClickCommand);
         this.Monitor.Log(
             "ACCEPTANCE TEST BUILD: harvest storage fault injection is enabled. Do not distribute this DLL.",
             LogLevel.Alert);
@@ -110,6 +115,48 @@ public sealed class ModEntry : Mod
     }
 
 #if EFO_ACCEPTANCE_FAULTS
+    private void HandleAcceptanceClickCommand(string command, string[] args)
+    {
+        if (args.Length == 1 && string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Game1.activeClickableMenu is not IClickableMenu activeMenu)
+            {
+                this.Monitor.Log("Acceptance menu status requires an active game menu.", LogLevel.Warn);
+                return;
+            }
+
+            IEnumerable<string> components = activeMenu.GetType()
+                .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .Where(field => typeof(ClickableComponent).IsAssignableFrom(field.FieldType))
+                .Select(field => (field.Name, Component: field.GetValue(activeMenu) as ClickableComponent))
+                .Where(value => value.Component is not null)
+                .Select(value => $"{value.Name}={value.Component!.bounds}");
+            this.Monitor.Log(
+                $"Acceptance menu {activeMenu.GetType().Name}: bounds=({activeMenu.xPositionOnScreen},{activeMenu.yPositionOnScreen},{activeMenu.width},{activeMenu.height}); components=[{string.Join("; ", components)}].",
+                LogLevel.Info);
+            return;
+        }
+
+        if (args.Length != 2
+            || !int.TryParse(args[0], out int x)
+            || !int.TryParse(args[1], out int y))
+        {
+            this.Monitor.Log("Usage: efo_acceptance_click status | <x> <y>", LogLevel.Info);
+            return;
+        }
+
+        if (Game1.activeClickableMenu is not IClickableMenu menu)
+        {
+            this.Monitor.Log("Acceptance menu click requires an active game menu.", LogLevel.Warn);
+            return;
+        }
+
+        menu.receiveLeftClick(x, y);
+        this.Monitor.Log(
+            $"Acceptance menu click invoked {menu.GetType().Name}.receiveLeftClick({x}, {y}).",
+            LogLevel.Debug);
+    }
+
     private void HandleAcceptanceFaultCommand(string command, string[] args)
     {
         if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))

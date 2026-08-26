@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.3.1
+  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.3.2
 </p>
 
 <p align="center">

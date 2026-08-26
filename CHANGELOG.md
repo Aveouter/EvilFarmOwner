@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.2 - 2026-08-26
 
 - Added a shared primitive-only travel interruption snapshot and map-scoped tile/edge obstacle ledger for bounded route recovery across farm-work controllers.
 - Applied detailed interruption logs, map-scoped dynamic obstacle avoidance, and a localized final HUD reason to watering and harvest-target travel while preserving the existing bounded target-skip policy.
