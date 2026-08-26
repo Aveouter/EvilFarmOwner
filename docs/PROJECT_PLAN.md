@@ -99,4 +99,4 @@ Focus:
 
 ## Current Priority
 
-The current release gate is `v0.1.0`: finish real-save watering and harvest validation, complete a real host/farmhand network test, then pass the packaging and release audit. Later milestone sections describe the historical feature sequence, not permission to defer these first-release requirements.
+`v0.1.0` has been published. The current development phase prepares safe multi-worker execution one independently testable gate at a time: deterministic route reservations, assignment-based runtime state, per-worker lease and settlement isolation, storage contention, then host/reconnect coverage. Concurrent hiring remains disabled until every runtime gate passes; the existing real host/farmhand and final visual acceptance procedures remain deferred until the maintainer schedules them.

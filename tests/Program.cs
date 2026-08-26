@@ -17,6 +17,13 @@ List<(string Name, Action Test)> tests = new()
     ("workforce claim ownership", TestWorkforceClaimOwnership),
     ("workforce final reconciliation", TestWorkforceFinalReconciliation),
     ("workforce settlement aggregation", TestWorkforceSettlementAggregation),
+    ("workforce route same-tile arbitration", TestWorkforceRouteSameTileArbitration),
+    ("workforce route opposing-edge arbitration", TestWorkforceRouteOpposingEdgeArbitration),
+    ("workforce route stable batch order", TestWorkforceRouteStableBatchOrder),
+    ("workforce route bounded wait", TestWorkforceRouteBoundedWait),
+    ("workforce route worker release", TestWorkforceRouteWorkerRelease),
+    ("workforce route committed history", TestWorkforceRouteCommittedHistory),
+    ("workforce route single-worker equivalence", TestWorkforceRouteSingleWorkerEquivalence),
     ("animal petting idempotency", TestAnimalPettingIdempotency),
     ("animal petting route ordering", TestAnimalPettingRouteOrdering),
     ("animal finite hay conservation", TestAnimalFiniteHayConservation),
@@ -370,6 +377,139 @@ static void TestWorkforceSettlementAggregation()
         new WorkerWageSettlement("Alex", 700, 600),
         new WorkerWageSettlement("Alex", 400, 300)
     }));
+}
+
+static void TestWorkforceRouteSameTileArbitration()
+{
+    DeterministicWorkforceRouteLedger ledger = new();
+    IReadOnlyList<WorkforceRouteReservationResult> results = ledger.ReserveBatch(new[]
+    {
+        Route("Leah", "shift/leah", 0, (0, 0), (1, 0)),
+        Route("Alex", "shift/alex", 0, (0, 0), (1, 0))
+    }, maximumWaitSlots: 2);
+
+    Equal("Alex", results[0].WorkerId);
+    Equal(0, results[0].WaitSlots);
+    Equal("Leah", results[1].WorkerId);
+    Equal(1, results[1].WaitSlots);
+    Equal(4, ledger.Snapshot().Count);
+}
+
+static void TestWorkforceRouteOpposingEdgeArbitration()
+{
+    DeterministicWorkforceRouteLedger ledger = new();
+    IReadOnlyList<WorkforceRouteReservationResult> results = ledger.ReserveBatch(new[]
+    {
+        Route("Alex", "shift/alex", 0, (0, 0), (1, 0)),
+        Route("Leah", "shift/leah", 0, (1, 0), (0, 0))
+    }, maximumWaitSlots: 3);
+
+    Equal(true, results.All(result => result.Accepted));
+    Equal(2, results[1].WaitSlots);
+    Equal(2, results[1].StartSlot);
+}
+
+static void TestWorkforceRouteStableBatchOrder()
+{
+    WorkforceRouteProposal[] proposals =
+    {
+        Route("Robin", "shift/robin", 3, (4, 4), (5, 4)),
+        Route("Alex", "shift/alex", 3, (4, 4), (5, 4)),
+        Route("Leah", "shift/leah", 3, (4, 4), (5, 4))
+    };
+    DeterministicWorkforceRouteLedger first = new();
+    DeterministicWorkforceRouteLedger second = new();
+    string firstResult = string.Join(",", first.ReserveBatch(proposals, 4)
+        .Select(result => $"{result.WorkerId}:{result.StartSlot}"));
+    string secondResult = string.Join(",", second.ReserveBatch(proposals.Reverse(), 4)
+        .Select(result => $"{result.WorkerId}:{result.StartSlot}"));
+
+    Equal(firstResult, secondResult);
+    Equal("Alex:3,Leah:4,Robin:5", firstResult);
+}
+
+static void TestWorkforceRouteBoundedWait()
+{
+    DeterministicWorkforceRouteLedger ledger = new();
+    IReadOnlyList<WorkforceRouteReservationResult> results = ledger.ReserveBatch(new[]
+    {
+        Route("Alex", "shift/alex", 0, (0, 0), (1, 0)),
+        Route("Leah", "shift/leah", 0, (0, 0), (1, 0))
+    }, maximumWaitSlots: 0);
+
+    Equal(true, results[0].Accepted);
+    Equal(false, results[1].Accepted);
+    Equal(WorkforceRouteReservationFailure.WaitLimitExceeded, results[1].Failure);
+    Equal(2, ledger.Snapshot().Count);
+}
+
+static void TestWorkforceRouteWorkerRelease()
+{
+    DeterministicWorkforceRouteLedger ledger = new();
+    ledger.ReserveBatch(new[]
+    {
+        Route("Alex", "shift/alex", 0, (0, 0), (1, 0), (2, 0)),
+        Route("Leah", "shift/leah", 0, (0, 1), (1, 1), (2, 1))
+    }, maximumWaitSlots: 0);
+
+    Equal(3, ledger.ReleaseUncommitted("Alex"));
+    Equal(3, ledger.Snapshot().Count);
+    Equal(true, ledger.Snapshot().All(item => item.WorkerId == "Leah"));
+    Equal(true, ledger.ReserveBatch(
+        new[] { Route("Robin", "shift/robin", 0, (0, 0), (1, 0), (2, 0)) },
+        maximumWaitSlots: 0)[0].Accepted);
+}
+
+static void TestWorkforceRouteCommittedHistory()
+{
+    DeterministicWorkforceRouteLedger ledger = new();
+    ledger.ReserveBatch(
+        new[] { Route("Alex", "shift/alex", 0, (0, 0), (1, 0), (2, 0)) },
+        maximumWaitSlots: 0);
+    ledger.AdvanceCommittedThrough(1);
+
+    Equal(1, ledger.ReleaseUncommitted("Alex"));
+    Equal(2, ledger.Snapshot().Count);
+    Equal(true, ledger.Snapshot().All(item => item.State == WorkforceRouteReservationState.Committed));
+    Equal(false, ledger.ReserveBatch(
+        new[] { Route("Leah", "shift/leah", 0, (0, 0)) },
+        maximumWaitSlots: 0)[0].Accepted);
+    Throws<ArgumentOutOfRangeException>(() => ledger.AdvanceCommittedThrough(0));
+}
+
+static void TestWorkforceRouteSingleWorkerEquivalence()
+{
+    DeterministicWorkforceRouteLedger ledger = new();
+    WorkforceRouteProposal proposal = Route(
+        "Leah",
+        "shift/leah",
+        7,
+        (2, 3),
+        (3, 3),
+        (3, 4));
+    WorkforceRouteReservationResult result = ledger.ReserveBatch(
+        new[] { proposal },
+        maximumWaitSlots: 4)[0];
+
+    Equal(true, result.Accepted);
+    Equal(7, result.StartSlot);
+    Equal(0, result.WaitSlots);
+    Equal(
+        "7:2,3|8:3,3|9:3,4",
+        string.Join("|", ledger.Snapshot().Select(item => $"{item.Slot}:{item.Tile.X},{item.Tile.Y}")));
+}
+
+static WorkforceRouteProposal Route(
+    string worker,
+    string assignment,
+    int startSlot,
+    params (int X, int Y)[] tiles)
+{
+    return new WorkforceRouteProposal(
+        worker,
+        assignment,
+        startSlot,
+        tiles.Select(tile => new WorkforceRouteTile(tile.X, tile.Y)).ToArray());
 }
 
 static void TestAnimalPettingIdempotency()
