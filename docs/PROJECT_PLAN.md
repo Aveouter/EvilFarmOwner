@@ -28,8 +28,9 @@ Implemented on the draft feature branch:
 
 Remaining release gates:
 
-- record deterministic 1–4 worker and one-worker-equivalence evidence, including failed-worker reassignment;
-- record save/reload, day end, host restart, farmhand reconnect, storage contention, and player-leaves-farm evidence;
+- the standalone Core suite already records deterministic selection, partition, claims, route conflicts, one-worker route equivalence, settlement aggregation, protocol migration, restart recovery data, and reconnect serialization;
+- record live 1–4 worker behavior and failed-worker reassignment without duplicate work or wages;
+- record live save/reload, day end, host restart, farmhand reconnect, storage contention, and player-leaves-farm behavior;
 - complete a real two-process host/farmhand acceptance run;
 - run the clean release verifier, package allowlist and command scan, SHA-256 re-download audit, and exact-ZIP SMAPI load smoke test.
 
