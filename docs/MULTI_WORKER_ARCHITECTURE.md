@@ -5,7 +5,7 @@ This document describes the concurrent worker runtime implemented on the draft v
 ## Host-owned shift snapshot
 
 - `MaximumConcurrentWorkers` accepts 1–4 and defaults to 1.
-- The effective manual and automatic selection limit is the smaller of the configured limit and the number of enabled work stages, so every hired NPC receives real work.
+- Harvesting and watering can use the full configured limit. If only animal care and storage sorting are enabled, the effective selection limit is the number of those exclusive stages, so every hired NPC receives real work.
 - The host captures wages, enabled stages, harvest destination, and the worker limit once at shift start. Recovery uses that immutable snapshot even if configuration changes during the shift.
 - Legacy schema-10 settings and recovery records migrate to the single-worker default.
 
@@ -13,7 +13,7 @@ This document describes the concurrent worker runtime implemented on the draft v
 
 - Manual selection preserves the chosen NPC set; execution order is stable by internal NPC name.
 - Automatic selection sorts by task efficiency, friendship-adjusted maximum wage, friendship hearts, then ordinal NPC name, while respecting the shared authorization budget.
-- Enabled stages are assigned in the fixed order harvesting, watering, animal care, then storage sorting. Round-robin partitioning gives every stage one owner and never assigns one stage to two initial workers.
+- Every selected worker may share harvesting and watering; the live claim ledger gives each crop/resource target one owner before travel begins. Animal care and storage sorting remain exclusive and are assigned in stable order to avoid duplicate animal mutations and chest plans.
 - A one-worker shift receives every enabled stage and remains the one-element form of the same runtime.
 
 ## Claim lifecycle
@@ -38,7 +38,7 @@ If group startup fails after one or more workers were charged, every started shi
 
 The shift owns one host-side route ledger shared by all worker controllers:
 
-- each path is expanded into movement slots and reserved before the NPC starts moving;
+- each path is expanded into map-scoped movement slots and reserved before the NPC starts moving;
 - tile conflicts and opposite traversal of the same edge are serialized;
 - the losing worker waits within a fixed budget, with its NPC movement paused;
 - intentional reservation waits do not consume route timeout or progress-watchdog budgets;
