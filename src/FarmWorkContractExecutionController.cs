@@ -17,8 +17,10 @@ internal sealed class FarmWorkContractExecutionController
     private readonly AnimalCareContractExecutionController AnimalCare;
     private readonly StorageSortContractExecutionController StorageSorting;
     private readonly Func<ContractSettingsSnapshot> GetSettings;
+    private readonly bool ShowCompletionHud;
     private ActiveFarmWorkShift? ActiveShift;
     private NamedContractCompletionState? LastCompletion;
+    private NpcWorkLease? DeferredScheduleLease;
 
     public FarmWorkContractExecutionController(
         ITranslationHelper translation,
@@ -28,7 +30,8 @@ internal sealed class FarmWorkContractExecutionController
         WateringContractExecutionController watering,
         AnimalCareContractExecutionController animalCare,
         StorageSortContractExecutionController storageSorting,
-        Func<ContractSettingsSnapshot>? getSettings = null)
+        Func<ContractSettingsSnapshot>? getSettings = null,
+        bool showCompletionHud = true)
     {
         this.Translation = translation;
         this.Monitor = monitor;
@@ -38,6 +41,7 @@ internal sealed class FarmWorkContractExecutionController
         this.AnimalCare = animalCare;
         this.StorageSorting = storageSorting;
         this.GetSettings = getSettings ?? (() => ContractSettingsSnapshot.Default);
+        this.ShowCompletionHud = showCompletionHud;
     }
 
     public bool HasActiveContract => this.ActiveShift is not null;
@@ -50,25 +54,32 @@ internal sealed class FarmWorkContractExecutionController
         long requestingPlayerId,
         string workerInternalName,
         string requestId,
-        HarvestDestinationMode harvestDestination)
+        HarvestDestinationMode harvestDestination,
+        bool isBillable = true,
+        bool resumeScheduleOnRestore = true,
+        Farmer? authenticatedRequester = null)
     {
         this.LastStartFailureKey = null;
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
             return this.FailStart("contract.start.host-only");
         if (this.ActiveShift is not null)
             return this.FailStart("contract.start.already-active");
-        if (Game1.timeOfDay > LatestStartTime)
+        if (authenticatedRequester is null && Game1.timeOfDay > LatestStartTime)
             return this.FailStart("farm-work.start.too-late");
         if (!Guid.TryParseExact(requestId, "N", out _))
             return this.FailStart("multiplayer.reject.request-id");
         if (!HarvestDestinationPolicy.IsValidForTask(NamedFarmTask.FarmWork, harvestDestination))
             return this.FailStart("multiplayer.reject.destination");
 
-        Farmer? requester = Game1.GetPlayer(requestingPlayerId, onlyOnline: true);
-        if (requester is null)
+        Farmer? requester = authenticatedRequester
+            ?? Game1.GetPlayer(requestingPlayerId, onlyOnline: true);
+        if (requester is null
+            || requester.UniqueMultiplayerID != requestingPlayerId)
             return this.FailStart("multiplayer.reject.player");
         Farm farm = Game1.getFarm();
-        if (requester.currentLocation is not Farm currentFarm || !ReferenceEquals(farm, currentFarm))
+        if (authenticatedRequester is null
+            && (requester.currentLocation is not Farm currentFarm
+                || !ReferenceEquals(farm, currentFarm)))
             return this.FailStart("contract.start.must-be-on-farm");
         if (!this.WorkerRoster.TryGetWorker(
                 workerInternalName,
@@ -88,15 +99,18 @@ internal sealed class FarmWorkContractExecutionController
             worker.Name,
             NamedFarmTask.FarmWork,
             settings);
-        if (requester.Money < preview.MaximumAuthorizedWage)
+        if (isBillable && requester.Money < preview.MaximumAuthorizedWage)
             return this.FailStart("contract.start.insufficient-funds");
         if (!NpcWorkLease.TryAcquire(
                 worker,
-                preview.MaximumAuthorizedWage,
+                isBillable ? preview.MaximumAuthorizedWage : 0,
                 this.Monitor,
-                out NpcWorkLease? lease)
+                out NpcWorkLease? lease,
+                resumeScheduleOnRestore)
             || lease is null)
             return this.FailStart("contract.start.lease-failed");
+        if (!resumeScheduleOnRestore)
+            this.DeferredScheduleLease = lease;
 
         FarmWorkShiftContext context = new(
             Guid.NewGuid(),
@@ -105,16 +119,22 @@ internal sealed class FarmWorkContractExecutionController
             lease,
             preview,
             harvestDestination,
-            settings.EnabledStages);
+            settings.EnabledStages,
+            isBillable);
         ActiveFarmWorkShift shift = new(context);
         this.ActiveShift = shift;
-        requester.Money -= preview.MaximumAuthorizedWage;
         this.BeginNextAvailableStage(shift);
         if (this.ActiveShift is not null)
+        {
+            if (isBillable)
+            {
+                requester.Money -= preview.MaximumAuthorizedWage;
+                shift.ReservationCharged = true;
+            }
             return true;
+        }
 
         this.LastStartFailureKey ??= this.LastCompletion?.ReasonKey ?? "contract.failure.unknown";
-        this.LastCompletion = null;
         return false;
     }
 
@@ -201,7 +221,9 @@ internal sealed class FarmWorkContractExecutionController
                 shift.CurrentStage,
                 shift.CurrentPass,
                 stage.Phase),
-            ReservedGold = shift.Context.BillingPreview.MaximumAuthorizedWage,
+            ReservedGold = shift.ReservationCharged
+                ? shift.Context.BillingPreview.MaximumAuthorizedWage
+                : 0,
             StartTime = shift.Context.Lease.StartTime,
             CompletedWork = shift.StageCompletions.Sum(result => result.CompletedWork) + stage.CompletedWork
         };
@@ -212,6 +234,38 @@ internal sealed class FarmWorkContractExecutionController
         NamedContractCompletionState? completion = this.LastCompletion;
         this.LastCompletion = null;
         return completion;
+    }
+
+    public string? DeferredScheduleWorkerName => this.DeferredScheduleLease?.Worker.Name;
+
+    public void ResumeDeferredSchedule()
+    {
+        this.DeferredScheduleLease?.ResumeVanillaSchedule();
+        this.DeferredScheduleLease = null;
+    }
+
+    public void Cancel(string reasonKey, bool mustFinalizeNow = true)
+    {
+        if (this.ActiveShift is not { } shift)
+            return;
+
+        switch (shift.CurrentStage)
+        {
+            case FarmWorkStage.Harvesting:
+                this.Harvesting.OnDayEnding();
+                break;
+            case FarmWorkStage.Watering:
+                this.Watering.OnDayEnding();
+                break;
+            case FarmWorkStage.AnimalCare:
+                this.AnimalCare.OnDayEnding();
+                break;
+            case FarmWorkStage.StorageSorting:
+                this.StorageSorting.OnSaving();
+                break;
+        }
+        this.CaptureCurrentStageCompletion(shift);
+        this.BeginFinalization(shift, false, reasonKey, mustFinalizeNow);
     }
 
     private void BeginNextAvailableStage(ActiveFarmWorkShift shift)
@@ -336,11 +390,14 @@ internal sealed class FarmWorkContractExecutionController
         if (action == NpcLeaseRecoveryAction.Relinquish)
             restoreResult = shift.Context.Lease.RelinquishToConflictingController();
 
-        WateringContractSettlement settlement = WateringContractSettlement.Create(
-            shift.Context.BillingPreview,
-            shift.Dispatched,
-            shift.Context.Lease.StartTime,
-            Game1.timeOfDay);
+        WateringContractSettlement settlement = shift.Context.IsBillable
+                && shift.ReservationCharged
+            ? WateringContractSettlement.Create(
+                shift.Context.BillingPreview,
+                shift.Dispatched,
+                shift.Context.Lease.StartTime,
+                Game1.timeOfDay)
+            : new WateringContractSettlement(0, 0, 0, 0);
         shift.Context.Requester.Money += settlement.RefundedGold;
         bool succeeded = shift.PendingSucceeded && restoreResult == NpcLeaseRestoreResult.Restored;
         string reasonKey = succeeded
@@ -377,18 +434,21 @@ internal sealed class FarmWorkContractExecutionController
         };
         this.ActiveShift = null;
 
-        Game1.addHUDMessage(new HUDMessage(
-            this.Translation.Get(succeeded ? "farm-work.hud.completed" : "farm-work.hud.stopped", new
-            {
-                worker = shift.Context.Lease.Worker.displayName,
-                reason = succeeded ? "" : this.Translation.Get(reasonKey),
-                stages = stages.Count(result => result.Succeeded),
-                work = stages.Sum(result => result.CompletedWork),
-                hours = settlement.BillableHours,
-                paid = settlement.ChargedGold,
-                refunded = settlement.RefundedGold
-            }),
-            succeeded ? HUDMessage.newQuest_type : HUDMessage.error_type));
+        if (this.ShowCompletionHud)
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Translation.Get(succeeded ? "farm-work.hud.completed" : "farm-work.hud.stopped", new
+                {
+                    worker = shift.Context.Lease.Worker.displayName,
+                    reason = succeeded ? "" : this.Translation.Get(reasonKey),
+                    stages = stages.Count(result => result.Succeeded),
+                    work = stages.Sum(result => result.CompletedWork),
+                    hours = settlement.BillableHours,
+                    paid = settlement.ChargedGold,
+                    refunded = settlement.RefundedGold
+                }),
+                succeeded ? HUDMessage.newQuest_type : HUDMessage.error_type));
+        }
     }
 
     private bool FailStart(string key)
@@ -415,5 +475,6 @@ internal sealed class FarmWorkContractExecutionController
         public bool PendingSucceeded { get; set; }
         public string PendingReasonKey { get; set; } = "contract.failure.unknown";
         public int RestoreWaitTicks { get; set; }
+        public bool ReservationCharged { get; set; }
     }
 }

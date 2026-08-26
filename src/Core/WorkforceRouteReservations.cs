@@ -1,6 +1,6 @@
 namespace EvilFarmOwner;
 
-internal readonly record struct WorkforceRouteTile(int X, int Y);
+internal readonly record struct WorkforceRouteTile(string Location, int X, int Y);
 
 internal sealed record WorkforceRouteProposal(
     string WorkerId,
@@ -105,6 +105,7 @@ internal sealed class DeterministicWorkforceRouteLedger
     {
         return this.TileOwners
             .OrderBy(pair => pair.Key.Slot)
+            .ThenBy(pair => pair.Key.Tile.Location, StringComparer.Ordinal)
             .ThenBy(pair => pair.Key.Tile.X)
             .ThenBy(pair => pair.Key.Tile.Y)
             .ThenBy(pair => pair.Value.WorkerId, StringComparer.Ordinal)
@@ -194,7 +195,8 @@ internal sealed class DeterministicWorkforceRouteLedger
             || string.IsNullOrWhiteSpace(proposal.AssignmentId)
             || proposal.RequestedStartSlot < 0
             || proposal.Tiles is null
-            || proposal.Tiles.Count == 0)
+            || proposal.Tiles.Count == 0
+            || proposal.Tiles.Any(tile => string.IsNullOrWhiteSpace(tile.Location)))
         {
             throw new ArgumentException(
                 "Every route requires worker and assignment IDs, a non-negative slot, and at least one tile.",

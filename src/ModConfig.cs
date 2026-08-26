@@ -23,6 +23,9 @@ internal sealed class ModConfig
 
     public bool EnableStorageSorting { get; set; } = true;
 
+    public int MaximumConcurrentWorkers { get; set; } =
+        ContractSettingsPolicy.DefaultMaximumConcurrentWorkers;
+
     public bool Normalize()
     {
         ModConfig normalized = this.CreateNormalizedCopy();
@@ -35,6 +38,7 @@ internal sealed class ModConfig
         this.EnableWatering = normalized.EnableWatering;
         this.EnableAnimalCare = normalized.EnableAnimalCare;
         this.EnableStorageSorting = normalized.EnableStorageSorting;
+        this.MaximumConcurrentWorkers = normalized.MaximumConcurrentWorkers;
         return changed;
     }
 
@@ -56,7 +60,8 @@ internal sealed class ModConfig
             normalized.FriendshipWageImpactPercent,
             (decimal)normalized.RestDayMultiplier,
             normalized.DefaultHarvestDestination,
-            stages);
+            stages,
+            normalized.MaximumConcurrentWorkers);
     }
 
     private ModConfig CreateNormalizedCopy()
@@ -75,7 +80,9 @@ internal sealed class ModConfig
             EnableHarvesting = this.EnableHarvesting,
             EnableWatering = this.EnableWatering,
             EnableAnimalCare = this.EnableAnimalCare,
-            EnableStorageSorting = this.EnableStorageSorting
+            EnableStorageSorting = this.EnableStorageSorting,
+            MaximumConcurrentWorkers = ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(
+                this.MaximumConcurrentWorkers)
         };
 
         if (!normalized.EnableHarvesting
@@ -101,6 +108,7 @@ internal sealed class ModConfig
             && this.EnableHarvesting == other.EnableHarvesting
             && this.EnableWatering == other.EnableWatering
             && this.EnableAnimalCare == other.EnableAnimalCare
-            && this.EnableStorageSorting == other.EnableStorageSorting;
+            && this.EnableStorageSorting == other.EnableStorageSorting
+            && this.MaximumConcurrentWorkers == other.MaximumConcurrentWorkers;
     }
 }

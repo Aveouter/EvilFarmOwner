@@ -136,12 +136,58 @@ internal sealed class DeterministicWorkClaimLedger
         return releasable.Length;
     }
 
+    public bool IsUncommittedOwnedBy(WorkTargetIdentity target, string workerId)
+    {
+        return this.Claims.TryGetValue(target.StableKey, out WorkClaimSnapshot? claim)
+            && claim.State == WorkClaimState.Claimed
+            && string.Equals(claim.WorkerId, workerId, StringComparison.Ordinal);
+    }
+
+    public bool Release(WorkTargetIdentity target, string workerId)
+    {
+        if (!this.Claims.TryGetValue(target.StableKey, out WorkClaimSnapshot? claim)
+            || claim.State != WorkClaimState.Claimed
+            || !string.Equals(claim.WorkerId, workerId, StringComparison.Ordinal))
+            return false;
+        return this.Claims.Remove(target.StableKey);
+    }
+
     public IReadOnlyList<WorkClaimSnapshot> Snapshot()
     {
         return this.Claims.Values
             .OrderBy(claim => claim.Target.StableKey, StringComparer.Ordinal)
             .ToArray();
     }
+}
+
+internal sealed class RuntimeWorkClaimCoordinator
+{
+    private readonly DeterministicWorkClaimLedger Ledger = new();
+
+    public bool IsAvailable(string location, int x, int y, string workerId)
+    {
+        WorkTargetIdentity target = CreateTarget(location, x, y);
+        return !this.Ledger.IsClaimed(target)
+            || this.Ledger.IsUncommittedOwnedBy(target, workerId);
+    }
+
+    public bool TryClaim(string location, int x, int y, string workerId)
+    {
+        WorkTargetIdentity target = CreateTarget(location, x, y);
+        return this.Ledger.IsUncommittedOwnedBy(target, workerId)
+            || this.Ledger.TryClaim(target, workerId);
+    }
+
+    public bool TryCommit(string location, int x, int y, string workerId) =>
+        this.Ledger.TryCommit(CreateTarget(location, x, y), workerId);
+
+    public bool Release(string location, int x, int y, string workerId) =>
+        this.Ledger.Release(CreateTarget(location, x, y), workerId);
+
+    public int ReleaseWorker(string workerId) => this.Ledger.ReleaseUncommitted(workerId);
+
+    private static WorkTargetIdentity CreateTarget(string location, int x, int y) =>
+        new("farm-resource", location, $"{x},{y}");
 }
 
 internal sealed record WorkerWageSettlement(string WorkerId, int AuthorizedGold, int ChargedGold);

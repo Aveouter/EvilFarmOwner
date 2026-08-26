@@ -16,7 +16,8 @@ internal sealed record ContractSettingsSnapshot(
     int FriendshipWageImpactPercent,
     decimal RestDayMultiplier,
     HarvestDestinationMode DefaultHarvestDestination,
-    FarmWorkStageSelection EnabledStages)
+    FarmWorkStageSelection EnabledStages,
+    int MaximumConcurrentWorkers = ContractSettingsPolicy.DefaultMaximumConcurrentWorkers)
 {
     public static ContractSettingsSnapshot Default { get; } = new(
         ContractPreviewService.BaseHourlyWage,
@@ -39,6 +40,9 @@ internal static class ContractSettingsPolicy
     public const decimal MinimumRestDayMultiplier = 1.0m;
     public const decimal MaximumRestDayMultiplier = 5.0m;
     public const decimal RestDayMultiplierStep = 0.5m;
+    public const int MinimumMaximumConcurrentWorkers = 1;
+    public const int MaximumMaximumConcurrentWorkers = 4;
+    public const int DefaultMaximumConcurrentWorkers = 1;
 
     public static bool IsValid(ContractSettingsSnapshot settings)
     {
@@ -52,7 +56,9 @@ internal static class ContractSettingsPolicy
             && IsStepAligned(settings.RestDayMultiplier, RestDayMultiplierStep)
             && Enum.IsDefined(settings.DefaultHarvestDestination)
             && settings.EnabledStages != FarmWorkStageSelection.None
-            && (settings.EnabledStages & ~FarmWorkStageSelection.All) == 0;
+            && (settings.EnabledStages & ~FarmWorkStageSelection.All) == 0
+            && settings.MaximumConcurrentWorkers is >= MinimumMaximumConcurrentWorkers
+                and <= MaximumMaximumConcurrentWorkers;
     }
 
     public static int NormalizeBaseHourlyWage(int value) => NormalizeStep(
@@ -84,6 +90,11 @@ internal static class ContractSettingsPolicy
                 ? value
                 : FarmWorkStageSelection.All;
     }
+
+    public static int NormalizeMaximumConcurrentWorkers(int value) => Math.Clamp(
+        value <= 0 ? DefaultMaximumConcurrentWorkers : value,
+        MinimumMaximumConcurrentWorkers,
+        MaximumMaximumConcurrentWorkers);
 
     private static int NormalizeStep(int value, int minimum, int maximum, int step)
     {

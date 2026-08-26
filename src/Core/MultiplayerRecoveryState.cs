@@ -24,6 +24,7 @@ internal static class MultiplayerRecoveryState
     private const int LegacyDestinationProtocolSchemaVersion = 7;
     private const int LegacyStorageSortingProtocolSchemaVersion = 8;
     private const int LegacyFarmWorkProtocolSchemaVersion = 9;
+    private const int LegacySettingsProtocolSchemaVersion = 10;
 
     public static MultiplayerRecoverySaveData Create(
         string modVersion,
@@ -140,6 +141,7 @@ internal static class MultiplayerRecoveryState
             or LegacyDestinationProtocolSchemaVersion
             or LegacyStorageSortingProtocolSchemaVersion
             or LegacyFarmWorkProtocolSchemaVersion
+            or LegacySettingsProtocolSchemaVersion
             or MultiplayerContractProtocol.SchemaVersion;
     }
 
@@ -167,6 +169,11 @@ internal static class MultiplayerRecoveryState
         ulong expectedSaveId,
         int expectedProtocolSchemaVersion)
     {
+        IReadOnlyList<string> workerNames = result?.WorkerNames is { Length: > 0 }
+            ? result.WorkerNames
+            : string.IsNullOrWhiteSpace(result?.WorkerName)
+                ? Array.Empty<string>()
+                : new[] { result.WorkerName };
         if (result is null
             || result.SchemaVersion != expectedProtocolSchemaVersion
             || result.SaveId != expectedSaveId
@@ -178,6 +185,10 @@ internal static class MultiplayerRecoveryState
             || result.RequestingPlayerId <= 0
             || string.IsNullOrWhiteSpace(result.WorkerName)
             || result.WorkerName.Length > 100
+            || workerNames.Count is < 1 or > ContractSettingsPolicy.MaximumMaximumConcurrentWorkers
+            || workerNames.Any(name => string.IsNullOrWhiteSpace(name) || name.Length > 100)
+            || workerNames.Distinct(StringComparer.OrdinalIgnoreCase).Count() != workerNames.Count
+            || !string.Equals(result.WorkerName, workerNames[0], StringComparison.OrdinalIgnoreCase)
             || !Enum.IsDefined(result.Task)
             || (result.SchemaVersion >= LegacyFarmWorkProtocolSchemaVersion
                 && result.Task != NamedFarmTask.FarmWork)
@@ -192,7 +203,7 @@ internal static class MultiplayerRecoveryState
             || result.QuarantinedItems < 0
             || result.DroppedItems < 0
             || result.BillableHours < 0
-            || result.BillableHours > ContractPreviewService.RegularShiftHours
+            || result.BillableHours > ContractPreviewService.RegularShiftHours * workerNames.Count
             || (result.Succeeded && result.BillableHours == 0)
             || result.ChargedGold < 0
             || result.RefundedGold < 0
@@ -202,7 +213,9 @@ internal static class MultiplayerRecoveryState
             || result.ProducedItems is null
             || result.CompletedTransferIds is null
             || result.CompletedTransfers is null
-            || result.SkippedTransfers is null)
+            || result.SkippedTransfers is null
+            || result.WorkerSettlements is null
+            || !AreWorkerSettlementsValid(result, workerNames))
             return false;
 
         HashSet<string> producedTransferIds = new(StringComparer.Ordinal);
@@ -238,6 +251,47 @@ internal static class MultiplayerRecoveryState
             + result.QuarantinedItems
             + result.DroppedItems;
         return producedItems == placedItems;
+    }
+
+    private static bool AreWorkerSettlementsValid(
+        ContractResultMessage result,
+        IReadOnlyList<string> workerNames)
+    {
+        if (result.WorkerSettlements.Length == 0)
+            return workerNames.Count == 1;
+        if (result.WorkerSettlements.Length != workerNames.Count
+            || result.WorkerSettlements.Select(item => item.WorkerName)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Count() != workerNames.Count)
+            return false;
+
+        foreach (ContractWorkerSettlementMessage item in result.WorkerSettlements)
+        {
+            if (!workerNames.Contains(item.WorkerName, StringComparer.OrdinalIgnoreCase)
+                || item.CompletedWork < 0
+                || item.PlayerItems < 0
+                || item.ChestItems < 0
+                || item.OverflowItems < 0
+                || item.QuarantinedItems < 0
+                || item.DroppedItems < 0
+                || item.BillableHours is < 0 or > ContractPreviewService.RegularShiftHours
+                || item.ChargedGold < 0
+                || item.RefundedGold < 0
+                || (item.Succeeded
+                    ? !string.IsNullOrWhiteSpace(item.ReasonKey)
+                    : string.IsNullOrWhiteSpace(item.ReasonKey)))
+                return false;
+        }
+
+        return result.CompletedWork == result.WorkerSettlements.Sum(item => item.CompletedWork)
+            && result.PlayerItems == result.WorkerSettlements.Sum(item => item.PlayerItems)
+            && result.ChestItems == result.WorkerSettlements.Sum(item => item.ChestItems)
+            && result.OverflowItems == result.WorkerSettlements.Sum(item => item.OverflowItems)
+            && result.QuarantinedItems == result.WorkerSettlements.Sum(item => item.QuarantinedItems)
+            && result.DroppedItems == result.WorkerSettlements.Sum(item => item.DroppedItems)
+            && result.BillableHours == result.WorkerSettlements.Sum(item => item.BillableHours)
+            && result.ChargedGold == result.WorkerSettlements.Sum(item => item.ChargedGold)
+            && result.RefundedGold == result.WorkerSettlements.Sum(item => item.RefundedGold)
+            && (!result.WorkerSettlements.All(item => item.Succeeded) || result.Succeeded);
     }
 
     private static bool AreTransferReportsValid(ContractResultMessage result)

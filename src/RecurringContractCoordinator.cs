@@ -128,9 +128,23 @@ internal sealed class RecurringContractCoordinator
                 .ToArray()
             : Array.Empty<string>();
         string[] authorizedWorkers = new[] { preferredWorkerName }.Concat(substitutes).ToArray();
-        int maximumRegularGold = authorizedWorkers.Max(name => this.GetMaximumWage(name, task, dayOfMonth: 1));
+        ContractSettingsSnapshot settings = this.GetSettings();
+        int maximumWorkers = Math.Min(
+            WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
+                settings.EnabledStages,
+                settings.MaximumConcurrentWorkers),
+            authorizedWorkers.Length);
+        int maximumRegularGold = authorizedWorkers
+            .Select(name => this.GetMaximumWage(name, task, dayOfMonth: 1))
+            .OrderByDescending(gold => gold)
+            .Take(maximumWorkers)
+            .Sum();
         int maximumRestGold = allowRestDays
-            ? authorizedWorkers.Max(name => this.GetMaximumWage(name, task, dayOfMonth: 6))
+            ? authorizedWorkers
+                .Select(name => this.GetMaximumWage(name, task, dayOfMonth: 6))
+                .OrderByDescending(gold => gold)
+                .Take(maximumWorkers)
+                .Sum()
             : 0;
 
         RecurringContractTemplateData template = new()
@@ -315,15 +329,25 @@ internal sealed class RecurringContractCoordinator
                 string.Equals(worker.Name, template.PreviousSelectedWorkerName, StringComparison.OrdinalIgnoreCase)));
         }
 
-        RecurringWorkerCandidate? selected = RecurringContractPolicy.SelectCandidate(candidates);
-        if (selected is null)
+        int maximumWorkers = WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
+            settings.EnabledStages,
+            settings.MaximumConcurrentWorkers);
+        IReadOnlyList<ConcurrentWorkerCandidate> selected = ConcurrentWorkerSelectionPolicy.Select(
+            candidates.Select(candidate => new ConcurrentWorkerCandidate(
+                candidate.WorkerName,
+                candidate.EfficiencyMultiplier,
+                candidate.MaximumAuthorizedWage,
+                candidate.FriendshipHearts)),
+            maximumWorkers,
+            Math.Min(authorizedCap, Game1.player.Money));
+        if (selected.Count == 0)
         {
             this.Skip(template, "recurring.reason.no-candidate", rejections, runId);
             return;
         }
 
         bool accepted = this.MultiplayerContracts.RequestStart(
-            selected.WorkerName,
+            selected.Select(candidate => candidate.WorkerName),
             template.Task,
             settings.DefaultHarvestDestination,
             runId);
@@ -337,22 +361,25 @@ internal sealed class RecurringContractCoordinator
             return;
         }
 
-        template.PreviousSelectedWorkerName = selected.WorkerName;
+        string[] selectedNames = selected.Select(candidate => candidate.WorkerName).ToArray();
+        template.PreviousSelectedWorkerName = selectedNames[0];
+        template.PreviousSelectedWorkerNames = selectedNames;
         template.LastEvaluation = new RecurringEvaluationData
         {
             TotalDays = Game1.Date.TotalDays,
             RunId = runId,
             Status = RecurringEvaluationStatus.Started,
-            SelectedWorkerName = selected.WorkerName,
-            AuthorizedGold = selected.MaximumAuthorizedWage,
+            SelectedWorkerName = selectedNames[0],
+            SelectedWorkerNames = selectedNames,
+            AuthorizedGold = selected.Sum(candidate => candidate.MaximumAuthorizedWage),
             Rejections = rejections.ToArray()
         };
         Game1.addHUDMessage(new HUDMessage(
             this.Translation.Get("recurring.hud.started", new
             {
-                worker = GetDisplayName(selected.WorkerName),
+                worker = string.Join(", ", selectedNames.Select(GetDisplayName)),
                 task = this.Translation.Get("contract.task.farm-work"),
-                gold = selected.MaximumAuthorizedWage
+                gold = selected.Sum(candidate => candidate.MaximumAuthorizedWage)
             }),
             HUDMessage.newQuest_type));
     }

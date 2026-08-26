@@ -2,7 +2,8 @@ namespace EvilFarmOwner;
 
 internal static class MultiplayerContractProtocol
 {
-    public const int SchemaVersion = 10;
+    public const int SchemaVersion = 11;
+    public const int SingleWorkerSchemaVersion = 10;
     public const int ProcessedRequestCapacity = 256;
     public const string StartRequestType = "Contract/StartRequest";
     public const string StartResponseType = "Contract/StartResponse";
@@ -22,8 +23,18 @@ internal sealed class ContractStartRequestMessage
     public string RequestId { get; set; } = "";
     public long RequestingPlayerId { get; set; }
     public string WorkerName { get; set; } = "";
+    public string[] WorkerNames { get; set; } = Array.Empty<string>();
     public NamedFarmTask Task { get; set; }
     public HarvestDestinationMode HarvestDestination { get; set; }
+
+    public IReadOnlyList<string> GetWorkerNames()
+    {
+        if (this.WorkerNames is { Length: > 0 })
+            return this.WorkerNames;
+        return string.IsNullOrWhiteSpace(this.WorkerName)
+            ? Array.Empty<string>()
+            : new[] { this.WorkerName };
+    }
 }
 
 internal sealed class ContractStartResponseMessage
@@ -50,6 +61,7 @@ internal sealed class ContractSnapshotMessage
     public string RequestId { get; set; } = "";
     public long RequestingPlayerId { get; set; }
     public string WorkerName { get; set; } = "";
+    public bool IsActive { get; set; } = true;
     public NamedFarmTask Task { get; set; }
     public HarvestDestinationMode HarvestDestination { get; set; }
     public decimal EfficiencyMultiplier { get; set; }
@@ -88,6 +100,7 @@ internal sealed class ContractResultMessage
     public string RequestId { get; set; } = "";
     public long RequestingPlayerId { get; set; }
     public string WorkerName { get; set; } = "";
+    public string[] WorkerNames { get; set; } = Array.Empty<string>();
     public NamedFarmTask Task { get; set; }
     public HarvestDestinationMode HarvestDestination { get; set; }
     public bool Succeeded { get; set; }
@@ -107,6 +120,24 @@ internal sealed class ContractResultMessage
         Array.Empty<ContractTransferReportMessage>();
     public ContractTransferReportMessage[] SkippedTransfers { get; set; } =
         Array.Empty<ContractTransferReportMessage>();
+    public ContractWorkerSettlementMessage[] WorkerSettlements { get; set; } =
+        Array.Empty<ContractWorkerSettlementMessage>();
+}
+
+internal sealed class ContractWorkerSettlementMessage
+{
+    public string WorkerName { get; set; } = "";
+    public bool Succeeded { get; set; }
+    public string ReasonKey { get; set; } = "";
+    public int CompletedWork { get; set; }
+    public int PlayerItems { get; set; }
+    public int ChestItems { get; set; }
+    public int OverflowItems { get; set; }
+    public int QuarantinedItems { get; set; }
+    public int DroppedItems { get; set; }
+    public int BillableHours { get; set; }
+    public int ChargedGold { get; set; }
+    public int RefundedGold { get; set; }
 }
 
 internal sealed class ContractTransferReportMessage
@@ -141,6 +172,8 @@ internal sealed class ContractSyncStateMessage
     public long StateVersion { get; set; }
     public bool HasActiveContract { get; set; }
     public ContractSnapshotMessage? ActiveContract { get; set; }
+    public ContractSnapshotMessage[] ActiveContracts { get; set; } =
+        Array.Empty<ContractSnapshotMessage>();
     public ContractResultMessage? RecentResult { get; set; }
     public ContractSettingsMessage Settings { get; set; } = new();
 }
@@ -156,16 +189,23 @@ internal sealed class ContractSettingsMessage
     public decimal RestDayMultiplier { get; set; }
     public HarvestDestinationMode DefaultHarvestDestination { get; set; }
     public FarmWorkStageSelection EnabledStages { get; set; }
+    public int MaximumConcurrentWorkers { get; set; }
 
     public bool TryGetSnapshot(out ContractSettingsSnapshot settings)
     {
+        int workerLimit = this.SchemaVersion == MultiplayerContractProtocol.SingleWorkerSchemaVersion
+            && this.MaximumConcurrentWorkers <= 0
+                ? ContractSettingsPolicy.DefaultMaximumConcurrentWorkers
+                : this.MaximumConcurrentWorkers;
         settings = new ContractSettingsSnapshot(
             this.BaseHourlyWage,
             this.FriendshipWageImpactPercent,
             this.RestDayMultiplier,
             this.DefaultHarvestDestination,
-            this.EnabledStages);
-        return this.SchemaVersion == MultiplayerContractProtocol.SchemaVersion
+            this.EnabledStages,
+            workerLimit);
+        return this.SchemaVersion is MultiplayerContractProtocol.SingleWorkerSchemaVersion
+                or MultiplayerContractProtocol.SchemaVersion
             && this.SettingsVersion >= 0
             && settings.IsValid;
     }
@@ -175,7 +215,8 @@ internal sealed record ContractProtocolContext(
     string ModVersion,
     ulong SaveId,
     int TotalDays,
-    IReadOnlySet<long> KnownPlayerIds);
+    IReadOnlySet<long> KnownPlayerIds,
+    int MaximumConcurrentWorkers = ContractSettingsPolicy.DefaultMaximumConcurrentWorkers);
 
 internal enum ContractRequestValidationFailure
 {
@@ -213,7 +254,13 @@ internal static class ContractRequestValidator
             return ContractRequestValidationFailure.UnknownPlayer;
         if (!Guid.TryParseExact(request.RequestId, "N", out _))
             return ContractRequestValidationFailure.InvalidRequestId;
-        if (string.IsNullOrWhiteSpace(request.WorkerName) || request.WorkerName.Length > 100)
+        IReadOnlyList<string> workers = request.GetWorkerNames();
+        int workerLimit = ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(
+            context.MaximumConcurrentWorkers);
+        if (workers.Count == 0
+            || workers.Count > workerLimit
+            || workers.Any(name => string.IsNullOrWhiteSpace(name) || name.Length > 100)
+            || workers.Distinct(StringComparer.OrdinalIgnoreCase).Count() != workers.Count)
             return ContractRequestValidationFailure.InvalidWorker;
         if (!Enum.IsDefined(request.Task) || request.Task != NamedFarmTask.FarmWork)
             return ContractRequestValidationFailure.InvalidTask;
@@ -515,4 +562,6 @@ internal sealed record NamedContractCompletionState(
 {
     public HarvestDestinationMode HarvestDestination { get; init; } =
         HarvestDestinationMode.ClassifiedChests;
+    public IReadOnlyList<NamedContractCompletionState> WorkerSettlements { get; init; } =
+        Array.Empty<NamedContractCompletionState>();
 }

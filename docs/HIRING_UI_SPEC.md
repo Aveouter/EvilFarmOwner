@@ -1,6 +1,6 @@
 # Hiring UI layout specification
 
-This specification keeps the hiring flow close to Stardew Valley's dialogue menus while leaving a repeatable worker-row region for future multi-worker selection. It intentionally describes presentation only; it does not enable concurrent contracts.
+This specification describes the hiring flow implemented on the draft v0.5.0 branch. The current public release still defaults to one worker; the host may raise the draft setting to four after the live release gates pass.
 
 ## Shared layout
 
@@ -15,16 +15,16 @@ This specification keeps the hiring flow close to Stardew Valley's dialogue menu
 
 ```text
 ┌ Workers for hire ───────────────────────────────┐
-│ [portrait] Leah              6 hearts   Up to 480g │
-│ [portrait] Robin             4 hearts   Up to 540g │
+│ [✓ portrait] Leah            6 hearts   Up to 480g │
+│ [  portrait] Robin           4 hearts   Up to 540g │
 │ ...                                                │
-│ Automatic work        Previous   1 / 2      Next   │
+│ Auto-select  Review shift   Previous  1 / 2  Next  │
 └────────────────────────────────────────────────────┘
 ```
 
-Only currently hireable adults appear. Hovered/controller-focused rows use a subtle vanilla selection tint; there are no availability explanations in the list.
+Only currently hireable adults appear. The top-right summary shows `Selected n / limit`. Selected rows use a pale green vanilla-style tint and check mark; hover/controller focus uses the usual parchment tint. There are no unavailable rows or availability explanations in the list.
 
-### One-worker confirmation
+### Shift confirmation
 
 ```text
 ┌ Confirm farm-work shift ────────────────────────┐
@@ -36,17 +36,19 @@ Only currently hireable adults appear. Hovered/controller-focused rows use a sub
 └────────────────────────────────────────────────────┘
 ```
 
-The worker card is a repeatable row. This reserves space for future per-worker subtotals without displaying inactive controls or promising concurrency.
+With one worker the card shows portrait, friendship, and wage. With multiple workers it shows the worker count, names, and combined authorization without adding technical scheduling text.
 
-### Future multi-worker confirmation (layout reservation only)
+### Multi-worker confirmation
 
 ```text
-│ [portrait] Leah   6 hearts                 480g max │
-│ [portrait] Robin  4 hearts                 540g max │
-│ ...                         Combined authorization │
+│ 3 workers                           Up to 1,560g │
+│ Leah · Robin · Alex                              │
+│ Work       All enabled farm jobs                 │
+│ Delivery   Classified chests                  >  │
+│ Back                                    Confirm │
 ```
 
-No current interaction adds a second worker.
+The effective selection limit is host-owned. Harvesting or watering may use the full configured limit; if only animal care and storage sorting are enabled, the UI lowers the limit so every selected worker receives a stage.
 
 ### Empty roster
 

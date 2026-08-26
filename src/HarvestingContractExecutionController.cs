@@ -43,6 +43,8 @@ internal sealed class HarvestingContractExecutionController
     private readonly HarvestTargetPlanner TargetPlanner;
     private readonly HarvestChestRouter ChestRouter;
     private readonly HarvestAcceptanceFaults AcceptanceFaults;
+    private readonly RuntimeWorkClaimCoordinator? WorkClaims;
+    private readonly RuntimeWorkforceRouteCoordinator? WorkforceRoutes;
     private ActiveHarvestContract? ActiveContract;
     private NamedContractCompletionState? LastCompletion;
     private bool HasPendingQuarantineRecovery;
@@ -52,7 +54,9 @@ internal sealed class HarvestingContractExecutionController
         ITranslationHelper translation,
         IMonitor monitor,
         WorkerRosterService workerRoster,
-        HarvestAcceptanceFaults? acceptanceFaults = null)
+        HarvestAcceptanceFaults? acceptanceFaults = null,
+        RuntimeWorkClaimCoordinator? workClaims = null,
+        RuntimeWorkforceRouteCoordinator? workforceRoutes = null)
     {
         this.Translation = translation;
         this.Monitor = monitor;
@@ -60,6 +64,8 @@ internal sealed class HarvestingContractExecutionController
         this.TargetPlanner = new HarvestTargetPlanner(monitor);
         this.ChestRouter = new HarvestChestRouter(monitor);
         this.AcceptanceFaults = acceptanceFaults ?? new HarvestAcceptanceFaults();
+        this.WorkClaims = workClaims;
+        this.WorkforceRoutes = workforceRoutes;
     }
 
     public bool HasActiveContract => this.ActiveContract is not null;
@@ -94,9 +100,14 @@ internal sealed class HarvestingContractExecutionController
 
         Farm farm = Game1.getFarm();
         NPC worker = shift.Lease.Worker;
-        HarvestPlanResult planResult = this.TargetPlanner.TryCreate(farm, worker);
+        HarvestPlanResult planResult = this.TargetPlanner.TryCreate(
+            farm,
+            worker,
+            isTargetAvailable: target => this.IsTargetAvailable(farm, worker, target));
         if (!planResult.IsSuccess || planResult.Plan is null)
             return this.FailStart(this.GetPlanFailureTranslationKey(planResult.Failure));
+        if (!this.TryClaimTarget(farm, worker, planResult.Plan.FirstTarget.TargetTile))
+            return this.FailStart("farm-work.start.no-work");
         if (shift.HarvestDestination == HarvestDestinationMode.ClassifiedChests
             && !HarvestChestRouter.HasEligibleChest(farm))
             return this.FailStart("harvest.start.no-storage-chest");
@@ -211,9 +222,14 @@ internal sealed class HarvestingContractExecutionController
             return false;
         }
 
-        HarvestPlanResult planResult = this.TargetPlanner.TryCreate(mainFarm, worker);
+        HarvestPlanResult planResult = this.TargetPlanner.TryCreate(
+            mainFarm,
+            worker,
+            isTargetAvailable: target => this.IsTargetAvailable(mainFarm, worker, target));
         if (!planResult.IsSuccess || planResult.Plan is null)
             return this.FailStart(this.GetPlanFailureTranslationKey(planResult.Failure));
+        if (!this.TryClaimTarget(mainFarm, worker, planResult.Plan.FirstTarget.TargetTile))
+            return this.FailStart("farm-work.start.no-work");
 
         if (destinationMode == HarvestDestinationMode.ClassifiedChests
             && !HarvestChestRouter.HasEligibleChest(mainFarm))
@@ -346,6 +362,12 @@ internal sealed class HarvestingContractExecutionController
             return;
         }
 
+        if (contract.Phase is HarvestContractPhase.TravelingToTarget
+                or HarvestContractPhase.TravelingToChest
+                or HarvestContractPhase.Returning
+            && this.WorkforceRoutes?.IsWaiting(contract.Lease.Worker.Name) == true)
+            return;
+
         contract.PhaseTicks++;
         switch (contract.Phase)
         {
@@ -364,6 +386,7 @@ internal sealed class HarvestingContractExecutionController
                     else
                         contract.SkippedTargets++;
                     contract.CompletedTargets.Add(contract.CurrentTarget.TargetTile);
+                    this.CommitCurrentTarget(contract);
                 }
 
                 if (contract.PhaseTicks >= contract.ActionDurationTicks)
@@ -752,6 +775,7 @@ internal sealed class HarvestingContractExecutionController
         Point skippedTarget = contract.CurrentTarget.TargetTile;
         if (contract.CompletedTargets.Add(skippedTarget))
             contract.UnreachableTargets++;
+        this.ReleaseTarget(contract, skippedTarget);
         if (decision.Action == TargetRouteFailureAction.SkipTarget)
         {
             this.Monitor.Log(
@@ -855,7 +879,8 @@ internal sealed class HarvestingContractExecutionController
         HarvestPlanResult replacement = this.TargetPlanner.TryCreate(
             contract.Farm,
             worker,
-            contract.FailedArrivalSides);
+            contract.FailedArrivalSides,
+            target => this.IsTargetAvailable(contract.Farm, worker, target));
         if (!replacement.IsSuccess || replacement.Plan is null)
         {
             this.Monitor.Log(
@@ -874,6 +899,8 @@ internal sealed class HarvestingContractExecutionController
         try
         {
             HarvestWorkPlan nextPlan = replacement.Plan;
+            if (!this.TryClaimTarget(contract.Farm, worker, nextPlan.FirstTarget.TargetTile))
+                throw new InvalidOperationException("Fallback harvest target was claimed by another worker.");
             contract.Plan = nextPlan;
             contract.CurrentTarget = nextPlan.FirstTarget;
             contract.ActionApplied = false;
@@ -1785,7 +1812,8 @@ internal sealed class HarvestingContractExecutionController
             contract.Plan.ArrivalTile,
             contract.CompletedTargets,
             contract.FailedEdges,
-            contract.TargetObstacles);
+            contract.TargetObstacles,
+            target => this.IsTargetAvailable(contract.Farm, contract.Lease.Worker, target));
         if (!next.IsSuccess || next.Target is null)
         {
             if (next.Failure == HarvestPlanFailure.NoReachableTarget)
@@ -1810,6 +1838,14 @@ internal sealed class HarvestingContractExecutionController
 
         try
         {
+            if (!this.TryClaimTarget(
+                    contract.Farm,
+                    contract.Lease.Worker,
+                    next.Target.TargetTile))
+            {
+                this.BeginNextOrReturn(contract, allowHarvestWithCargo);
+                return;
+            }
             contract.CurrentTarget = next.Target;
             contract.ActionApplied = false;
             contract.Phase = HarvestContractPhase.TravelingToTarget;
@@ -1969,6 +2005,8 @@ internal sealed class HarvestingContractExecutionController
 
         if (controller.pathToEndPoint is not { Count: > 0 })
             throw new InvalidOperationException($"No path to {destination}.");
+        if (this.WorkforceRoutes?.TryReserve(contract.Lease, controller.pathToEndPoint) == false)
+            throw new InvalidOperationException("The shared workforce route could not be reserved.");
 
         return controller;
     }
@@ -1984,6 +2022,8 @@ internal sealed class HarvestingContractExecutionController
 
         if (!contract.FinalizationPrepared)
         {
+            this.WorkClaims?.ReleaseWorker(contract.Lease.Worker.Name);
+            this.WorkforceRoutes?.ReleaseWorker(contract.Lease.Worker.Name);
             this.ReleaseCurrentChestLock(contract);
             if (contract.Cargo.Count > 0 && contract.Phase != HarvestContractPhase.QuarantiningCargo)
                 this.PersistOrDropCargo(contract);
@@ -2033,6 +2073,39 @@ internal sealed class HarvestingContractExecutionController
         }
 
         this.ContinueFinalization(contract, mustFinalizeNow);
+    }
+
+    private bool IsTargetAvailable(Farm farm, NPC worker, Point target) =>
+        this.WorkClaims?.IsAvailable(
+            farm.NameOrUniqueName,
+            target.X,
+            target.Y,
+            worker.Name) != false;
+
+    private bool TryClaimTarget(Farm farm, NPC worker, Point target) =>
+        this.WorkClaims?.TryClaim(
+            farm.NameOrUniqueName,
+            target.X,
+            target.Y,
+            worker.Name) != false;
+
+    private void CommitCurrentTarget(ActiveHarvestContract contract)
+    {
+        Point target = contract.CurrentTarget.TargetTile;
+        this.WorkClaims?.TryCommit(
+            contract.Farm.NameOrUniqueName,
+            target.X,
+            target.Y,
+            contract.Lease.Worker.Name);
+    }
+
+    private void ReleaseTarget(ActiveHarvestContract contract, Point target)
+    {
+        this.WorkClaims?.Release(
+            contract.Farm.NameOrUniqueName,
+            target.X,
+            target.Y,
+            contract.Lease.Worker.Name);
     }
 
     private void CompleteManagedStage(ActiveHarvestContract contract)

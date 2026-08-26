@@ -19,7 +19,7 @@ public sealed class ModEntry : Mod
     private AnimalCareContractExecutionController? AnimalCareContracts;
     private StorageSortRecoveryManager? StorageSortRecovery;
     private StorageSortContractExecutionController? StorageSortContracts;
-    private FarmWorkContractExecutionController? FarmWorkContracts;
+    private ConcurrentFarmWorkContractExecutionController? FarmWorkContracts;
     private MultiplayerContractCoordinator? MultiplayerContracts;
     private RecurringContractCoordinator? RecurringContracts;
     private readonly HarvestAcceptanceFaults AcceptanceFaults = new();
@@ -51,14 +51,12 @@ public sealed class ModEntry : Mod
             this.Monitor,
             this.WorkerRoster,
             this.StorageSortRecovery);
-        this.FarmWorkContracts = new FarmWorkContractExecutionController(
+        this.FarmWorkContracts = new ConcurrentFarmWorkContractExecutionController(
             helper.Translation,
             this.Monitor,
             this.WorkerRoster,
-            this.HarvestingContracts,
-            this.WateringContracts,
-            this.AnimalCareContracts,
-            this.StorageSortContracts,
+            this.StorageSortRecovery,
+            this.AcceptanceFaults,
             () => this.Config.CreateSnapshot());
         this.MultiplayerContracts = new MultiplayerContractCoordinator(
             helper,
@@ -266,7 +264,7 @@ public sealed class ModEntry : Mod
         this.OpenWorkerRoster();
     }
 
-    private void OpenWorkerRoster(int initialPage = 0)
+    private void OpenWorkerRoster(int initialPage = 0, IEnumerable<string>? initialSelections = null)
     {
         if (!Context.IsWorldReady || this.WorkerRoster is null)
         {
@@ -290,15 +288,36 @@ public sealed class ModEntry : Mod
             return;
         }
 
+        IReadOnlyList<WorkerRosterEntry> roster = this.WorkerRoster.GetRoster();
+        ContractSettingsSnapshot settings = this.GetEffectiveContractSettings();
+        int selectableWorkers = WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
+            settings.EnabledStages,
+            settings.MaximumConcurrentWorkers);
+        if (selectableWorkers <= 1)
+        {
+            Game1.activeClickableMenu = new WorkerRosterMenu(
+                roster,
+                this.Helper.Translation,
+                (worker, page) => this.OpenWorkContractPreview(
+                    worker,
+                    page,
+                    NamedFarmTask.FarmWork),
+                Context.IsMainPlayer ? this.OpenRecurringContractMenu : null,
+                initialPage);
+            return;
+        }
+
         Game1.activeClickableMenu = new WorkerRosterMenu(
-            this.WorkerRoster.GetRoster(),
+            roster,
             this.Helper.Translation,
-            (worker, page) => this.OpenWorkContractPreview(
-                worker,
+            (workers, page) => this.OpenWorkContractPreview(
+                workers,
                 page,
                 NamedFarmTask.FarmWork),
+            selectableWorkers,
             Context.IsMainPlayer ? this.OpenRecurringContractMenu : null,
-            initialPage);
+            initialPage,
+            initialSelections);
     }
 
     private void OpenWorkContractPreview(
@@ -306,27 +325,39 @@ public sealed class ModEntry : Mod
         int rosterPage,
         NamedFarmTask task)
     {
+        this.OpenWorkContractPreview(new[] { worker }, rosterPage, task);
+    }
+
+    private void OpenWorkContractPreview(
+        IReadOnlyList<WorkerRosterEntry> workers,
+        int rosterPage,
+        NamedFarmTask task)
+    {
         if (!Context.IsWorldReady
-            || worker.Availability.State != WorkerAvailabilityState.EligibleForPreview)
+            || workers.Count == 0
+            || workers.Any(worker => worker.Availability.State != WorkerAvailabilityState.EligibleForPreview))
             return;
 
-        int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(worker.InternalName);
+        WorkerRosterEntry firstWorker = workers[0];
+        int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(firstWorker.InternalName);
         ContractSettingsSnapshot settings = this.GetEffectiveContractSettings();
         WorkContractPreview preview = ContractPreviewService.Create(
             friendshipHearts,
             Game1.dayOfMonth,
-            worker.InternalName,
+            firstWorker.InternalName,
             task,
             settings);
 
         Game1.activeClickableMenu = new WorkContractPreviewMenu(
-            worker,
+            workers,
             preview,
             task,
             this.Helper.Translation,
-            () => this.OpenWorkerRoster(rosterPage),
+            () => this.OpenWorkerRoster(
+                rosterPage,
+                workers.Select(worker => worker.InternalName)),
             destinationMode => this.TryStartNamedContract(
-                worker.InternalName,
+                workers.Select(worker => worker.InternalName).ToArray(),
                 task,
                 destinationMode),
             settings.DefaultHarvestDestination);
@@ -412,8 +443,16 @@ public sealed class ModEntry : Mod
         NamedFarmTask task,
         HarvestDestinationMode destinationMode)
     {
+        return this.TryStartNamedContract(new[] { workerInternalName }, task, destinationMode);
+    }
+
+    private bool TryStartNamedContract(
+        IReadOnlyList<string> workerInternalNames,
+        NamedFarmTask task,
+        HarvestDestinationMode destinationMode)
+    {
         return this.MultiplayerContracts?.RequestStart(
-            workerInternalName,
+            workerInternalNames,
             task,
             destinationMode) == true;
     }
@@ -651,10 +690,15 @@ public sealed class ModEntry : Mod
         string items = NamedContractReportFormatter.FormatItems(
             result.ProducedItems,
             this.Helper.Translation.Get("report.items.none"));
+        IReadOnlyList<string> workerNames = result.WorkerNames.Length > 0
+            ? result.WorkerNames
+            : new[] { result.WorkerName };
+        string workers = string.Join(", ", workerNames.Select(name =>
+            Game1.getCharacterFromName(name)?.displayName ?? name));
 
         this.Monitor.Log(this.Helper.Translation.Get("report.header", new
         {
-            worker = result.WorkerName,
+            worker = workers,
             task,
             status
         }), LogLevel.Info);

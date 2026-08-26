@@ -18,6 +18,7 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
     private const int ButtonHeight = 52;
 
     private readonly WorkerRosterEntry Worker;
+    private readonly IReadOnlyList<WorkerRosterEntry> Workers;
     private readonly WorkContractPreview Preview;
     private readonly NamedFarmTask Task;
     private readonly ITranslationHelper Translation;
@@ -36,9 +37,31 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         Action returnToRoster,
         Func<HarvestDestinationMode, bool> confirmContract,
         HarvestDestinationMode defaultDestination = HarvestDestinationMode.ClassifiedChests)
+        : this(
+            new[] { worker },
+            preview,
+            task,
+            translation,
+            returnToRoster,
+            confirmContract,
+            defaultDestination)
+    {
+    }
+
+    public WorkContractPreviewMenu(
+        IReadOnlyList<WorkerRosterEntry> workers,
+        WorkContractPreview preview,
+        NamedFarmTask task,
+        ITranslationHelper translation,
+        Action returnToRoster,
+        Func<HarvestDestinationMode, bool> confirmContract,
+        HarvestDestinationMode defaultDestination = HarvestDestinationMode.ClassifiedChests)
         : base(GetMenuX(), GetMenuY(), GetMenuWidth(), GetMenuHeight(), showUpperRightCloseButton: true)
     {
-        this.Worker = worker;
+        if (workers.Count == 0)
+            throw new ArgumentException("At least one worker is required.", nameof(workers));
+        this.Workers = workers.ToArray();
+        this.Worker = this.Workers[0];
         this.Preview = preview;
         this.Task = task;
         this.Translation = translation;
@@ -85,7 +108,9 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         this.snapToDefaultClickableComponent();
     }
 
-    private bool CanAfford => Game1.player.Money >= this.Preview.MaximumAuthorizedWage;
+    private int MaximumAuthorizedWage => this.Workers.Sum(worker => worker.WagePreview.MaximumAuthorizedWage);
+
+    private bool CanAfford => Game1.player.Money >= this.MaximumAuthorizedWage;
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
@@ -162,7 +187,7 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         }
         this.DrawSummaryRow(batch, x, y, width, "contract.day", this.GetDayText());
 
-        string total = this.Translation.Get("contract.authorization.total", new { gold = this.Preview.MaximumAuthorizedWage });
+        string total = this.Translation.Get("contract.authorization.total", new { gold = this.MaximumAuthorizedWage });
         Vector2 totalSize = Game1.smallFont.MeasureString(total);
         batch.DrawString(Game1.smallFont, total, new Vector2(x + width - totalSize.X, y), new Color(35, 110, 45));
 
@@ -170,7 +195,7 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         {
             string warning = Game1.parseText(this.Translation.Get("contract.warning.insufficient-funds", new
             {
-                gold = this.Preview.MaximumAuthorizedWage
+                gold = this.MaximumAuthorizedWage
             }), Game1.smallFont, width);
             batch.DrawString(Game1.smallFont, warning, new Vector2(x, this.BackButton.bounds.Y - 40), new Color(150, 45, 40));
         }
@@ -186,12 +211,19 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         IClickableMenu.drawTextureBox(batch, Game1.menuTexture, new Rectangle(0, 256, 60, 60), x, y, width, 96, Color.White, 0.8f, false);
         int portraitSize = Math.Min(64, Math.Min(this.Worker.Portrait.Width, this.Worker.Portrait.Height));
         batch.Draw(this.Worker.Portrait, new Rectangle(x + 16, y + 16, 64, 64), new Rectangle(0, 0, portraitSize, portraitSize), Color.White);
-        batch.DrawString(Game1.dialogueFont, this.Worker.DisplayName, new Vector2(x + 100, y + 12), Game1.textColor);
-        batch.DrawString(Game1.smallFont, this.Translation.Get("roster.worker.friendship", new
-        {
-            hearts = this.Preview.FriendshipHearts
-        }), new Vector2(x + 102, y + 58), Color.DimGray);
-        string wage = this.Translation.Get("contract.worker.subtotal", new { gold = this.Preview.MaximumAuthorizedWage });
+        string workerTitle = this.Workers.Count == 1
+            ? this.Worker.DisplayName
+            : this.Translation.Get("contract.workers.title", new { count = this.Workers.Count });
+        batch.DrawString(Game1.dialogueFont, workerTitle, new Vector2(x + 100, y + 12), Game1.textColor);
+        string details = this.Workers.Count == 1
+            ? this.Translation.Get("roster.worker.friendship", new { hearts = this.Preview.FriendshipHearts })
+            : string.Join(" · ", this.Workers.Select(worker => worker.DisplayName));
+        batch.DrawString(
+            Game1.smallFont,
+            Game1.parseText(details, Game1.smallFont, width - 310),
+            new Vector2(x + 102, y + 58),
+            Color.DimGray);
+        string wage = this.Translation.Get("contract.worker.subtotal", new { gold = this.MaximumAuthorizedWage });
         Vector2 wageSize = Game1.smallFont.MeasureString(wage);
         batch.DrawString(Game1.smallFont, wage, new Vector2(x + width - wageSize.X - 20, y + 38), new Color(35, 110, 45));
     }

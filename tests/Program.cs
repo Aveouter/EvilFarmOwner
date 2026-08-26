@@ -19,15 +19,23 @@ List<(string Name, Action Test)> tests = new()
     ("farm-work stage order", TestFarmWorkStageOrder),
     ("deterministic workforce partition", TestDeterministicWorkforcePartition),
     ("workforce claim ownership", TestWorkforceClaimOwnership),
+    ("runtime work claims coordinate shared tiles", TestRuntimeWorkClaims),
     ("workforce final reconciliation", TestWorkforceFinalReconciliation),
     ("workforce settlement aggregation", TestWorkforceSettlementAggregation),
+    ("group transfer report normalization", TestGroupTransferReportNormalization),
     ("workforce route same-tile arbitration", TestWorkforceRouteSameTileArbitration),
+    ("workforce route map isolation", TestWorkforceRouteMapIsolation),
     ("workforce route opposing-edge arbitration", TestWorkforceRouteOpposingEdgeArbitration),
     ("workforce route stable batch order", TestWorkforceRouteStableBatchOrder),
     ("workforce route bounded wait", TestWorkforceRouteBoundedWait),
     ("workforce route worker release", TestWorkforceRouteWorkerRelease),
     ("workforce route committed history", TestWorkforceRouteCommittedHistory),
     ("workforce route single-worker equivalence", TestWorkforceRouteSingleWorkerEquivalence),
+    ("concurrent worker deterministic selection", TestConcurrentWorkerDeterministicSelection),
+    ("concurrent manual worker normalization", TestConcurrentManualWorkerNormalization),
+    ("concurrent worker budget selection", TestConcurrentWorkerBudgetSelection),
+    ("work stages partition deterministically", TestWorkStagePartition),
+    ("workforce recovery prefers idle standby", TestWorkforceRecoveryPolicy),
     ("animal petting idempotency", TestAnimalPettingIdempotency),
     ("animal petting route ordering", TestAnimalPettingRouteOrdering),
     ("animal finite hay conservation", TestAnimalFiniteHayConservation),
@@ -123,7 +131,9 @@ List<(string Name, Action Test)> tests = new()
     ("multiplayer stale snapshot rejection", TestMultiplayerStaleSnapshotRejection),
     ("multiplayer stale sync-state rejection", TestMultiplayerStaleSyncStateRejection),
     ("multiplayer snapshot serialization", TestMultiplayerSnapshotSerialization),
+    ("multiplayer snapshot validation", TestMultiplayerSnapshotValidation),
     ("multiplayer result serialization", TestMultiplayerResultSerialization),
+    ("multiplayer group settlement validation", TestMultiplayerGroupSettlementValidation),
     ("multiplayer storage result validation", TestMultiplayerStorageResultValidation),
     ("named contract report grouping", TestNamedContractReportGrouping)
 };
@@ -211,6 +221,10 @@ static void TestContractSettingsNormalization()
         (FarmWorkStageSelection)128));
     Equal(FarmWorkStageSelection.Watering, ContractSettingsPolicy.NormalizeEnabledStages(
         FarmWorkStageSelection.Watering));
+    Equal(1, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(0));
+    Equal(1, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(-5));
+    Equal(3, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(3));
+    Equal(4, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(9));
 }
 
 static void TestConfiguredFarmWorkStages()
@@ -236,10 +250,12 @@ static void TestMultiplayerContractSettingsValidation()
         FriendshipWageImpactPercent = 10,
         RestDayMultiplier = 2m,
         DefaultHarvestDestination = HarvestDestinationMode.RequesterInventory,
-        EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare
+        EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare,
+        MaximumConcurrentWorkers = 3
     };
     Equal(true, message.TryGetSnapshot(out ContractSettingsSnapshot valid));
     Equal(150, valid.BaseHourlyWage);
+    Equal(3, valid.MaximumConcurrentWorkers);
     Equal(FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare, valid.EnabledStages);
 
     message.EnabledStages = FarmWorkStageSelection.None;
@@ -248,6 +264,11 @@ static void TestMultiplayerContractSettingsValidation()
     message.BaseHourlyWage = 151;
     Equal(false, message.TryGetSnapshot(out _));
     message.BaseHourlyWage = 150;
+    message.MaximumConcurrentWorkers = 0;
+    Equal(false, message.TryGetSnapshot(out _));
+    message.SchemaVersion = MultiplayerContractProtocol.SingleWorkerSchemaVersion;
+    Equal(true, message.TryGetSnapshot(out ContractSettingsSnapshot migrated));
+    Equal(1, migrated.MaximumConcurrentWorkers);
     message.SchemaVersion--;
     Equal(false, message.TryGetSnapshot(out _));
 }
@@ -434,6 +455,23 @@ static void TestWorkforceClaimOwnership()
     Equal(true, ledger.TryClaim(second, "Leah"));
 }
 
+static void TestRuntimeWorkClaims()
+{
+    RuntimeWorkClaimCoordinator claims = new();
+    Equal(true, claims.IsAvailable("Farm", 10, 12, "Alex"));
+    Equal(true, claims.TryClaim("Farm", 10, 12, "Alex"));
+    Equal(true, claims.IsAvailable("Farm", 10, 12, "Alex"));
+    Equal(false, claims.IsAvailable("Farm", 10, 12, "Leah"));
+    Equal(false, claims.TryClaim("Farm", 10, 12, "Leah"));
+    Equal(true, claims.Release("Farm", 10, 12, "Alex"));
+    Equal(true, claims.TryClaim("Farm", 10, 12, "Leah"));
+    Equal(true, claims.TryCommit("Farm", 10, 12, "Leah"));
+    Equal(false, claims.IsAvailable("Farm", 10, 12, "Leah"));
+    Equal(false, claims.TryClaim("Farm", 10, 12, "Leah"));
+    Equal(false, claims.Release("Farm", 10, 12, "Leah"));
+    Equal(0, claims.ReleaseWorker("Leah"));
+}
+
 static void TestWorkforceFinalReconciliation()
 {
     WorkTargetIdentity committed = new("Harvest", "Farm", "crop-1");
@@ -475,6 +513,39 @@ static void TestWorkforceSettlementAggregation()
     }));
 }
 
+static void TestGroupTransferReportNormalization()
+{
+    NamedContractTransferState first = NewTransfer(sequence: 1, sourceX: 1);
+    NamedContractTransferState recovery = NewTransfer(sequence: 1, sourceX: 2);
+    NamedContractTransferState remaining = NewTransfer(sequence: 2, sourceX: 3);
+
+    GroupTransferReportSet recovered = GroupTransferReportPolicy.Create(
+        new[] { first, recovery },
+        new[] { remaining },
+        groupSucceeded: true);
+    Equal("1,2", string.Join(',', recovered.Completed.Select(item => item.Sequence)));
+    Equal(0, recovered.Skipped.Count);
+
+    GroupTransferReportSet failed = GroupTransferReportPolicy.Create(
+        new[] { first, recovery },
+        new[] { remaining },
+        groupSucceeded: false);
+    Equal("1,2", string.Join(',', failed.Completed.Select(item => item.Sequence)));
+    Equal(3, failed.Skipped[0].Sequence);
+}
+
+static NamedContractTransferState NewTransfer(int sequence, int sourceX) => new(
+    sequence,
+    "(O)24",
+    "Parsnip",
+    -75,
+    0,
+    1,
+    sourceX,
+    1,
+    10,
+    10);
+
 static void TestWorkforceRouteSameTileArbitration()
 {
     DeterministicWorkforceRouteLedger ledger = new();
@@ -489,6 +560,19 @@ static void TestWorkforceRouteSameTileArbitration()
     Equal("Leah", results[1].WorkerId);
     Equal(1, results[1].WaitSlots);
     Equal(4, ledger.Snapshot().Count);
+}
+
+static void TestWorkforceRouteMapIsolation()
+{
+    DeterministicWorkforceRouteLedger ledger = new();
+    IReadOnlyList<WorkforceRouteReservationResult> results = ledger.ReserveBatch(new[]
+    {
+        RouteIn("Barn-a", "Alex", "shift/alex", 0, (4, 4), (5, 4)),
+        RouteIn("Barn-b", "Leah", "shift/leah", 0, (4, 4), (5, 4))
+    }, maximumWaitSlots: 0);
+
+    Equal(true, results.All(result => result.Accepted));
+    Equal(true, results.All(result => result.WaitSlots == 0));
 }
 
 static void TestWorkforceRouteOpposingEdgeArbitration()
@@ -595,7 +679,129 @@ static void TestWorkforceRouteSingleWorkerEquivalence()
         string.Join("|", ledger.Snapshot().Select(item => $"{item.Slot}:{item.Tile.X},{item.Tile.Y}")));
 }
 
+static void TestConcurrentWorkerDeterministicSelection()
+{
+    ConcurrentWorkerCandidate[] candidates =
+    {
+        new("Robin", 1.05m, 600, 4),
+        new("Leah", 1.10m, 720, 0),
+        new("Linus", 1.10m, 600, 4),
+        new("Alex", 1.10m, 600, 2),
+        new("alex", 1.10m, 540, 8),
+        new("Invalid", 9m, 1, 0)
+    };
+
+    string[] first = ConcurrentWorkerSelectionPolicy.Select(candidates, 3, 5000)
+        .Select(candidate => candidate.WorkerName)
+        .ToArray();
+    string[] second = ConcurrentWorkerSelectionPolicy.Select(candidates.Reverse(), 3, 5000)
+        .Select(candidate => candidate.WorkerName)
+        .ToArray();
+
+    Equal("alex,Linus,Leah", string.Join(',', first));
+    Equal(string.Join(',', first), string.Join(',', second));
+    Equal(1, ConcurrentWorkerSelectionPolicy.Select(candidates, 0, 5000).Count);
+    Equal(4, ConcurrentWorkerSelectionPolicy.Select(candidates, 9, 5000).Count);
+}
+
+static void TestConcurrentManualWorkerNormalization()
+{
+    IReadOnlyList<string> normalized = ConcurrentWorkerSelectionPolicy.NormalizeManualSelection(
+        new[] { "Robin", "alex", "Leah", "Alex", "", "  " });
+
+    Equal("Leah,Robin,alex", string.Join(',', normalized));
+    Throws<ArgumentNullException>(() =>
+        ConcurrentWorkerSelectionPolicy.NormalizeManualSelection(null!));
+}
+
+static void TestConcurrentWorkerBudgetSelection()
+{
+    ConcurrentWorkerCandidate[] candidates =
+    {
+        new("Alex", 1.10m, 720, 0),
+        new("Leah", 1.05m, 480, 8),
+        new("Robin", 1.00m, 600, 4)
+    };
+
+    IReadOnlyList<ConcurrentWorkerCandidate> selected =
+        ConcurrentWorkerSelectionPolicy.Select(candidates, 3, 1200);
+    Equal("Alex,Leah", string.Join(',', selected.Select(candidate => candidate.WorkerName)));
+    Equal(0, ConcurrentWorkerSelectionPolicy.Select(candidates, 4, -1).Count);
+}
+
+static void TestWorkStagePartition()
+{
+    IReadOnlyList<FarmWorkStageSelection> two = WorkStagePartitionPolicy.Partition(
+        FarmWorkStageSelection.All,
+        2);
+    Equal(
+        FarmWorkStageSelection.Harvesting
+            | FarmWorkStageSelection.Watering
+            | FarmWorkStageSelection.AnimalCare,
+        two[0]);
+    Equal(
+        FarmWorkStageSelection.Harvesting
+            | FarmWorkStageSelection.Watering
+            | FarmWorkStageSelection.StorageSorting,
+        two[1]);
+    Equal(FarmWorkStageSelection.All, two.Aggregate(FarmWorkStageSelection.None, (all, item) => all | item));
+    Equal(
+        FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.Watering,
+        two[0] & two[1]);
+
+    IReadOnlyList<FarmWorkStageSelection> parallel = WorkStagePartitionPolicy.Partition(
+        FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.Watering,
+        3);
+    Equal(true, parallel.All(stages => stages
+        == (FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.Watering)));
+
+    IReadOnlyList<FarmWorkStageSelection> exclusive = WorkStagePartitionPolicy.Partition(
+        FarmWorkStageSelection.AnimalCare | FarmWorkStageSelection.StorageSorting,
+        3);
+    Equal(FarmWorkStageSelection.None, exclusive[2]);
+    Equal(0, WorkStagePartitionPolicy.Partition(FarmWorkStageSelection.All, 0).Count);
+    Equal(4, WorkStagePartitionPolicy.CountEnabled(FarmWorkStageSelection.All));
+    Equal(2, WorkStagePartitionPolicy.CountEnabled(
+        FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare));
+    Equal(4, WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
+        FarmWorkStageSelection.Harvesting,
+        4));
+    Equal(2, WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
+        FarmWorkStageSelection.AnimalCare | FarmWorkStageSelection.StorageSorting,
+        4));
+}
+
+static void TestWorkforceRecoveryPolicy()
+{
+    WorkforceStageOutcome[] outcomes =
+    {
+        new("Alex", FarmWorkStageSelection.Harvesting, Succeeded: false, NoWork: false),
+        new("Leah", FarmWorkStageSelection.Watering, Succeeded: true, NoWork: false),
+        new("Robin", FarmWorkStageSelection.Harvesting, Succeeded: false, NoWork: true)
+    };
+    WorkforceRecoveryDecision decision = WorkforceRecoveryPolicy.Select(outcomes);
+    Equal(FarmWorkStageSelection.Harvesting, decision.FailedStages);
+    Equal("Robin", decision.RecoveryWorkerId!);
+    Equal(false, WorkforceRecoveryPolicy.AreInitialOutcomesSuccessful(outcomes));
+
+    WorkforceStageOutcome[] idleOnly =
+    {
+        new("Alex", FarmWorkStageSelection.Harvesting, Succeeded: true, NoWork: false),
+        new("Robin", FarmWorkStageSelection.Harvesting, Succeeded: false, NoWork: true)
+    };
+    Equal(false, WorkforceRecoveryPolicy.Select(idleOnly).IsRequired);
+    Equal(true, WorkforceRecoveryPolicy.AreInitialOutcomesSuccessful(idleOnly));
+}
+
 static WorkforceRouteProposal Route(
+    string worker,
+    string assignment,
+    int startSlot,
+    params (int X, int Y)[] tiles) =>
+    RouteIn("Farm", worker, assignment, startSlot, tiles);
+
+static WorkforceRouteProposal RouteIn(
+    string location,
     string worker,
     string assignment,
     int startSlot,
@@ -605,7 +811,7 @@ static WorkforceRouteProposal Route(
         worker,
         assignment,
         startSlot,
-        tiles.Select(tile => new WorkforceRouteTile(tile.X, tile.Y)).ToArray());
+        tiles.Select(tile => new WorkforceRouteTile(location, tile.X, tile.Y)).ToArray());
 }
 
 static void TestAnimalPettingIdempotency()
@@ -791,6 +997,7 @@ static void TestRecurringContractStateValidation()
         RunId = runId,
         Status = RecurringEvaluationStatus.Completed,
         SelectedWorkerName = "Alex",
+        SelectedWorkerNames = new[] { "Alex" },
         AuthorizedGold = 720,
         CompletedWork = 12,
         ChargedGold = 120,
@@ -884,6 +1091,13 @@ static void TestRecurringContractLegacyUpgrade()
     RecurringContractSaveData empty = new() { SchemaVersion = 1 };
     upgraded = RecurringContractPolicy.Upgrade(empty);
     Equal(RecurringContractPolicy.SchemaVersion, upgraded.SchemaVersion);
+    Equal(true, RecurringContractPolicy.IsValid(upgraded));
+
+    RecurringContractSaveData versionTwo = NewRecurringContractState();
+    versionTwo.SchemaVersion = 2;
+    versionTwo.Template!.PreviousSelectedWorkerNames = Array.Empty<string>();
+    upgraded = RecurringContractPolicy.Upgrade(versionTwo);
+    Equal("Leah", upgraded.Template!.PreviousSelectedWorkerNames[0]);
     Equal(true, RecurringContractPolicy.IsValid(upgraded));
 }
 
@@ -2679,12 +2893,27 @@ static void TestMultiplayerRequestAuthorization()
         ModVersion: "0.1.0",
         SaveId: 445566,
         TotalDays: 12,
-        KnownPlayerIds: new HashSet<long> { playerId });
+        KnownPlayerIds: new HashSet<long> { playerId },
+        MaximumConcurrentWorkers: 4);
     ContractStartRequestMessage valid = NewMultiplayerRequest(playerId);
 
     Equal(
         ContractRequestValidationFailure.None,
         ContractRequestValidator.Validate(valid, playerId, context));
+
+    valid.WorkerNames = new[] { "Leah", "Alex", "Robin", "Linus" };
+    Equal(
+        ContractRequestValidationFailure.None,
+        ContractRequestValidator.Validate(valid, playerId, context));
+    valid.WorkerNames = new[] { "Leah", "Alex", "Robin", "Linus", "Marnie" };
+    Equal(
+        ContractRequestValidationFailure.InvalidWorker,
+        ContractRequestValidator.Validate(valid, playerId, context));
+    valid.WorkerNames = new[] { "Leah", "leah" };
+    Equal(
+        ContractRequestValidationFailure.InvalidWorker,
+        ContractRequestValidator.Validate(valid, playerId, context));
+    valid.WorkerNames = Array.Empty<string>();
 
     valid.RequestingPlayerId = 998877;
     Equal(
@@ -2897,6 +3126,18 @@ static void TestMultiplayerRestartRecoveryState()
     legacyFarmWork.RecentResults[0].Task = NamedFarmTask.Watering;
     Equal(false, MultiplayerRecoveryState.IsValid(legacyFarmWork, 445566));
 
+    MultiplayerRecoverySaveData legacySettings =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json)!;
+    legacySettings.ProtocolSchemaVersion = 10;
+    foreach (ContractStartResponseMessage legacyResponse in legacySettings.ProcessedRequests)
+        legacyResponse.SchemaVersion = 10;
+    foreach (ContractResultMessage legacyResult in legacySettings.RecentResults)
+    {
+        legacyResult.SchemaVersion = 10;
+        legacyResult.Task = NamedFarmTask.FarmWork;
+    }
+    Equal(true, MultiplayerRecoveryState.IsValid(legacySettings, 445566));
+
     MultiplayerRecoveryState.RebindResponse(
         restored!.ProcessedRequests[0],
         "new-host-session",
@@ -3086,6 +3327,12 @@ static void TestMultiplayerSyncHandshakeSerialization()
         HostSessionId = hostSessionId,
         SyncRequestId = syncRequestId,
         StateVersion = 12,
+        HasActiveContract = true,
+        ActiveContracts = new[]
+        {
+            NewSnapshot(hostSessionId, 1),
+            NewSnapshot(hostSessionId, 2)
+        },
         Settings = new ContractSettingsMessage
         {
             SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
@@ -3096,7 +3343,8 @@ static void TestMultiplayerSyncHandshakeSerialization()
             FriendshipWageImpactPercent = 30,
             RestDayMultiplier = 2.5m,
             DefaultHarvestDestination = HarvestDestinationMode.RequesterInventory,
-            EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare
+            EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare,
+            MaximumConcurrentWorkers = 4
         }
     };
     ContractSyncStateMessage? restoredState = JsonSerializer.Deserialize<ContractSyncStateMessage>(
@@ -3104,12 +3352,14 @@ static void TestMultiplayerSyncHandshakeSerialization()
     Equal(hostSessionId, restoredState!.HostSessionId);
     Equal(syncRequestId, restoredState.SyncRequestId);
     Equal(12L, restoredState.StateVersion);
+    Equal(2, restoredState.ActiveContracts.Length);
     Equal(true, restoredState.Settings.TryGetSnapshot(out ContractSettingsSnapshot restoredSettings));
     Equal(250, restoredSettings.BaseHourlyWage);
     Equal(3L, restoredState.Settings.SettingsVersion);
     Equal(30, restoredSettings.FriendshipWageImpactPercent);
     Equal(2.5m, restoredSettings.RestDayMultiplier);
     Equal(HarvestDestinationMode.RequesterInventory, restoredSettings.DefaultHarvestDestination);
+    Equal(4, restoredSettings.MaximumConcurrentWorkers);
     Equal(
         FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare,
         restoredSettings.EnabledStages);
@@ -3180,11 +3430,54 @@ static void TestMultiplayerSnapshotSerialization()
     Equal("(O)24", restored.Cargo[0].QualifiedItemId);
     Equal(3, restored.Cargo[0].Stack);
     Equal("transfer-0", restored.CompletedTransferIds[0]);
+    Equal(true, restored.IsActive);
+}
+
+static void TestMultiplayerSnapshotValidation()
+{
+    ContractSnapshotMessage snapshot = NewValidSnapshot();
+    Equal(true, ContractSnapshotValidator.IsValid(
+        snapshot,
+        MultiplayerContractProtocol.SchemaVersion,
+        445566));
+
+    snapshot.Cargo = null!;
+    Equal(false, ContractSnapshotValidator.IsValid(
+        snapshot,
+        MultiplayerContractProtocol.SchemaVersion,
+        445566));
+    snapshot.Cargo = Array.Empty<ContractCargoSnapshotMessage>();
+
+    string duplicate = Guid.NewGuid().ToString("N");
+    snapshot.CompletedTransferIds = new[] { duplicate, duplicate };
+    Equal(false, ContractSnapshotValidator.IsValid(
+        snapshot,
+        MultiplayerContractProtocol.SchemaVersion,
+        445566));
+
+    snapshot = NewValidSnapshot();
+    string overlap = Guid.NewGuid().ToString("N");
+    snapshot.Cargo = new[]
+    {
+        new ContractCargoSnapshotMessage
+        {
+            TransferId = overlap,
+            QualifiedItemId = "(O)24",
+            DisplayName = "Parsnip",
+            Stack = 1
+        }
+    };
+    snapshot.CargoCount = 1;
+    snapshot.CompletedTransferIds = new[] { overlap };
+    Equal(false, ContractSnapshotValidator.IsValid(
+        snapshot,
+        MultiplayerContractProtocol.SchemaVersion,
+        445566));
 }
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(10, MultiplayerContractProtocol.SchemaVersion);
+    Equal(11, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
@@ -3212,6 +3505,66 @@ static void TestMultiplayerResultSerialization()
     Equal(4, restored.QuarantinedItems);
     Equal(HarvestDestinationMode.RequesterInventory, restored.HarvestDestination);
     Equal(13L, restored.StateVersion);
+}
+
+static void TestMultiplayerGroupSettlementValidation()
+{
+    ContractResultMessage result = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = Guid.NewGuid().ToString("N"),
+        ContractId = Guid.NewGuid().ToString("N"),
+        Sequence = 3,
+        StateVersion = 4,
+        RequestId = Guid.NewGuid().ToString("N"),
+        RequestingPlayerId = 55,
+        WorkerName = "Leah",
+        WorkerNames = new[] { "Leah", "Alex" },
+        Task = NamedFarmTask.FarmWork,
+        Succeeded = true,
+        CompletedWork = 7,
+        BillableHours = 4,
+        ChargedGold = 800,
+        RefundedGold = 400,
+        WorkerSettlements = new[]
+        {
+            new ContractWorkerSettlementMessage
+            {
+                WorkerName = "Leah",
+                Succeeded = true,
+                CompletedWork = 3,
+                BillableHours = 2,
+                ChargedGold = 350,
+                RefundedGold = 250
+            },
+            new ContractWorkerSettlementMessage
+            {
+                WorkerName = "Alex",
+                Succeeded = true,
+                CompletedWork = 4,
+                BillableHours = 2,
+                ChargedGold = 450,
+                RefundedGold = 150
+            }
+        }
+    };
+
+    Equal(true, MultiplayerRecoveryState.IsValidResult(
+        result,
+        445566,
+        MultiplayerContractProtocol.SchemaVersion));
+    result.WorkerSettlements[1].Succeeded = false;
+    result.WorkerSettlements[1].ReasonKey = "contract.failure.route-stalled";
+    Equal(true, MultiplayerRecoveryState.IsValidResult(
+        result,
+        445566,
+        MultiplayerContractProtocol.SchemaVersion));
+    result.ChargedGold++;
+    Equal(false, MultiplayerRecoveryState.IsValidResult(
+        result,
+        445566,
+        MultiplayerContractProtocol.SchemaVersion));
 }
 
 static void TestMultiplayerStorageResultValidation()
@@ -3356,6 +3709,7 @@ static ContractStartRequestMessage NewMultiplayerRequest(long playerId)
         RequestId = Guid.NewGuid().ToString("N"),
         RequestingPlayerId = playerId,
         WorkerName = "Leah",
+        WorkerNames = new[] { "Leah" },
         Task = NamedFarmTask.FarmWork,
         HarvestDestination = HarvestDestinationMode.ClassifiedChests
     };
@@ -3379,6 +3733,7 @@ static RecurringContractSaveData NewRecurringContractState()
             LastProcessedTotalDays = 11,
             LastRunId = "",
             PreviousSelectedWorkerName = "Leah",
+            PreviousSelectedWorkerNames = new[] { "Leah" },
             LastEvaluation = new RecurringEvaluationData()
         }
     };
@@ -3409,6 +3764,35 @@ static ContractSnapshotMessage NewSnapshot(string session, long sequence)
         ContractId = "contract-1",
         Sequence = sequence,
         Task = NamedFarmTask.FarmWork
+    };
+}
+
+static ContractSnapshotMessage NewValidSnapshot()
+{
+    return new ContractSnapshotMessage
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = Guid.NewGuid().ToString("N"),
+        ContractId = Guid.NewGuid().ToString("N"),
+        Sequence = 1,
+        StateVersion = 1,
+        RequestId = Guid.NewGuid().ToString("N"),
+        RequestingPlayerId = 55,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.FarmWork,
+        HarvestDestination = HarvestDestinationMode.ClassifiedChests,
+        EfficiencyMultiplier = 1m,
+        Phase = "Harvesting/TravelingToTarget",
+        ArrivalX = 78,
+        ArrivalY = 15,
+        ArrivalSide = FarmBoundarySide.East,
+        TargetX = 10,
+        TargetY = 12,
+        ReservedGold = 720,
+        StartTime = 610,
+        Cargo = Array.Empty<ContractCargoSnapshotMessage>(),
+        CompletedTransferIds = Array.Empty<string>()
     };
 }
 

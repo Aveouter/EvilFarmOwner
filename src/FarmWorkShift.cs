@@ -9,4 +9,5 @@ internal sealed record FarmWorkShiftContext(
     NpcWorkLease Lease,
     WorkContractPreview BillingPreview,
     HarvestDestinationMode HarvestDestination,
-    FarmWorkStageSelection EnabledStages);
+    FarmWorkStageSelection EnabledStages,
+    bool IsBillable = true);

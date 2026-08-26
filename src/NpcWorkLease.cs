@@ -19,11 +19,17 @@ internal sealed class NpcWorkLease
     private readonly int OriginalBlockedInterval;
     private readonly bool OriginalIsCharging;
     private readonly bool OriginalWillDestroyObjectsUnderfoot;
+    private readonly bool ResumeScheduleOnRestore;
     private readonly string Token;
     private NpcLeaseRestoreResult? FinalRestoreResult;
     private bool ConflictReported;
+    private bool ScheduleResumeAttempted;
 
-    private NpcWorkLease(NPC worker, int reservedWage, IMonitor monitor)
+    private NpcWorkLease(
+        NPC worker,
+        int reservedWage,
+        IMonitor monitor,
+        bool resumeScheduleOnRestore)
     {
         this.Worker = worker;
         this.ReservedWage = reservedWage;
@@ -36,6 +42,7 @@ internal sealed class NpcWorkLease
         this.OriginalBlockedInterval = worker.blockedInterval;
         this.OriginalIsCharging = worker.isCharging;
         this.OriginalWillDestroyObjectsUnderfoot = worker.willDestroyObjectsUnderfoot;
+        this.ResumeScheduleOnRestore = resumeScheduleOnRestore;
         this.StartTime = Game1.timeOfDay;
         this.StartTotalDays = Game1.Date.TotalDays;
         this.Token = Guid.NewGuid().ToString("N");
@@ -54,11 +61,22 @@ internal sealed class NpcWorkLease
 
     public int StartTotalDays { get; }
 
+    public static bool IsLeasedWorker(NPC npc) => npc.modData.ContainsKey(LeaseDataKey);
+
+    public void SetRoutePaused(bool paused)
+    {
+        this.Worker.speed = paused ? 0 : this.OriginalSpeed;
+        this.Worker.addedSpeed = paused ? 0f : this.OriginalAddedSpeed;
+        if (paused)
+            this.Worker.Halt();
+    }
+
     public static bool TryAcquire(
         NPC worker,
         int reservedWage,
         IMonitor monitor,
-        out NpcWorkLease? lease)
+        out NpcWorkLease? lease,
+        bool resumeScheduleOnRestore = true)
     {
         lease = null;
 
@@ -70,7 +88,7 @@ internal sealed class NpcWorkLease
             || worker.modData.ContainsKey(LeaseDataKey))
             return false;
 
-        lease = new NpcWorkLease(worker, reservedWage, monitor);
+        lease = new NpcWorkLease(worker, reservedWage, monitor, resumeScheduleOnRestore);
         return true;
     }
 
@@ -138,21 +156,37 @@ internal sealed class NpcWorkLease
         this.Worker.modData.Remove(LeaseDataKey);
         this.FinalRestoreResult = NpcLeaseRestoreResult.Restored;
 
-        if (Context.IsWorldReady && Game1.Date.TotalDays == this.StartTotalDays)
-        {
-            try
-            {
-                this.Worker.checkSchedule(Game1.timeOfDay);
-            }
-            catch (Exception ex)
-            {
-                this.Monitor.Log(
-                    $"Worker '{this.Worker.Name}' was restored, but resuming the vanilla schedule failed: {ex.Message}",
-                    LogLevel.Warn);
-            }
-        }
+        if (this.ResumeScheduleOnRestore)
+            this.ResumeVanillaSchedule();
 
         return NpcLeaseRestoreResult.Restored;
+    }
+
+    /// <summary>Resume the vanilla schedule after a concurrent group no longer needs this worker.</summary>
+    public void ResumeVanillaSchedule()
+    {
+        if (this.ScheduleResumeAttempted)
+            return;
+        this.ScheduleResumeAttempted = true;
+
+        if (this.FinalRestoreResult != NpcLeaseRestoreResult.Restored
+            || !Context.IsWorldReady
+            || Game1.Date.TotalDays != this.StartTotalDays
+            || this.Worker.modData.ContainsKey(LeaseDataKey)
+            || this.Worker.controller is not null
+            || this.Worker.temporaryController is not null)
+            return;
+
+        try
+        {
+            this.Worker.checkSchedule(Game1.timeOfDay);
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log(
+                $"Worker '{this.Worker.Name}' was restored, but resuming the vanilla schedule failed: {ex.Message}",
+                LogLevel.Warn);
+        }
     }
 
     public NpcLeaseRestoreResult RelinquishToConflictingController()

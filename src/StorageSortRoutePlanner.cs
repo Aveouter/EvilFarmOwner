@@ -103,6 +103,7 @@ internal sealed class StorageSortRoutePlanner
             Vector2 arrivalVector = new(arrival.X, arrival.Y);
             if (farm.warps.Any(warp => warp.X == arrival.X && warp.Y == arrival.Y)
                 || farm.doors.ContainsKey(new Point(arrival.X, arrival.Y))
+                || FarmNavigationMap.IsOccupiedByOtherLeasedWorker(farm, worker, arrival)
                 || !farm.CanSpawnCharacterHere(arrivalVector))
             {
                 continue;
