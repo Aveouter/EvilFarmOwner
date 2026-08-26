@@ -1466,6 +1466,18 @@ static void TestHarvestContractDestinationPolicy()
             requesterIsOnline: false,
             requesterIsOnMainFarm: false,
             requesterCanAcceptCompleteStack: true));
+    Equal(true, HarvestDestinationPolicy.CanRequesterInventoryAccept(
+        requesterIsOnline: true,
+        requesterIsOnMainFarm: false,
+        requesterCanAcceptCompleteStack: true));
+    Equal(false, HarvestDestinationPolicy.CanRequesterInventoryAccept(
+        requesterIsOnline: false,
+        requesterIsOnMainFarm: false,
+        requesterCanAcceptCompleteStack: true));
+    Equal(false, HarvestDestinationPolicy.CanRequesterInventoryAccept(
+        requesterIsOnline: true,
+        requesterIsOnMainFarm: false,
+        requesterCanAcceptCompleteStack: false));
     Equal(0, HarvestDestinationPolicy.GetRetainedCount(20, 20, 7));
     Equal(3, HarvestDestinationPolicy.GetRetainedCount(20, 23, 7));
     Equal(7, HarvestDestinationPolicy.GetRetainedCount(20, 29, 7));
