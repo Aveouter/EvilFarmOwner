@@ -19,6 +19,7 @@ internal sealed class FarmWorkContractExecutionController
     private readonly Func<ContractSettingsSnapshot> GetSettings;
     private ActiveFarmWorkShift? ActiveShift;
     private NamedContractCompletionState? LastCompletion;
+    private NpcWorkLease? DeferredScheduleLease;
 
     public FarmWorkContractExecutionController(
         ITranslationHelper translation,
@@ -51,7 +52,8 @@ internal sealed class FarmWorkContractExecutionController
         string workerInternalName,
         string requestId,
         HarvestDestinationMode harvestDestination,
-        bool isBillable = true)
+        bool isBillable = true,
+        bool resumeScheduleOnRestore = true)
     {
         this.LastStartFailureKey = null;
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
@@ -95,9 +97,12 @@ internal sealed class FarmWorkContractExecutionController
                 worker,
                 isBillable ? preview.MaximumAuthorizedWage : 0,
                 this.Monitor,
-                out NpcWorkLease? lease)
+                out NpcWorkLease? lease,
+                resumeScheduleOnRestore)
             || lease is null)
             return this.FailStart("contract.start.lease-failed");
+        if (!resumeScheduleOnRestore)
+            this.DeferredScheduleLease = lease;
 
         FarmWorkShiftContext context = new(
             Guid.NewGuid(),
@@ -215,6 +220,14 @@ internal sealed class FarmWorkContractExecutionController
         NamedContractCompletionState? completion = this.LastCompletion;
         this.LastCompletion = null;
         return completion;
+    }
+
+    public string? DeferredScheduleWorkerName => this.DeferredScheduleLease?.Worker.Name;
+
+    public void ResumeDeferredSchedule()
+    {
+        this.DeferredScheduleLease?.ResumeVanillaSchedule();
+        this.DeferredScheduleLease = null;
     }
 
     public void Cancel(string reasonKey, bool mustFinalizeNow = true)

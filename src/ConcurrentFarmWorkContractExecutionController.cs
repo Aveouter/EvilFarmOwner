@@ -109,15 +109,21 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
                     requestingPlayerId,
                     workers[index].Name,
                     requestId,
-                    harvestDestination))
+                    harvestDestination,
+                    resumeScheduleOnRestore: false))
             {
                 this.LastStartFailureKey = runtime.FarmWork.LastStartFailureKey
                     ?? "contract.failure.unknown";
                 if (this.LastStartFailureKey == "farm-work.start.no-work")
+                {
+                    runtime.FarmWork.ResumeDeferredSchedule();
                     continue;
+                }
                 foreach (WorkerRuntime started in group.Workers)
                     started.FarmWork.Cancel("contract.failure.group-start", mustFinalizeNow: true);
                 this.DrainCancelled(group.Workers);
+                runtime.FarmWork.ResumeDeferredSchedule();
+                this.ResumeDeferredSchedules(group.Workers);
                 return false;
             }
             group.Workers.Add(runtime);
@@ -183,6 +189,7 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
                 runtime.FarmWork.OnReturnedToTitle();
                 runtime.Completion = runtime.FarmWork.ConsumeCompletion();
             }
+            this.ResumeDeferredSchedules(group.Workers);
         }
         this.ActiveGroup = null;
     }
@@ -289,7 +296,8 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
                         recoveryWorker.WorkerName,
                         group.RequestId,
                         group.HarvestDestination,
-                        isBillable: false))
+                        isBillable: false,
+                        resumeScheduleOnRestore: false))
                 {
                     group.Workers.Add(recovery);
                     this.Monitor.Log(
@@ -300,6 +308,7 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
                 }
 
                 group.RecoverySatisfied = recovery.FarmWork.LastStartFailureKey == "farm-work.start.no-work";
+                recovery.FarmWork.ResumeDeferredSchedule();
             }
         }
         else if (group.Workers.Skip(group.InitialWorkerCount).Any())
@@ -355,6 +364,7 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             HarvestDestination = group.HarvestDestination,
             WorkerSettlements = workerSettlements
         };
+        this.ResumeDeferredSchedules(group.Workers);
         this.ActiveGroup = null;
     }
 
@@ -403,6 +413,19 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             {
                 requester.Money += cancelled.ChargedGold;
             }
+        }
+    }
+
+    private void ResumeDeferredSchedules(IEnumerable<WorkerRuntime> workers)
+    {
+        foreach (IGrouping<string, WorkerRuntime> group in workers
+                     .Where(worker => !string.IsNullOrWhiteSpace(
+                         worker.FarmWork.DeferredScheduleWorkerName))
+                     .GroupBy(
+                         worker => worker.FarmWork.DeferredScheduleWorkerName!,
+                         StringComparer.OrdinalIgnoreCase))
+        {
+            group.First().FarmWork.ResumeDeferredSchedule();
         }
     }
 
