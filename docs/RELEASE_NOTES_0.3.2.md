@@ -15,7 +15,7 @@ v0.3.2 集中解决单工人班次中的路线中断与诊断问题，不加入�
 ### 可验证的开发检查
 
 - 与游戏程序集无关的规划、工资、存储守恒、协议和路线决策代码已进入独立的 .NET 8 Core 项目。
-- GitHub Actions 会在 Ubuntu 上编译 Core 并运行全部 122 项确定性测试；完整 Mod 编译和发布包检查仍由本地干净发布验证器负责。
+- GitHub Actions 会在 Ubuntu 上编译 Core 并运行全部 122 项确定性测试；本地干净发布验证器也会先检查 Core 边界和编译结果，再执行完整 Mod 编译与发布包检查。
 
 ### 兼容与限制
 
@@ -38,7 +38,7 @@ v0.3.2 focuses on interrupted-route recovery and diagnostics for single-worker s
 ### Verifiable development checks
 
 - Game-independent planning, wage, storage-conservation, protocol, and route-decision source now lives in a standalone .NET 8 Core project.
-- GitHub Actions compiles Core and runs all 122 deterministic tests on Ubuntu. The clean local release verifier remains responsible for the proprietary-game Mod build and package checks.
+- GitHub Actions compiles Core and runs all 122 deterministic tests on Ubuntu. The clean local release verifier repeats the Core boundary/build gate before the proprietary-game Mod build and package checks.
 
 ### Compatibility and limits
 

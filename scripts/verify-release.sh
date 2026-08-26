@@ -31,6 +31,11 @@ fi
 echo "Source commit: $source_commit"
 echo "Source tree: $source_tree"
 
+"$project_root/scripts/verify-core-boundary.sh"
+
+dotnet build EvilFarmOwner.Core.csproj \
+  -c Release
+
 dotnet run \
   -c Release \
   --project tests/EvilFarmOwner.LogicTests.csproj \
