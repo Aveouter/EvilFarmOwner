@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed the 12-slot harvest delivery threshold to count simulated vanilla-compatible carried slots instead of individual capture records, while retaining independent transfer identities.
 ## 0.3.0 - 2026-08-26
 
 - Fixed Crabbing Book bonus preflight so an online requester with sufficient inventory capacity remains eligible after leaving the farm, matching the contract's cross-map delivery rule.
