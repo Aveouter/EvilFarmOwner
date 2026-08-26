@@ -16,6 +16,7 @@ internal sealed class FarmWorkContractExecutionController
     private readonly WateringContractExecutionController Watering;
     private readonly AnimalCareContractExecutionController AnimalCare;
     private readonly StorageSortContractExecutionController StorageSorting;
+    private readonly Func<ContractSettingsSnapshot> GetSettings;
     private ActiveFarmWorkShift? ActiveShift;
     private NamedContractCompletionState? LastCompletion;
 
@@ -26,7 +27,8 @@ internal sealed class FarmWorkContractExecutionController
         HarvestingContractExecutionController harvesting,
         WateringContractExecutionController watering,
         AnimalCareContractExecutionController animalCare,
-        StorageSortContractExecutionController storageSorting)
+        StorageSortContractExecutionController storageSorting,
+        Func<ContractSettingsSnapshot>? getSettings = null)
     {
         this.Translation = translation;
         this.Monitor = monitor;
@@ -35,6 +37,7 @@ internal sealed class FarmWorkContractExecutionController
         this.Watering = watering;
         this.AnimalCare = animalCare;
         this.StorageSorting = storageSorting;
+        this.GetSettings = getSettings ?? (() => ContractSettingsSnapshot.Default);
     }
 
     public bool HasActiveContract => this.ActiveShift is not null;
@@ -76,11 +79,15 @@ internal sealed class FarmWorkContractExecutionController
         if (availability.State != WorkerAvailabilityState.EligibleForPreview)
             return this.FailStart("contract.start.worker-unavailable");
 
+        ContractSettingsSnapshot settings = this.GetSettings();
+        if (!settings.IsValid)
+            settings = ContractSettingsSnapshot.Default;
         WorkContractPreview preview = ContractPreviewService.Create(
             requester.getFriendshipHeartLevelForNPC(worker.Name),
             Game1.dayOfMonth,
             worker.Name,
-            NamedFarmTask.FarmWork);
+            NamedFarmTask.FarmWork,
+            settings);
         if (requester.Money < preview.MaximumAuthorizedWage)
             return this.FailStart("contract.start.insufficient-funds");
         if (!NpcWorkLease.TryAcquire(
@@ -97,7 +104,8 @@ internal sealed class FarmWorkContractExecutionController
             requester,
             lease,
             preview,
-            harvestDestination);
+            harvestDestination,
+            settings.EnabledStages);
         ActiveFarmWorkShift shift = new(context);
         this.ActiveShift = shift;
         requester.Money -= preview.MaximumAuthorizedWage;
@@ -208,7 +216,9 @@ internal sealed class FarmWorkContractExecutionController
 
     private void BeginNextAvailableStage(ActiveFarmWorkShift shift)
     {
-        FarmWorkStage stage = FarmWorkStagePolicy.GetNext(shift.LastFinishedStage);
+        FarmWorkStage stage = FarmWorkStagePolicy.GetNext(
+            shift.LastFinishedStage,
+            shift.Context.EnabledStages);
         while (stage != FarmWorkStage.Complete)
         {
             shift.CurrentStage = stage;
@@ -244,7 +254,7 @@ internal sealed class FarmWorkContractExecutionController
             }
 
             shift.LastFinishedStage = stage;
-            stage = FarmWorkStagePolicy.GetNext(stage);
+            stage = FarmWorkStagePolicy.GetNext(stage, shift.Context.EnabledStages);
         }
 
         if (FarmWorkPassPolicy.TryGetNext(shift.CurrentPass, out FarmWorkPass nextPass))

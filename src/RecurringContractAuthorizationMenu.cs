@@ -21,6 +21,7 @@ internal sealed class RecurringContractAuthorizationMenu : IClickableMenu
     private readonly ITranslationHelper Translation;
     private readonly Action ReturnToTaskSelection;
     private readonly Action Saved;
+    private readonly ContractSettingsSnapshot Settings;
     private readonly IReadOnlyList<string> SubstituteNames;
     private readonly int FixedRegularCap;
     private readonly int PoolRegularCap;
@@ -39,7 +40,8 @@ internal sealed class RecurringContractAuthorizationMenu : IClickableMenu
         RecurringContractCoordinator coordinator,
         ITranslationHelper translation,
         Action returnToTaskSelection,
-        Action saved)
+        Action saved,
+        ContractSettingsSnapshot? settings = null)
         : base(
             Game1.uiViewport.Width / 2 - Math.Min(MenuWidth, Game1.uiViewport.Width - 64) / 2,
             Game1.uiViewport.Height / 2 - Math.Min(MenuHeight, Game1.uiViewport.Height - 64) / 2,
@@ -54,6 +56,7 @@ internal sealed class RecurringContractAuthorizationMenu : IClickableMenu
         this.Translation = translation;
         this.ReturnToTaskSelection = returnToTaskSelection;
         this.Saved = saved;
+        this.Settings = settings ?? ContractSettingsSnapshot.Default;
         this.SubstituteNames = this.AvailableWorkers
             .Select(worker => worker.InternalName)
             .Where(name => !string.Equals(name, this.PreferredWorker.InternalName, StringComparison.OrdinalIgnoreCase))
@@ -259,7 +262,12 @@ internal sealed class RecurringContractAuthorizationMenu : IClickableMenu
         return names.Max(name =>
         {
             int hearts = Game1.player.getFriendshipHeartLevelForNPC(name);
-            return ContractPreviewService.Create(hearts, dayOfMonth, name, this.Task).MaximumAuthorizedWage;
+            return ContractPreviewService.Create(
+                hearts,
+                dayOfMonth,
+                name,
+                this.Task,
+                this.Settings).MaximumAuthorizedWage;
         });
     }
 

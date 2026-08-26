@@ -7,6 +7,10 @@ List<(string Name, Action Test)> tests = new()
     ("regular high-risk wage", TestRegularHighRiskWage),
     ("rest-day triple wage", TestRestDayTripleWage),
     ("trusted wage", TestTrustedWage),
+    ("configurable wage formula", TestConfigurableWageFormula),
+    ("contract settings normalization", TestContractSettingsNormalization),
+    ("configured farm-work stages", TestConfiguredFarmWorkStages),
+    ("multiplayer contract settings validation", TestMultiplayerContractSettingsValidation),
     ("worker efficiency profile coverage", TestWorkerEfficiencyProfileCoverage),
     ("worker task-specific efficiency", TestWorkerTaskSpecificEfficiency),
     ("worker efficiency fallback", TestWorkerEfficiencyFallback),
@@ -154,6 +158,87 @@ static void TestTrustedWage()
     Equal(FriendshipWageBand.Trusted, preview.FriendshipBand);
     Equal(90, preview.MinimumCalloutWage);
     Equal(540, preview.MaximumAuthorizedWage);
+}
+
+static void TestConfigurableWageFormula()
+{
+    ContractSettingsSnapshot settings = new(
+        BaseHourlyWage: 200,
+        FriendshipWageImpactPercent: 40,
+        RestDayMultiplier: 2.5m,
+        DefaultHarvestDestination: HarvestDestinationMode.RequesterInventory,
+        EnabledStages: FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.Watering);
+
+    WorkContractPreview highRisk = ContractPreviewService.Create(0, 1, settings);
+    Equal(1.40m, highRisk.FriendshipMultiplier);
+    Equal(280, highRisk.MinimumCalloutWage);
+    Equal(1680, highRisk.MaximumAuthorizedWage);
+
+    WorkContractPreview elevated = ContractPreviewService.Create(3, 1, settings);
+    Equal(1.20m, elevated.FriendshipMultiplier);
+    Equal(1440, elevated.MaximumAuthorizedWage);
+
+    WorkContractPreview standard = ContractPreviewService.Create(5, 1, settings);
+    Equal(1.00m, standard.FriendshipMultiplier);
+    Equal(1200, standard.MaximumAuthorizedWage);
+
+    WorkContractPreview trustedRestDay = ContractPreviewService.Create(8, 6, settings);
+    Equal(0.80m, trustedRestDay.FriendshipMultiplier);
+    Equal(2.50m, trustedRestDay.DayMultiplier);
+    Equal(2400, trustedRestDay.MaximumAuthorizedWage);
+}
+
+static void TestContractSettingsNormalization()
+{
+    Equal(500, ContractSettingsPolicy.NormalizeBaseHourlyWage(507));
+    Equal(50, ContractSettingsPolicy.NormalizeBaseHourlyWage(-10));
+    Equal(40, ContractSettingsPolicy.NormalizeFriendshipImpactPercent(38));
+    Equal(4.5m, ContractSettingsPolicy.NormalizeRestDayMultiplier(4.74m));
+    Equal(FarmWorkStageSelection.All, ContractSettingsPolicy.NormalizeEnabledStages(
+        FarmWorkStageSelection.None));
+    Equal(FarmWorkStageSelection.All, ContractSettingsPolicy.NormalizeEnabledStages(
+        (FarmWorkStageSelection)128));
+    Equal(FarmWorkStageSelection.Watering, ContractSettingsPolicy.NormalizeEnabledStages(
+        FarmWorkStageSelection.Watering));
+}
+
+static void TestConfiguredFarmWorkStages()
+{
+    FarmWorkStageSelection selected =
+        FarmWorkStageSelection.Watering | FarmWorkStageSelection.StorageSorting;
+    Equal(FarmWorkStage.Watering, FarmWorkStagePolicy.GetNext(null, selected));
+    Equal(FarmWorkStage.StorageSorting, FarmWorkStagePolicy.GetNext(FarmWorkStage.Watering, selected));
+    Equal(FarmWorkStage.Complete, FarmWorkStagePolicy.GetNext(FarmWorkStage.StorageSorting, selected));
+    Equal(false, FarmWorkStagePolicy.IsEnabled(FarmWorkStage.Harvesting, selected));
+    Equal(true, FarmWorkStagePolicy.IsEnabled(FarmWorkStage.Watering, selected));
+    Equal(false, FarmWorkStagePolicy.IsEnabled(FarmWorkStage.AnimalCare, selected));
+    Equal(true, FarmWorkStagePolicy.IsEnabled(FarmWorkStage.StorageSorting, selected));
+}
+
+static void TestMultiplayerContractSettingsValidation()
+{
+    ContractSettingsMessage message = new()
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SettingsVersion = 1,
+        BaseHourlyWage = 150,
+        FriendshipWageImpactPercent = 10,
+        RestDayMultiplier = 2m,
+        DefaultHarvestDestination = HarvestDestinationMode.RequesterInventory,
+        EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare
+    };
+    Equal(true, message.TryGetSnapshot(out ContractSettingsSnapshot valid));
+    Equal(150, valid.BaseHourlyWage);
+    Equal(FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare, valid.EnabledStages);
+
+    message.EnabledStages = FarmWorkStageSelection.None;
+    Equal(false, message.TryGetSnapshot(out _));
+    message.EnabledStages = FarmWorkStageSelection.All;
+    message.BaseHourlyWage = 151;
+    Equal(false, message.TryGetSnapshot(out _));
+    message.BaseHourlyWage = 150;
+    message.SchemaVersion--;
+    Equal(false, message.TryGetSnapshot(out _));
 }
 
 static void TestWorkerEfficiencyProfileCoverage()
@@ -2524,6 +2609,20 @@ static void TestMultiplayerRestartRecoveryState()
     legacyDestination.RecentResults[0].Task = NamedFarmTask.StorageSorting;
     Equal(false, MultiplayerRecoveryState.IsValid(legacyDestination, 445566));
 
+    MultiplayerRecoverySaveData legacyFarmWork =
+        JsonSerializer.Deserialize<MultiplayerRecoverySaveData>(json)!;
+    legacyFarmWork.ProtocolSchemaVersion = 9;
+    foreach (ContractStartResponseMessage legacyResponse in legacyFarmWork.ProcessedRequests)
+        legacyResponse.SchemaVersion = 9;
+    foreach (ContractResultMessage legacyResult in legacyFarmWork.RecentResults)
+    {
+        legacyResult.SchemaVersion = 9;
+        legacyResult.Task = NamedFarmTask.FarmWork;
+    }
+    Equal(true, MultiplayerRecoveryState.IsValid(legacyFarmWork, 445566));
+    legacyFarmWork.RecentResults[0].Task = NamedFarmTask.Watering;
+    Equal(false, MultiplayerRecoveryState.IsValid(legacyFarmWork, 445566));
+
     MultiplayerRecoveryState.RebindResponse(
         restored!.ProcessedRequests[0],
         "new-host-session",
@@ -2712,13 +2811,34 @@ static void TestMultiplayerSyncHandshakeSerialization()
         SaveId = 445566,
         HostSessionId = hostSessionId,
         SyncRequestId = syncRequestId,
-        StateVersion = 12
+        StateVersion = 12,
+        Settings = new ContractSettingsMessage
+        {
+            SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+            SaveId = 445566,
+            HostSessionId = hostSessionId,
+            SettingsVersion = 3,
+            BaseHourlyWage = 250,
+            FriendshipWageImpactPercent = 30,
+            RestDayMultiplier = 2.5m,
+            DefaultHarvestDestination = HarvestDestinationMode.RequesterInventory,
+            EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare
+        }
     };
     ContractSyncStateMessage? restoredState = JsonSerializer.Deserialize<ContractSyncStateMessage>(
         JsonSerializer.Serialize(state));
     Equal(hostSessionId, restoredState!.HostSessionId);
     Equal(syncRequestId, restoredState.SyncRequestId);
     Equal(12L, restoredState.StateVersion);
+    Equal(true, restoredState.Settings.TryGetSnapshot(out ContractSettingsSnapshot restoredSettings));
+    Equal(250, restoredSettings.BaseHourlyWage);
+    Equal(3L, restoredState.Settings.SettingsVersion);
+    Equal(30, restoredSettings.FriendshipWageImpactPercent);
+    Equal(2.5m, restoredSettings.RestDayMultiplier);
+    Equal(HarvestDestinationMode.RequesterInventory, restoredSettings.DefaultHarvestDestination);
+    Equal(
+        FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare,
+        restoredSettings.EnabledStages);
 }
 
 static void TestMultiplayerStaleSyncStateRejection()
@@ -2790,7 +2910,7 @@ static void TestMultiplayerSnapshotSerialization()
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(9, MultiplayerContractProtocol.SchemaVersion);
+    Equal(10, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added host-authoritative wage and complete-shift preferences through Generic Mod Config Menu: base hourly wage, friendship impact, rest-day multiplier, default harvest destination, and per-stage enablement with immutable contract snapshots and multiplayer synchronization.
+
 ## 0.2.0 - 2026-08-26
 
 - Kept named workers moving and completing farm work after the requester leaves the farm; an explicitly selected requester inventory now remains available across maps while that player is online and has room for the complete stack.
