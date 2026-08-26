@@ -55,6 +55,9 @@ List<(string Name, Action Test)> tests = new()
     ("destination tile alignment", TestDestinationTileAlignment),
     ("travel progress watchdog", TestTravelProgressWatchdog),
     ("delivery stalled tile exclusion", TestDeliveryStalledTileExclusion),
+    ("map-scoped travel obstacle ledger", TestMapScopedTravelObstacleLedger),
+    ("directed travel edge detour", TestDirectedTravelEdgeDetour),
+    ("travel interruption snapshot", TestTravelInterruptionSnapshot),
     ("consecutive route failure budget", TestConsecutiveRouteFailureBudget),
     ("target route failure isolation", TestTargetRouteFailureIsolation),
     ("NPC protected activity policy", TestNpcProtectedActivityPolicy),
@@ -1052,6 +1055,71 @@ static void TestDeliveryStalledTileExclusion()
     Equal(true, routes.TryGetPath(new GridPoint(3, 1), out IReadOnlyList<GridPoint> detour));
     Equal(false, detour.Contains(stalled));
     Equal(5, detour.Count - 1);
+}
+
+static void TestMapScopedTravelObstacleLedger()
+{
+    TravelObstacleLedger ledger = new();
+    TravelObstacleSelection tile = TravelRouteExclusionPolicy.Select(
+        "Farm",
+        new GridPoint(1, 1),
+        previousProgressTile: null,
+        new GridPoint(2, 1));
+    Equal(true, tile.Tile.HasValue);
+    Equal(true, ledger.Add(tile));
+    Equal(true, ledger.IsTileBlocked("Farm", new GridPoint(2, 1)));
+    Equal(false, ledger.IsTileBlocked("Barn", new GridPoint(2, 1)));
+
+    TravelObstacleSelection edge = TravelRouteExclusionPolicy.Select(
+        "Barn",
+        new GridPoint(4, 4),
+        new GridPoint(3, 4),
+        new GridPoint(4, 4));
+    Equal(true, edge.Edge.HasValue);
+    Equal(true, ledger.Add(edge));
+    Equal(true, ledger.IsEdgeBlocked("Barn", new GridPoint(3, 4), new GridPoint(4, 4)));
+    Equal(false, ledger.IsEdgeBlocked("Barn", new GridPoint(4, 4), new GridPoint(3, 4)));
+    ledger.Clear();
+    Equal(false, ledger.IsTileBlocked("Farm", new GridPoint(2, 1)));
+}
+
+static void TestDirectedTravelEdgeDetour()
+{
+    TravelObstacleLedger ledger = new();
+    ledger.Add(new TravelObstacleSelection(
+        null,
+        new TravelBlockedEdge("Farm", new GridPoint(0, 1), new GridPoint(1, 1))));
+    GridRouteMap routes = GridRouteMap.Build(
+        width: 4,
+        height: 3,
+        start: new GridPoint(0, 1),
+        isPassable: _ => true,
+        canTraverse: (from, to) => !ledger.IsEdgeBlocked("Farm", from, to));
+    Equal(true, routes.TryGetPath(new GridPoint(3, 1), out IReadOnlyList<GridPoint> path));
+    Equal(false, path.Zip(path.Skip(1)).Any(pair =>
+        pair.First == new GridPoint(0, 1) && pair.Second == new GridPoint(1, 1)));
+    Equal(5, path.Count - 1);
+}
+
+static void TestTravelInterruptionSnapshot()
+{
+    TravelInterruptionSnapshot snapshot = new(
+        TravelInterruptionKind.ProgressStall,
+        "Farm",
+        new GridPoint(7, 8),
+        448f,
+        512f,
+        new GridPoint(10, 8),
+        3,
+        new GridPoint(8, 8),
+        new GridPoint(6, 8),
+        TravelControllerState.Attached,
+        "object collision");
+    string reason = snapshot.ToTechnicalReason();
+    Equal(true, reason.Contains("kind=ProgressStall", StringComparison.Ordinal));
+    Equal(true, reason.Contains("location=Farm", StringComparison.Ordinal));
+    Equal(true, reason.Contains("next=GridPoint { X = 8, Y = 8 }", StringComparison.Ordinal));
+    Equal(true, reason.Contains("liveProbe=object collision", StringComparison.Ordinal));
 }
 
 static void TestConsecutiveRouteFailureBudget()

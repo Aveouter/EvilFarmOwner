@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a shared primitive-only travel interruption snapshot and map-scoped tile/edge obstacle ledger for bounded route recovery across farm-work controllers.
+
 ## 0.3.1 - 2026-08-26
 
 - Fixed the 12-slot harvest delivery threshold to count simulated vanilla-compatible carried slots instead of individual capture records, while retaining independent transfer identities.

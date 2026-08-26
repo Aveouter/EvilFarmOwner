@@ -5,7 +5,129 @@ internal enum TravelInterruptionKind
     Timeout,
     ProgressStall,
     ControllerEnded,
-    ControllerReplaced
+    ControllerReplaced,
+    FirstStepRejected,
+    ControllerSetupFailed
+}
+
+internal enum TravelControllerState
+{
+    None,
+    Attached,
+    Replaced
+}
+
+internal readonly record struct TravelBlockedTile(string LocationKey, GridPoint Tile);
+
+internal readonly record struct TravelBlockedEdge(
+    string LocationKey,
+    GridPoint From,
+    GridPoint To);
+
+internal readonly record struct TravelObstacleSelection(
+    TravelBlockedTile? Tile,
+    TravelBlockedEdge? Edge)
+{
+    public bool HasValue => this.Tile.HasValue || this.Edge.HasValue;
+}
+
+internal sealed class TravelObstacleLedger
+{
+    private readonly HashSet<TravelBlockedTile> Tiles = new();
+    private readonly HashSet<TravelBlockedEdge> Edges = new();
+
+    public IReadOnlyCollection<TravelBlockedTile> BlockedTiles => this.Tiles;
+    public IReadOnlyCollection<TravelBlockedEdge> BlockedEdges => this.Edges;
+
+    public bool Add(TravelObstacleSelection selection)
+    {
+        if (selection.Tile is { } tile)
+            return this.Tiles.Add(tile);
+        if (selection.Edge is { } edge)
+            return this.Edges.Add(edge);
+        return false;
+    }
+
+    public bool IsTileBlocked(string locationKey, GridPoint tile)
+    {
+        return this.Tiles.Contains(new TravelBlockedTile(locationKey, tile));
+    }
+
+    public bool IsEdgeBlocked(string locationKey, GridPoint from, GridPoint to)
+    {
+        return this.Edges.Contains(new TravelBlockedEdge(locationKey, from, to));
+    }
+
+    public void Clear()
+    {
+        this.Tiles.Clear();
+        this.Edges.Clear();
+    }
+}
+
+internal readonly record struct TravelInterruptionSnapshot(
+    TravelInterruptionKind Kind,
+    string LocationKey,
+    GridPoint Origin,
+    float PixelX,
+    float PixelY,
+    GridPoint? Destination,
+    int RemainingWaypoints,
+    GridPoint? NextWaypoint,
+    GridPoint? PreviousProgressTile,
+    TravelControllerState ControllerState,
+    string CollisionProbe)
+{
+    public string ToTechnicalReason()
+    {
+        return $"kind={this.Kind}, location={this.LocationKey}, tile={this.Origin}, "
+            + $"pixel=({this.PixelX:0.##},{this.PixelY:0.##}), "
+            + $"destination={this.Destination?.ToString() ?? "-"}, "
+            + $"remainingWaypoints={this.RemainingWaypoints}, "
+            + $"next={this.NextWaypoint?.ToString() ?? "-"}, "
+            + $"previousProgressTile={this.PreviousProgressTile?.ToString() ?? "-"}, "
+            + $"controller={this.ControllerState}, liveProbe={this.CollisionProbe}";
+    }
+}
+
+internal static class TravelRouteExclusionPolicy
+{
+    public static TravelObstacleSelection Select(
+        string locationKey,
+        GridPoint currentTile,
+        GridPoint? previousProgressTile,
+        GridPoint? nextWaypoint)
+    {
+        if (string.IsNullOrWhiteSpace(locationKey))
+            throw new ArgumentException("A location key is required.", nameof(locationKey));
+        if (!nextWaypoint.HasValue)
+            return default;
+
+        GridPoint next = nextWaypoint.Value;
+        int nextDistance = ManhattanDistance(currentTile, next);
+        if (nextDistance == 1)
+        {
+            return new TravelObstacleSelection(
+                new TravelBlockedTile(locationKey, next),
+                null);
+        }
+
+        if (next == currentTile
+            && previousProgressTile is { } previous
+            && ManhattanDistance(previous, currentTile) == 1)
+        {
+            return new TravelObstacleSelection(
+                null,
+                new TravelBlockedEdge(locationKey, previous, currentTile));
+        }
+
+        return default;
+    }
+
+    private static int ManhattanDistance(GridPoint left, GridPoint right)
+    {
+        return Math.Abs(left.X - right.X) + Math.Abs(left.Y - right.Y);
+    }
 }
 
 internal static class DeliveryRouteExclusionPolicy
@@ -19,12 +141,15 @@ internal static class DeliveryRouteExclusionPolicy
         if (!nextWaypoint.HasValue)
             return false;
 
-        GridPoint next = nextWaypoint.Value;
-        int distance = Math.Abs(next.X - currentTile.X) + Math.Abs(next.Y - currentTile.Y);
-        if (distance != 1)
+        TravelObstacleSelection selection = TravelRouteExclusionPolicy.Select(
+            "legacy-delivery",
+            currentTile,
+            previousProgressTile: null,
+            nextWaypoint);
+        if (selection.Tile is not { } tile)
             return false;
 
-        failedTile = next;
+        failedTile = tile.Tile;
         return true;
     }
 }

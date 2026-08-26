@@ -39,6 +39,23 @@ internal sealed class GridRouteMap
         Func<GridPoint, bool> isPassable,
         int maximumVisitedTiles = int.MaxValue)
     {
+        return Build(
+            width,
+            height,
+            start,
+            isPassable,
+            canTraverse: null,
+            maximumVisitedTiles);
+    }
+
+    public static GridRouteMap Build(
+        int width,
+        int height,
+        GridPoint start,
+        Func<GridPoint, bool> isPassable,
+        Func<GridPoint, GridPoint, bool>? canTraverse,
+        int maximumVisitedTiles = int.MaxValue)
+    {
         Dictionary<GridPoint, GridPoint> previous = new();
         Dictionary<GridPoint, int> distances = new() { [start] = 0 };
         Queue<GridPoint> open = new();
@@ -55,7 +72,8 @@ internal sealed class GridRouteMap
                     || next.X >= width
                     || next.Y >= height
                     || distances.ContainsKey(next)
-                    || !isPassable(next))
+                    || !isPassable(next)
+                    || canTraverse?.Invoke(current, next) == false)
                     continue;
 
                 previous[next] = current;
@@ -139,6 +157,43 @@ internal static class FarmNavigationMap
                 start,
                 tile => (tile == start || excludedTiles?.Contains(tile) != true)
                     && IsPassable(farm, worker, tile),
+                MaximumVisitedTiles);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            monitor.Log(
+                $"Farm navigation scan failed closed for worker '{worker.Name}' from {startTile}: {ex.Message}",
+                LogLevel.Warn);
+            return false;
+        }
+    }
+
+    public static bool TryBuild(
+        GameLocation farm,
+        NPC worker,
+        Point startTile,
+        IMonitor monitor,
+        string locationKey,
+        TravelObstacleLedger obstacles,
+        out GridRouteMap? routes)
+    {
+        if (string.IsNullOrWhiteSpace(locationKey))
+            throw new ArgumentException("A location key is required.", nameof(locationKey));
+        ArgumentNullException.ThrowIfNull(obstacles);
+        routes = null;
+        int width = farm.Map.Layers[0].LayerWidth;
+        int height = farm.Map.Layers[0].LayerHeight;
+        try
+        {
+            GridPoint start = new(startTile.X, startTile.Y);
+            routes = GridRouteMap.Build(
+                width,
+                height,
+                start,
+                tile => (tile == start || !obstacles.IsTileBlocked(locationKey, tile))
+                    && IsPassable(farm, worker, tile),
+                (from, to) => !obstacles.IsEdgeBlocked(locationKey, from, to),
                 MaximumVisitedTiles);
             return true;
         }
