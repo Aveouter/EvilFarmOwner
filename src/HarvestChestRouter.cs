@@ -15,6 +15,20 @@ internal sealed record HarvestChestRoute(
     int AcceptableCapacity,
     Stack<Point> Path);
 
+internal sealed record HarvestCargoRouteRequest(
+    string TransferId,
+    Item Item,
+    IReadOnlySet<Point> AttemptedChestTiles,
+    IReadOnlySet<HarvestChestRouteKey> AttemptedRoutes);
+
+internal sealed record HarvestCargoRoute(
+    string TransferId,
+    HarvestChestRoute Route);
+
+internal sealed record HarvestChestRoutingContext(
+    Farm Farm,
+    GridRouteMap Routes);
+
 internal sealed class HarvestChestRouter
 {
     private static readonly Point[] InteractionOffsets =
@@ -43,6 +57,57 @@ internal sealed class HarvestChestRouter
         if (!FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
             || routes is null)
             return null;
+
+        return FindBestRoute(
+            farm,
+            item,
+            attemptedChestTiles,
+            attemptedRoutes,
+            routes);
+    }
+
+    public HarvestChestRoutingContext? CreateRoutingContext(
+        Farm farm,
+        NPC worker,
+        Point startTile)
+    {
+        if (!FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
+            || routes is null)
+            return null;
+
+        return new HarvestChestRoutingContext(farm, routes);
+    }
+
+    public static IReadOnlyList<HarvestCargoRoute> FindBestRoutes(
+        HarvestChestRoutingContext context,
+        IEnumerable<HarvestCargoRouteRequest> requests)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(requests);
+
+        List<HarvestCargoRoute> results = new();
+        foreach (HarvestCargoRouteRequest request in requests)
+        {
+            HarvestChestRoute? route = FindBestRoute(
+                context.Farm,
+                request.Item,
+                request.AttemptedChestTiles,
+                request.AttemptedRoutes,
+                context.Routes);
+            if (route is not null)
+                results.Add(new HarvestCargoRoute(request.TransferId, route));
+        }
+
+        return results;
+    }
+
+    private static HarvestChestRoute? FindBestRoute(
+        Farm farm,
+        Item item,
+        IReadOnlySet<Point> attemptedChestTiles,
+        IReadOnlySet<HarvestChestRouteKey> attemptedRoutes,
+        GridRouteMap routes)
+    {
 
         HashSet<GridPoint> attemptedChestGrids = attemptedChestTiles
             .Select(tile => new GridPoint(tile.X, tile.Y))

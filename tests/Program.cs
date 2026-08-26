@@ -90,6 +90,7 @@ List<(string Name, Action Test)> tests = new()
     ("harvest partial remainder", TestHarvestPartialRemainder),
     ("harvest chest release deferral", TestHarvestChestReleaseDeferral),
     ("harvest cargo batch threshold", TestHarvestCargoBatchThreshold),
+    ("harvest cargo destination grouping", TestHarvestCargoDestinationGrouping),
     ("regrowing harvest capture semantics", TestRegrowingHarvestCaptureSemantics),
     ("ready tapper target semantics", TestReadyTapperTargetSemantics),
     ("ready fruit-tree target semantics", TestReadyFruitTreeTargetSemantics),
@@ -2081,6 +2082,38 @@ static void TestHarvestCargoBatchThreshold()
         carriedStacks: 1,
         acquisitionClosed: false,
         noRemainingTarget: true));
+}
+
+static void TestHarvestCargoDestinationGrouping()
+{
+    GridPoint vegetables = new(10, 4);
+    GridPoint artisanGoods = new(18, 9);
+    HarvestCargoDestination[] destinations =
+    {
+        new("crop-a", vegetables),
+        new("machine-a", artisanGoods),
+        new("crop-b", vegetables),
+        new("crop-c", vegetables),
+        new("machine-b", artisanGoods)
+    };
+
+    Equal(
+        "crop-a,crop-b,crop-c",
+        string.Join(',', HarvestCargoBatchPolicy.SelectForChest(destinations, vegetables)));
+    Equal(
+        "machine-a,machine-b",
+        string.Join(',', HarvestCargoBatchPolicy.SelectForChest(destinations, artisanGoods)));
+    Equal(
+        "",
+        string.Join(',', HarvestCargoBatchPolicy.SelectForChest(destinations, new GridPoint(1, 1))));
+
+    Equal(
+        true,
+        HarvestChestClassification.Classify(new HarvestChestContents(0, 0, 0, 0))
+            == HarvestChestMatchKind.Empty);
+    Equal(
+        false,
+        HarvestChestClassification.Classify(new HarvestChestContents(0, 0, 0, 1)).HasValue);
 }
 
 static void TestRegrowingHarvestCaptureSemantics()
