@@ -35,6 +35,7 @@ List<(string Name, Action Test)> tests = new()
     ("animal loose product ownership", TestAnimalLooseProductOwnership),
     ("animal product route ordering", TestAnimalProductRouteOrdering),
     ("animal product commit preflight", TestAnimalProductCommitPreflight),
+    ("requester inventory aggregate capacity", TestRequesterInventoryAggregateCapacity),
     ("recurring contract state validation", TestRecurringContractStateValidation),
     ("recurring contract candidate pool", TestRecurringContractCandidatePool),
     ("recurring contract ranking", TestRecurringContractRanking),
@@ -705,6 +706,39 @@ static void TestAnimalProductCommitPreflight()
         AnimalProductCommitPolicy.EvaluatePreflight(true, true, 1, 2));
     Throws<ArgumentOutOfRangeException>(() =>
         AnimalProductCommitPolicy.EvaluatePreflight(true, true, 0, 0));
+}
+
+static void TestRequesterInventoryAggregateCapacity()
+{
+    InventoryCapacitySlot[] splitCompatibleCapacity =
+    {
+        new(false, true, 970, 999),
+        new(false, false, 1, 1),
+        new(false, true, 950, 999)
+    };
+    Equal(true, InventoryCapacityPolicy.CanAcceptCompleteStack(
+        requestedStack: 70,
+        incomingMaximumStack: 999,
+        splitCompatibleCapacity));
+    Equal(false, InventoryCapacityPolicy.CanAcceptCompleteStack(
+        requestedStack: 79,
+        incomingMaximumStack: 999,
+        splitCompatibleCapacity));
+
+    InventoryCapacitySlot[] emptySlots =
+    {
+        new(false, false, 1, 1),
+        new(true, false, 0, 0),
+        new(true, false, 0, 0)
+    };
+    Equal(true, InventoryCapacityPolicy.CanAcceptCompleteStack(
+        requestedStack: 1500,
+        incomingMaximumStack: 999,
+        emptySlots));
+    Equal(false, InventoryCapacityPolicy.CanAcceptCompleteStack(
+        requestedStack: 1999,
+        incomingMaximumStack: 999,
+        emptySlots));
 }
 
 static void TestRecurringContractStateValidation()
