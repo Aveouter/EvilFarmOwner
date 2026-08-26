@@ -20,6 +20,7 @@ Implemented on the draft feature branch:
 
 - manual selection and stable budget-aware automatic selection for up to four available adult NPCs;
 - host validation, immutable settings synchronization, protocol migration, and per-worker reconnect snapshots;
+- pending farmhand requests retain their original idempotency key across timeout/disconnect resynchronization;
 - independent worker leases, stage controllers, cargo state, wage settlement, and aggregate result conservation checks;
 - parallel harvest/watering with target claims, exclusive animal/storage assignment, occupied-worker route avoidance, existing non-destructive replanning, gate handling, and mutex-backed chest access;
 - live crop/resource claims plus deterministic same-tile, opposing-edge, entrance, and interior route reservations with bounded waiting;

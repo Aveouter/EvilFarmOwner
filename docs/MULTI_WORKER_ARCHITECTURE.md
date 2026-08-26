@@ -11,7 +11,7 @@ This document describes the concurrent worker runtime implemented on the draft v
 
 ## Deterministic selection and partitioning
 
-- Manual selection preserves the chosen NPC set; execution order is stable by internal NPC name.
+- Manual selection preserves the chosen NPC set; the host resolves aliases/casing and executes in stable canonical internal-NPC-name order.
 - Automatic selection sorts by task efficiency, friendship-adjusted maximum wage, friendship hearts, then ordinal NPC name, while respecting the shared authorization budget.
 - Every selected worker may share harvesting and watering; the live claim ledger gives each crop/resource target one owner before travel begins. Animal care and storage sorting remain exclusive and are assigned in stable order to avoid duplicate animal mutations and chest plans.
 - A one-worker shift receives every enabled stage and remains the one-element form of the same runtime.
@@ -59,6 +59,7 @@ The deterministic route ledger, single-worker equivalence, tile conflicts, oppos
 - Protocol schema 11 carries worker lists, per-worker snapshots, tombstones for workers that finish early, and per-worker settlement results.
 - Schema 10 is accepted only as the legacy single-worker representation.
 - Automatic-contract schema 3 stores the prior selected worker list and migrates older single-worker records.
+- A farmhand keeps the original pending request ID across response timeout, disconnect, and nonce-matched resynchronization. A synchronized active snapshot or result consumes it; otherwise the same request is resent and the host replay ledger prevents a second dispatch or charge.
 - Completed request/result recovery survives save/reload and host-session rebinding. An interrupted live shift is restored safely; it is not silently replayed after a host restart.
 
 ## Remaining release gates
