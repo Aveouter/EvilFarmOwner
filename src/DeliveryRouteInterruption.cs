@@ -78,6 +78,17 @@ internal readonly record struct TravelInterruptionSnapshot(
     TravelControllerState ControllerState,
     string CollisionProbe)
 {
+    public string ReasonTranslationKey => this.Kind switch
+    {
+        TravelInterruptionKind.Timeout => "route-reason.timeout",
+        TravelInterruptionKind.ProgressStall => "route-reason.progress-stall",
+        TravelInterruptionKind.ControllerEnded => "route-reason.controller-ended",
+        TravelInterruptionKind.ControllerReplaced => "route-reason.controller-replaced",
+        TravelInterruptionKind.FirstStepRejected => "route-reason.first-step",
+        TravelInterruptionKind.ControllerSetupFailed => "route-reason.controller-setup",
+        _ => "route-reason.unknown"
+    };
+
     public string ToTechnicalReason()
     {
         return $"kind={this.Kind}, location={this.LocationKey}, tile={this.Origin}, "

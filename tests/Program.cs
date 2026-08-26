@@ -54,6 +54,7 @@ List<(string Name, Action Test)> tests = new()
     ("controller path skips current tile", TestControllerPathSkipsCurrentTile),
     ("destination tile alignment", TestDestinationTileAlignment),
     ("travel progress watchdog", TestTravelProgressWatchdog),
+    ("travel progress tile history", TestTravelProgressTileHistory),
     ("delivery stalled tile exclusion", TestDeliveryStalledTileExclusion),
     ("map-scoped travel obstacle ledger", TestMapScopedTravelObstacleLedger),
     ("directed travel edge detour", TestDirectedTravelEdgeDetour),
@@ -1030,6 +1031,17 @@ static void TestTravelProgressWatchdog()
     Equal(false, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
     Equal(true, watchdog.Tick(100f, 200f, maximumStalledTicks: 3));
     Equal(false, watchdog.Tick(102f, 200f, maximumStalledTicks: 3));
+}
+
+static void TestTravelProgressTileHistory()
+{
+    TravelProgressWatchdog watchdog = new();
+    watchdog.Reset(0f, 0f, new GridPoint(1, 1));
+    Equal(false, watchdog.Tick(2f, 0f, new GridPoint(2, 1), maximumStalledTicks: 2));
+    Equal(new GridPoint(2, 1), watchdog.LastProgressTile!.Value);
+    Equal(new GridPoint(1, 1), watchdog.PreviousProgressTile!.Value);
+    Equal(false, watchdog.Tick(2f, 0f, new GridPoint(2, 1), maximumStalledTicks: 2));
+    Equal(true, watchdog.Tick(2f, 0f, new GridPoint(2, 1), maximumStalledTicks: 2));
 }
 
 static void TestDeliveryStalledTileExclusion()
