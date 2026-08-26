@@ -106,6 +106,8 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             {
                 this.LastStartFailureKey = runtime.FarmWork.LastStartFailureKey
                     ?? "contract.failure.unknown";
+                if (this.LastStartFailureKey == "farm-work.start.no-work")
+                    continue;
                 foreach (WorkerRuntime started in group.Workers)
                     started.FarmWork.Cancel("contract.failure.group-start", mustFinalizeNow: true);
                 this.DrainCancelled(group.Workers);
@@ -113,6 +115,8 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             }
             group.Workers.Add(runtime);
         }
+        if (group.Workers.Count == 0)
+            return this.FailStart("farm-work.start.no-work");
         group.InitialWorkerCount = group.Workers.Count;
 
         this.ActiveGroup = group;

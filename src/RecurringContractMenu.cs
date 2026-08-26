@@ -289,19 +289,19 @@ internal sealed class RecurringContractMenu : IClickableMenu
             RecurringEvaluationStatus.None => this.Translation.Get("recurring.latest.none"),
             RecurringEvaluationStatus.Started => this.Translation.Get("recurring.latest.started", new
             {
-                worker = this.GetDisplayName(evaluation.SelectedWorkerName),
+                worker = this.GetSelectedWorkerText(evaluation),
                 gold = evaluation.AuthorizedGold
             }),
             RecurringEvaluationStatus.Completed => this.Translation.Get("recurring.latest.completed", new
             {
-                worker = this.GetDisplayName(evaluation.SelectedWorkerName),
+                worker = this.GetSelectedWorkerText(evaluation),
                 completed = evaluation.CompletedWork,
                 paid = evaluation.ChargedGold,
                 refunded = evaluation.RefundedGold
             }),
             RecurringEvaluationStatus.Stopped => this.Translation.Get("recurring.latest.stopped", new
             {
-                worker = this.GetDisplayName(evaluation.SelectedWorkerName),
+                worker = this.GetSelectedWorkerText(evaluation),
                 reason = this.Translation.Get(evaluation.ReasonKey),
                 completed = evaluation.CompletedWork,
                 paid = evaluation.ChargedGold,
@@ -317,5 +317,13 @@ internal sealed class RecurringContractMenu : IClickableMenu
     private string GetDisplayName(string internalName)
     {
         return this.DisplayNames.GetValueOrDefault(internalName, internalName);
+    }
+
+    private string GetSelectedWorkerText(RecurringEvaluationData evaluation)
+    {
+        IEnumerable<string> names = evaluation.SelectedWorkerNames.Length > 0
+            ? evaluation.SelectedWorkerNames
+            : new[] { evaluation.SelectedWorkerName };
+        return string.Join(", ", names.Select(this.GetDisplayName));
     }
 }
