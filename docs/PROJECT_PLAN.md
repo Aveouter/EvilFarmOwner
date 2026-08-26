@@ -1,102 +1,41 @@
 # Project Plan
 
-This document defines the issue taxonomy, milestone structure, and development order for Evil Farm Owner.
+This document records the active release order and the repository's issue-first development rules.
 
-## Issue Taxonomy
+## Development workflow
 
-Every issue should have one label from each group when possible.
+Every implementation starts from an issue with one `type`, `priority`, `area`, and `status` label. Work branches from current `main`, lands through a focused pull request, passes repository checks and review, and is squash-merged. Release candidates additionally require the clean local verifier because hosted CI cannot compile against proprietary Stardew Valley assemblies.
 
-### Type
+## Released baseline
 
-- `type:feature`: user-facing behavior or feature.
-- `type:bug`: confirmed defect or unsafe behavior.
-- `type:design`: gameplay, UX, or architecture decision before implementation.
-- `type:tech-debt`: internal cleanup or structure work.
-- `type:docs`: user docs, contributor docs, templates, or project process.
-- `type:idea`: unscheduled future concept.
+- `v0.3.0` provides complete single-worker shifts, configurable wages and stages, batched lossless harvest delivery, animal care, chest sorting, and host-authoritative protocol 9 behavior.
+- `v0.3.1` is the narrow harvest-delivery hotfix: vanilla-compatible 12-slot accounting plus detailed classified-chest delivery recovery.
 
-### Priority
+## Current release: v0.3.2 - Route reliability
 
-- `priority:p0`: save corruption, data loss, or release blocker.
-- `priority:p1`: current milestone priority.
-- `priority:p2`: important but not blocking the current milestone.
-- `priority:p3`: later exploration.
+`v0.3.2` is a single-worker stability release. It does not change the multiplayer protocol, save schema, hiring flow, or worker limit.
 
-### Area
+Completed implementation gates:
 
-- `area:ui`: menus, HUD, input flow, and player interaction.
-- `area:farm-work`: watering, harvesting, planting, fertilizing, debris cleanup.
-- `area:storage`: chests, warehouse, routing, sorting, inventory movement.
-- `area:multiplayer`: host/client behavior and sync.
-- `area:npc`: worker identity, visuals, movement, and NPC-like behavior.
-- `area:config`: settings and persistence.
-- `area:docs`: README and contributor-facing documentation.
-- `area:release`: packaging, versioning, and release workflow.
+- shared route interruption classification and diagnostic snapshots;
+- location-scoped blocked tiles and directed edges;
+- three-attempt bounded replanning for harvest, watering, animal care, and chest sorting;
+- non-destructive farm routing with gate opening;
+- explicit target-skip, safe-return, and lossless cargo recovery policies;
+- a standalone .NET 8 Core project with all deterministic tests running on Ubuntu CI.
 
-### Status
+Release gates still requiring recorded evidence:
 
-- `status:needs-design`: not ready to code yet.
-- `status:ready`: ready for implementation.
-- `status:blocked`: blocked by another decision, issue, or external constraint.
+- disposable-save route matrix covering dynamic obstacles, dense/trellis crops, animal-house doors, player map changes, sorting routes, and return travel;
+- forced storage recovery matrix covering overflow, visible drop, quarantine, recovery records, save, and reload;
+- clean production package, allowlist, command scan, SHA-256 re-download audit, and exact-ZIP SMAPI load smoke test.
 
-## Milestones
+## Next release: v0.5.0 - Concurrent workers
 
-### v0.1.0 - First Public Release
+Concurrent execution remains disabled by default and the current limit remains one worker. `v0.5.0` will add a host-owned `MaximumConcurrentWorkers` setting with a range of 1–4 and default 1, stable automatic hiring, independent worker leases/routes/cargo/settlement, task claims and reassignment, route and entrance reservations, chest locks, protocol migration, and old-save compatibility.
 
-Ship the first public version with the complete named-worker baseline.
+The release gate includes deterministic 1–4 worker behavior, one-worker equivalence, save/reload, day end, host restart, farmhand reconnect, storage contention, and a real two-process host/farmhand acceptance run. Until that gate passes, documentation must not claim concurrent or fully verified remote multiplayer support.
 
-Focus:
+## Deferred ideas
 
-- Provide one visible named-worker shift that completes all currently supported farm work.
-- Deliver harvest output without silent item loss.
-- Support host-authoritative network multiplayer requests and synchronization.
-- Improve packaging and release hygiene.
-
-### v0.2.0 - Hiring Menu MVP
-
-Turn the prototype into a player-facing interaction.
-
-Focus:
-
-- Add a hiring menu.
-- Show enabled jobs.
-- Show wage before confirmation.
-- Let players confirm or cancel.
-- Preserve console commands for testing.
-
-### v0.3.0 - Worker Identity & Feedback
-
-Make farmhands feel like hired workers instead of invisible scripts.
-
-Focus:
-
-- Worker names or contracts.
-- Work result messages.
-- Better feedback for unavailable work.
-- First version of worker presence or simple visuals.
-
-### v0.4.0 - Storage & Warehouse Jobs
-
-Add storage automation.
-
-Focus:
-
-- Define harvest output routing.
-- Add chest sorting rules.
-- Add warehouse or storage anchor design.
-- Move items safely without losing stacks.
-
-### v0.5.0 - Multiplayer Support
-
-Make multiplayer behavior explicit and reliable.
-
-Focus:
-
-- Host-authoritative work execution.
-- Client work requests.
-- Sync user-facing messages.
-- Avoid duplicate work passes.
-
-## Current Priority
-
-`v0.1.0` has been published. The current development phase prepares safe multi-worker execution one independently testable gate at a time: deterministic route reservations, assignment-based runtime state, per-worker lease and settlement isolation, storage contention, then host/reconnect coverage. Concurrent hiring remains disabled until every runtime gate passes; the existing real host/farmhand and final visual acceptance procedures remain deferred until the maintainer schedules them.
+Debris clearing, planting, fertilizing, automatic machine refilling, automatic shipping, special/modded storage, and destructive outside-farm obstacle escalation remain outside the current release sequence and require separate design issues.
