@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-08-26
+
 - Kept named workers moving and completing farm work after the requester leaves the farm; an explicitly selected requester inventory now remains available across maps while that player is online and has room for the complete stack.
 - Added a deterministic host-owned route reservation ledger for future concurrent workers, preventing same-tile and opposing-edge collisions with bounded waits, worker-scoped release, and immutable elapsed history; concurrent dispatch remains disabled.
 - Simplified the hiring roster and shift confirmation into compact vanilla-style summaries, added complete row-by-row controller navigation, and show warnings only when insufficient funds block confirmation.
@@ -21,7 +23,7 @@
 - Upgraded the host-authoritative multiplayer protocol to version 9 and migrated valid legacy automatic watering/harvest authorizations to complete farm work without raising their saved wage caps.
 - Added object-safe collection of ready normal and heavy tree-tapper products to harvest contracts, with vanilla rescheduling and the existing lossless destination pipeline.
 
-## 0.1.0 - Unreleased
+## 0.1.0 - 2026-08-25
 
 - Made harvest delivery a contract-level choice: classified chests are the manual and automatic default, requester inventory is explicit, and a running contract never silently switches between them.
 - Isolated a crop after its live interaction routes are exhausted instead of marking every remaining crop unreachable; three independently stalled crops at one origin still trigger a bounded safe return.
