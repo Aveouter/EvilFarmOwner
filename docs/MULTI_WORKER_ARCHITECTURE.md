@@ -15,6 +15,7 @@ This document describes the concurrent worker runtime implemented on the draft v
 - Automatic selection sorts by task efficiency, friendship-adjusted maximum wage, friendship hearts, then ordinal NPC name, while respecting the shared authorization budget.
 - Every selected worker may share harvesting and watering; the live claim ledger gives each crop/resource target one owner before travel begins. Animal care and storage sorting remain exclusive and are assigned in stable order to avoid duplicate animal mutations and chest plans.
 - A one-worker shift receives every enabled stage and remains the one-element form of the same runtime.
+- A selected worker who finds no unclaimed target stays as a zero-hour standby instead of disappearing from the group. A failed stage prefers a standby in stable name order, then a worker who completed their own assignment.
 
 ## Claim lifecycle
 
@@ -30,7 +31,11 @@ The host owns the claim ledger. Farmhands receive snapshots and results but neve
 
 Each worker owns an independent NPC lease, stage controllers, cargo, elapsed-time settlement, runtime snapshot, and completion record. Ordered chest mutexes protect storage transfers, and a worker cannot release another worker's lease or storage ownership.
 
-If an initial worker fails, the group performs at most one reassignment pass. Failed stages move to the first successful worker in stable name order. The recovery pass is non-billable, completed mutations remain protected by their claims and transfer identities, and the aggregate result must equal the sum of per-worker settlements.
+If an initial worker fails, the group performs at most one reassignment pass. Failed stages prefer an idle standby in stable name order, then a successful worker. A standby is billed once when recovery work starts; an already-paid worker is not charged again. Completed mutations remain protected by their claims and transfer identities, and the aggregate result must equal the sum of per-worker settlements.
+
+No wage reservation is charged until a worker starts at least one stage. An idle standby therefore has zero charge and zero refund. If that standby later accepts recovery work, it receives one normal billable reservation; a worker who already completed paid work can recover without a second charge.
+
+Completed storage-transfer reports from initial and recovery controllers are reindexed into one contiguous group sequence. A successful recovery removes superseded skipped reports, while item quantities and stable transfer IDs remain unchanged.
 
 If group startup fails after one or more workers were charged, every started shift is cancelled and its complete reservation is returned before the request fails.
 
