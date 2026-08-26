@@ -132,6 +132,8 @@ internal sealed class WorkerRosterService
         WorkContractPreview wagePreview = ContractPreviewService.Create(
             friendshipHearts,
             Game1.dayOfMonth,
+            npc.Name,
+            NamedFarmTask.FarmWork,
             this.GetSettings());
 
         return new WorkerRosterEntry(

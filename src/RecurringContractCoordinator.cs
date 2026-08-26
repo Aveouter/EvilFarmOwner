@@ -128,9 +128,21 @@ internal sealed class RecurringContractCoordinator
                 .ToArray()
             : Array.Empty<string>();
         string[] authorizedWorkers = new[] { preferredWorkerName }.Concat(substitutes).ToArray();
-        int maximumRegularGold = authorizedWorkers.Max(name => this.GetMaximumWage(name, task, dayOfMonth: 1));
+        ContractSettingsSnapshot settings = this.GetSettings();
+        int maximumWorkers = Math.Min(
+            Math.Min(settings.MaximumConcurrentWorkers, authorizedWorkers.Length),
+            WorkStagePartitionPolicy.CountEnabled(settings.EnabledStages));
+        int maximumRegularGold = authorizedWorkers
+            .Select(name => this.GetMaximumWage(name, task, dayOfMonth: 1))
+            .OrderByDescending(gold => gold)
+            .Take(maximumWorkers)
+            .Sum();
         int maximumRestGold = allowRestDays
-            ? authorizedWorkers.Max(name => this.GetMaximumWage(name, task, dayOfMonth: 6))
+            ? authorizedWorkers
+                .Select(name => this.GetMaximumWage(name, task, dayOfMonth: 6))
+                .OrderByDescending(gold => gold)
+                .Take(maximumWorkers)
+                .Sum()
             : 0;
 
         RecurringContractTemplateData template = new()
