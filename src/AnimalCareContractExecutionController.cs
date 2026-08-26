@@ -540,7 +540,7 @@ internal sealed class AnimalCareContractExecutionController
             Farmer? requester = Game1.GetPlayer(
                 stage.Context.Requester.UniqueMultiplayerID,
                 onlyOnline: true);
-            if (requester is null || !ReferenceEquals(requester.currentLocation, stage.Farm))
+            if (requester is null)
             {
                 this.Complete(stage, false, "harvest.failure.requester-destination-unavailable");
                 return;

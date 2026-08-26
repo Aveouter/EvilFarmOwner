@@ -34,12 +34,14 @@ internal static class HarvestDestinationPolicy
         bool requesterIsOnMainFarm,
         bool requesterCanAcceptCompleteStack)
     {
+        // The explicitly selected inventory follows its online requester across maps.
+        // Location is retained in this policy input so the off-farm case stays covered explicitly.
+        _ = requesterIsOnMainFarm;
         if (mode == HarvestDestinationMode.ClassifiedChests)
             return HarvestDestinationAction.RouteToClassifiedChest;
 
         return mode == HarvestDestinationMode.RequesterInventory
             && requesterIsOnline
-            && requesterIsOnMainFarm
             && requesterCanAcceptCompleteStack
                 ? HarvestDestinationAction.DeliverToRequester
                 : HarvestDestinationAction.StopUnavailable;

@@ -83,7 +83,7 @@
 确认雇佣时可以为本班次的收获物选择：
 
 - **分类箱**：默认选项。工人会根据箱子里已经存放的内容寻找合适位置。
-- **玩家背包**：适合玩家仍在农场、并且背包有足够空间的情况。
+- **玩家背包**：只要该玩家仍在线且背包有足够空间，离开农场后也能继续接收产物。
 
 一份合同开始后不会偷偷改变目的地。若所选位置无法完整接收当前物品，工人会停止继续收获，并保护已经拿到的产物。
 
@@ -190,7 +190,7 @@ Stand on the main farm, press `K`, choose a green available worker, review the w
 
 Only one named contract can run at a time. Contracts must start by 4:00 PM and stop safely before 10:00 PM.
 
-For harvesting, classified chests are the default. You can instead choose the requester inventory when that player is on the farm and has enough room. The shipping bin is never used as a fallback.
+For harvesting, classified chests are the default. You can instead choose the requester inventory; the worker continues off-screen and can deliver while that player is online on another map, as long as the full stack fits. The shipping bin is never used as a fallback.
 
 Chest sorting only supports ordinary player-owned chests on the main farm. It groups matching items and similar categories, and stops if the complete plan is no longer safe or possible. It is the final stage of both manual and automatic shifts.
 
