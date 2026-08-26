@@ -47,8 +47,9 @@ chore/project-templates
 For code changes, run:
 
 ```bash
-dotnet build -c Release
+dotnet build EvilFarmOwner.Core.csproj -c Release
 dotnet run -c Release --project tests/EvilFarmOwner.LogicTests.csproj
+dotnet build EvilFarmOwner.csproj -c Release -p:EnableModDeploy=false -p:EnableModZip=false
 ```
 
 For gameplay changes, also test through SMAPI in a disposable save.
@@ -61,7 +62,7 @@ For a release candidate, run the complete deterministic build and package allowl
 
 The release verifier requires a clean Git worktree and prints the exact source commit and tree associated with its artifact hash. For a pre-commit diagnostic only, a developer may run `EFO_RELEASE_ALLOW_DIRTY=1 ./scripts/verify-release.sh`; hashes from that override are not release evidence.
 
-GitHub Actions runs repository-only source checks for shell syntax, whitespace, JSON and manifest metadata, version alignment, and English/Chinese translation-key parity. It intentionally does not claim to compile the mod, because the hosted runner does not contain the proprietary game assemblies. The clean local release build and gameplay acceptance gates remain mandatory.
+GitHub Actions builds `EvilFarmOwner.Core.csproj` and runs every deterministic logic test on Ubuntu/.NET 8, in addition to shell, whitespace, JSON, version, and translation checks. `src/Core/` cannot reference Stardew Valley, SMAPI, XNA, or Netcode; the boundary check also rejects new runtime-independent source left outside that directory. The hosted runner still does not compile the full Mod project because it does not contain the proprietary game assemblies, so the clean local release build and gameplay acceptance gates remain mandatory.
 
 This command does not deploy into the live game. Real single-player and remote host/farmhand acceptance tests are still required for gameplay and multiplayer releases.
 
@@ -76,7 +77,8 @@ Keep files within these top-level boundaries:
 
 | Path | Purpose |
 | --- | --- |
-| `src/` | Production C# source for the SMAPI mod |
+| `src/Core/` | Runtime-independent production logic compiled and tested on hosted CI |
+| `src/` | Stardew/SMAPI runtime integration plus the Core source consumed by the Mod build |
 | `tests/` | Deterministic logic tests |
 | `i18n/` | Player-facing translations |
 | `assets/` | Images packaged with the mod |

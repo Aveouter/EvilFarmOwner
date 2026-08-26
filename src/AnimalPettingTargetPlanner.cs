@@ -17,13 +17,7 @@ internal sealed record AnimalPettingWorkPlan(
     FarmBoundarySide ArrivalSide,
     AnimalPettingTargetPlan? FirstTarget);
 
-internal sealed record AnimalPettingRouteOption(
-    long AnimalId,
-    GridPoint Target,
-    GridPoint Interaction,
-    int Distance);
-
-internal sealed class AnimalPettingTargetPlanner
+internal sealed partial class AnimalPettingTargetPlanner
 {
     private static readonly Point[] InteractionOffsets =
     {
@@ -126,20 +120,6 @@ internal sealed class AnimalPettingTargetPlanner
                 new Point(best.Interaction.X, best.Interaction.Y),
                 new Point(best.Target.X, best.Target.Y)),
             FarmNavigationMap.ToPath(path));
-    }
-
-    public static IReadOnlyList<AnimalPettingRouteOption> OrderOptions(
-        IEnumerable<AnimalPettingRouteOption> options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        return options
-            .OrderBy(option => option.Distance)
-            .ThenBy(option => option.Target.Y)
-            .ThenBy(option => option.Target.X)
-            .ThenBy(option => option.Interaction.Y)
-            .ThenBy(option => option.Interaction.X)
-            .ThenBy(option => option.AnimalId)
-            .ToArray();
     }
 
     public Stack<Point>? TryCreateReturnPath(

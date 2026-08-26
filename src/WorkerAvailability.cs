@@ -2,14 +2,6 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace EvilFarmOwner;
 
-internal enum WorkerAvailabilityState
-{
-    EligibleForPreview,
-    TemporarilyUnavailable,
-    Ineligible,
-    Unknown
-}
-
 internal enum WorkerAvailabilityReason
 {
     AvailableForPreview,
@@ -40,11 +32,3 @@ internal sealed record WorkerRosterEntry(
     Texture2D Portrait,
     WorkerAvailabilityResult Availability,
     WorkContractPreview WagePreview);
-
-internal static class WorkerRosterPolicy
-{
-    public static bool ShouldDisplay(WorkerAvailabilityState state)
-    {
-        return state == WorkerAvailabilityState.EligibleForPreview;
-    }
-}

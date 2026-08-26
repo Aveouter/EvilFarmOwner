@@ -41,7 +41,7 @@ internal sealed record WateringPlanResult(
     public bool IsSuccess => this.Plan is not null && this.Failure == WateringPlanFailure.None;
 }
 
-internal sealed class WateringTargetPlanner
+internal sealed partial class WateringTargetPlanner
 {
     private const int MaximumSupportedMapDimension = 255;
     private const int MaximumArrivalPathChecksPerSide = 8;
@@ -237,11 +237,6 @@ internal sealed class WateringTargetPlanner
                 hasCrop: true,
                 isDead: crop.dead.Value,
                 isWatered: dirt.state.Value == HoeDirt.watered);
-    }
-
-    public static bool IsEligibleDryCropState(bool hasCrop, bool isDead, bool isWatered)
-    {
-        return hasCrop && !isDead && !isWatered;
     }
 
     public static int CountRemainingDryCrops(

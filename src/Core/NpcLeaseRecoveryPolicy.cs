@@ -1,5 +1,13 @@
 namespace EvilFarmOwner;
 
+internal enum NpcLeaseRestoreResult
+{
+    Restored,
+    Relinquished,
+    LeaseOwnershipLost,
+    ConflictingController
+}
+
 internal enum NpcLeaseRecoveryAction
 {
     Complete,
