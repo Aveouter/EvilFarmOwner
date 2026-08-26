@@ -283,7 +283,6 @@ internal sealed class MultiplayerContractCoordinator
         if (this.PendingTicks < PendingTimeoutTicks)
             return;
 
-        this.PendingRequest = null;
         this.PendingTicks = 0;
         Game1.addHUDMessage(new HUDMessage(
             this.Translation.Get("multiplayer.hud.timeout"),
@@ -310,6 +309,7 @@ internal sealed class MultiplayerContractCoordinator
         this.RemoteActiveSnapshots.Clear();
         this.SeenClientResponses.Clear();
         this.ClientResponseOrder.Clear();
+        this.PendingTicks = 0;
         this.SendSyncRequest();
     }
 
@@ -333,6 +333,7 @@ internal sealed class MultiplayerContractCoordinator
             this.RemoteActiveSnapshots.Clear();
             this.SeenClientResponses.Clear();
             this.ClientResponseOrder.Clear();
+            this.PendingTicks = 0;
         }
     }
 
@@ -977,6 +978,7 @@ internal sealed class MultiplayerContractCoordinator
 
         if (this.PendingRequest is not null)
         {
+            this.PendingTicks = 0;
             this.SendMessage(
                 this.PendingRequest,
                 MultiplayerContractProtocol.StartRequestType,
