@@ -742,12 +742,10 @@ internal sealed class MultiplayerContractCoordinator
 
     private void HandleSnapshot(ContractSnapshotMessage snapshot)
     {
-        if (!Enum.IsDefined(snapshot.Task)
-            || !HarvestDestinationPolicy.IsValidForTask(
-                snapshot.Task,
-                snapshot.HarvestDestination)
-            || !Enum.IsDefined(snapshot.ArrivalSide)
-            || !WorkerEfficiencyProfiles.IsValidMultiplier(snapshot.EfficiencyMultiplier)
+        if (!ContractSnapshotValidator.IsValid(
+                snapshot,
+                MultiplayerContractProtocol.SchemaVersion,
+                Game1.uniqueIDForThisGame)
             || !this.ClientHostSession.Matches(snapshot.HostSessionId)
             || !this.RemoteStateVersions.CanAccept(snapshot.StateVersion)
             || !this.SnapshotTracker.TryAccept(
@@ -891,6 +889,9 @@ internal sealed class MultiplayerContractCoordinator
 
     private void HandleSyncState(ContractSyncStateMessage state)
     {
+        if (state.Settings is null || state.ActiveContracts is null)
+            return;
+
         bool validSettings = state.Settings.TryGetSnapshot(out ContractSettingsSnapshot settings)
             && state.Settings.SaveId == Game1.uniqueIDForThisGame
             && state.Settings.SettingsVersion >= this.RemoteSettingsVersion
@@ -908,11 +909,44 @@ internal sealed class MultiplayerContractCoordinator
             || !Guid.TryParseExact(state.HostSessionId, "N", out _)
             || state.StateVersion < 0
             || state.HasActiveContract != (activeContracts.Length > 0)
-            || activeContracts.Any(snapshot => !snapshot.IsActive)
+            || activeContracts.Length > ContractSettingsPolicy.MaximumMaximumConcurrentWorkers
+            || activeContracts.Any(snapshot => !ContractSnapshotValidator.IsValid(
+                    snapshot,
+                    MultiplayerContractProtocol.SchemaVersion,
+                    Game1.uniqueIDForThisGame)
+                || !snapshot.IsActive
+                || !string.Equals(
+                    snapshot.HostSessionId,
+                    state.HostSessionId,
+                    StringComparison.Ordinal))
             || activeContracts.Any(snapshot => snapshot.StateVersion > state.StateVersion)
             || activeContracts.Select(snapshot => snapshot.WorkerName)
                 .Distinct(StringComparer.OrdinalIgnoreCase).Count() != activeContracts.Length
-            || state.RecentResult?.StateVersion > state.StateVersion
+            || activeContracts.Select(snapshot => snapshot.ContractId)
+                .Distinct(StringComparer.Ordinal).Count() > 1
+            || activeContracts.Select(snapshot => snapshot.RequestId)
+                .Distinct(StringComparer.Ordinal).Count() > 1
+            || activeContracts.Select(snapshot => snapshot.RequestingPlayerId)
+                .Distinct().Count() > 1
+            || activeContracts.OrderBy(snapshot => snapshot.StateVersion)
+                .Select(snapshot => snapshot.Sequence)
+                .SequenceEqual(
+                    activeContracts.Select(snapshot => snapshot.Sequence)
+                        .OrderBy(sequence => sequence)) is false
+            || (state.RecentResult is not null
+                && (!MultiplayerRecoveryState.IsValidResult(
+                        state.RecentResult,
+                        Game1.uniqueIDForThisGame,
+                        MultiplayerContractProtocol.SchemaVersion)
+                    || !string.Equals(
+                        state.RecentResult.HostSessionId,
+                        state.HostSessionId,
+                        StringComparison.Ordinal)
+                    || state.RecentResult.StateVersion > state.StateVersion
+                    || activeContracts.Any(snapshot => string.Equals(
+                        snapshot.ContractId,
+                        state.RecentResult.ContractId,
+                        StringComparison.Ordinal))))
             || !validSettings)
             return;
 
@@ -921,6 +955,7 @@ internal sealed class MultiplayerContractCoordinator
 
         if (!this.ClientHostSession.TryEstablish(state.HostSessionId, state.SyncRequestId))
             return;
+        this.SnapshotTracker.Clear();
         this.SnapshotTracker.BeginSession(state.HostSessionId);
         this.RemoteHostSettings = settings;
         this.RemoteSettingsVersion = state.Settings.SettingsVersion;

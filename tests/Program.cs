@@ -130,6 +130,7 @@ List<(string Name, Action Test)> tests = new()
     ("multiplayer stale snapshot rejection", TestMultiplayerStaleSnapshotRejection),
     ("multiplayer stale sync-state rejection", TestMultiplayerStaleSyncStateRejection),
     ("multiplayer snapshot serialization", TestMultiplayerSnapshotSerialization),
+    ("multiplayer snapshot validation", TestMultiplayerSnapshotValidation),
     ("multiplayer result serialization", TestMultiplayerResultSerialization),
     ("multiplayer group settlement validation", TestMultiplayerGroupSettlementValidation),
     ("multiplayer storage result validation", TestMultiplayerStorageResultValidation),
@@ -3421,6 +3422,48 @@ static void TestMultiplayerSnapshotSerialization()
     Equal(true, restored.IsActive);
 }
 
+static void TestMultiplayerSnapshotValidation()
+{
+    ContractSnapshotMessage snapshot = NewValidSnapshot();
+    Equal(true, ContractSnapshotValidator.IsValid(
+        snapshot,
+        MultiplayerContractProtocol.SchemaVersion,
+        445566));
+
+    snapshot.Cargo = null!;
+    Equal(false, ContractSnapshotValidator.IsValid(
+        snapshot,
+        MultiplayerContractProtocol.SchemaVersion,
+        445566));
+    snapshot.Cargo = Array.Empty<ContractCargoSnapshotMessage>();
+
+    string duplicate = Guid.NewGuid().ToString("N");
+    snapshot.CompletedTransferIds = new[] { duplicate, duplicate };
+    Equal(false, ContractSnapshotValidator.IsValid(
+        snapshot,
+        MultiplayerContractProtocol.SchemaVersion,
+        445566));
+
+    snapshot = NewValidSnapshot();
+    string overlap = Guid.NewGuid().ToString("N");
+    snapshot.Cargo = new[]
+    {
+        new ContractCargoSnapshotMessage
+        {
+            TransferId = overlap,
+            QualifiedItemId = "(O)24",
+            DisplayName = "Parsnip",
+            Stack = 1
+        }
+    };
+    snapshot.CargoCount = 1;
+    snapshot.CompletedTransferIds = new[] { overlap };
+    Equal(false, ContractSnapshotValidator.IsValid(
+        snapshot,
+        MultiplayerContractProtocol.SchemaVersion,
+        445566));
+}
+
 static void TestMultiplayerResultSerialization()
 {
     Equal(11, MultiplayerContractProtocol.SchemaVersion);
@@ -3710,6 +3753,35 @@ static ContractSnapshotMessage NewSnapshot(string session, long sequence)
         ContractId = "contract-1",
         Sequence = sequence,
         Task = NamedFarmTask.FarmWork
+    };
+}
+
+static ContractSnapshotMessage NewValidSnapshot()
+{
+    return new ContractSnapshotMessage
+    {
+        SchemaVersion = MultiplayerContractProtocol.SchemaVersion,
+        SaveId = 445566,
+        HostSessionId = Guid.NewGuid().ToString("N"),
+        ContractId = Guid.NewGuid().ToString("N"),
+        Sequence = 1,
+        StateVersion = 1,
+        RequestId = Guid.NewGuid().ToString("N"),
+        RequestingPlayerId = 55,
+        WorkerName = "Leah",
+        Task = NamedFarmTask.FarmWork,
+        HarvestDestination = HarvestDestinationMode.ClassifiedChests,
+        EfficiencyMultiplier = 1m,
+        Phase = "Harvesting/TravelingToTarget",
+        ArrivalX = 78,
+        ArrivalY = 15,
+        ArrivalSide = FarmBoundarySide.East,
+        TargetX = 10,
+        TargetY = 12,
+        ReservedGold = 720,
+        StartTime = 610,
+        Cargo = Array.Empty<ContractCargoSnapshotMessage>(),
+        CompletedTransferIds = Array.Empty<string>()
     };
 }
 
