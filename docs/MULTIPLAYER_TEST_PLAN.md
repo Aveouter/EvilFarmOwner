@@ -17,6 +17,19 @@ Run `efo_netstatus` on both peers before the first contract and after every reco
 
 If an invariant fails, stop the matrix, preserve both logs, and file one focused issue. Do not repeatedly rerun the same scenario in the release session.
 
+After the single run, generate the evidence skeleton and automated consistency checks with:
+
+```bash
+scripts/collect-multiplayer-evidence.sh \
+  /path/to/host/EvilFarmOwner.dll \
+  /path/to/farmhand/EvilFarmOwner.dll \
+  /path/to/host/SMAPI-latest.txt \
+  /path/to/farmhand/SMAPI-latest.txt \
+  /path/to/evidence.md
+```
+
+The output file must not already exist. The script is read-only with respect to both game installations and logs. It checks identical peer DLL hashes, at least two network-status records per peer, final session/contract agreement, host recovery health, and Evil Farm Owner error lines. Complete every generated `TODO` and attach the two original logs; the script does not replace any manual matrix row.
+
 ## Matrix
 
 ### 1. One-worker baseline
