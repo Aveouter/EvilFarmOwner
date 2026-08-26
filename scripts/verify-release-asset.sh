@@ -71,7 +71,7 @@ dll_search_text="$(
   unzip -p "$asset_path" EvilFarmOwner/EvilFarmOwner.dll \
     | LC_ALL=C tr -d '\000'
 )"
-if [[ "$dll_search_text" =~ efo_work|efo_toggle|efo_status|efo_acceptance_faults|WorkRadius|DailyWage|ClearDebris|PlantSeedsFromInventory|FertilizeEmptyDirt ]]; then
+if [[ "$dll_search_text" =~ efo_work|efo_toggle|efo_status|efo_acceptance_|WorkRadius|DailyWage|ClearDebris|PlantSeedsFromInventory|FertilizeEmptyDirt ]]; then
   echo "Downloaded DLL exposes a legacy prototype or acceptance-test command/setting." >&2
   exit 1
 fi
