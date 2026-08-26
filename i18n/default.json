@@ -275,6 +275,7 @@
   "storage-sort.hud.dispatched": "{{worker}} started a {{transfers}}-transfer chest-sorting plan. {{gold}}g is reserved until settlement.",
   "storage-sort.hud.completed": "{{worker}} returned: moved {{transfers}} stack(s) / {{items}} item(s), skipped {{skipped}}. Paid {{paid}}g / {{hours}}h; refunded {{refunded}}g.",
   "storage-sort.hud.stopped": "{{worker}} stopped: {{reason}} Moved {{transfers}} stack(s) / {{items}} item(s), skipped {{skipped}}, recovery {{recovery}}. Paid {{paid}}g / {{hours}}h; refunded {{refunded}}g.",
+  "storage-sort.hud.route-stopped": "{{worker}} stopped chest sorting because {{reason}} No item will be removed without rollback or recovery.",
   "harvest.drop-location.farmhouse": "the farmhouse delivery area",
   "harvest.drop-location.entrance": "the selected farm entrance",
   "harvest.drop-location.worker": "the worker's position",
