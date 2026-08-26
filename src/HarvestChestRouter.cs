@@ -52,9 +52,16 @@ internal sealed class HarvestChestRouter
         Point startTile,
         Item item,
         IReadOnlySet<Point> attemptedChestTiles,
-        IReadOnlySet<HarvestChestRouteKey> attemptedRoutes)
+        IReadOnlySet<HarvestChestRouteKey> attemptedRoutes,
+        IReadOnlySet<GridPoint>? excludedTiles = null)
     {
-        if (!FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
+        if (!FarmNavigationMap.TryBuild(
+                farm,
+                worker,
+                startTile,
+                this.Monitor,
+                excludedTiles,
+                out GridRouteMap? routes)
             || routes is null)
             return null;
 

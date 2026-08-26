@@ -110,16 +110,35 @@ internal static class FarmNavigationMap
         IMonitor monitor,
         out GridRouteMap? routes)
     {
+        return TryBuild(
+            farm,
+            worker,
+            startTile,
+            monitor,
+            excludedTiles: null,
+            out routes);
+    }
+
+    public static bool TryBuild(
+        GameLocation farm,
+        NPC worker,
+        Point startTile,
+        IMonitor monitor,
+        IReadOnlySet<GridPoint>? excludedTiles,
+        out GridRouteMap? routes)
+    {
         routes = null;
         int width = farm.Map.Layers[0].LayerWidth;
         int height = farm.Map.Layers[0].LayerHeight;
         try
         {
+            GridPoint start = new(startTile.X, startTile.Y);
             routes = GridRouteMap.Build(
                 width,
                 height,
-                new GridPoint(startTile.X, startTile.Y),
-                tile => IsPassable(farm, worker, tile),
+                start,
+                tile => (tile == start || excludedTiles?.Contains(tile) != true)
+                    && IsPassable(farm, worker, tile),
                 MaximumVisitedTiles);
             return true;
         }

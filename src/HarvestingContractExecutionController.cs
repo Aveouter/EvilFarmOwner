@@ -526,7 +526,7 @@ internal sealed class HarvestingContractExecutionController
 
         if (contract.PhaseTicks > MaximumTravelTicks)
         {
-            this.HandleInterruptedTravel(contract, timedOut: true);
+            this.HandleInterruptedTravel(contract, TravelInterruptionKind.Timeout);
             return;
         }
 
@@ -534,6 +534,10 @@ internal sealed class HarvestingContractExecutionController
             && contract.Lease.Worker.controller is not null
             && !ReferenceEquals(contract.Lease.Worker.controller, contract.Controller))
         {
+            TravelInterruptionDiagnostic diagnostic = this.CaptureTravelInterruption(
+                contract,
+                TravelInterruptionKind.ControllerReplaced);
+            this.Monitor.Log(diagnostic.ToLogMessage(contract), LogLevel.Warn);
             this.FinishContract(contract, succeeded: false, "contract.failure.controller-conflict");
             return;
         }
@@ -544,12 +548,12 @@ internal sealed class HarvestingContractExecutionController
                 contract.Lease.Worker.Position.Y,
                 MaximumStalledTravelTicks))
         {
-            this.HandleInterruptedTravel(contract, timedOut: false);
+            this.HandleInterruptedTravel(contract, TravelInterruptionKind.ProgressStall);
             return;
         }
 
         if (contract.PhaseTicks > 1 && contract.Lease.Worker.controller is null)
-            this.HandleInterruptedTravel(contract, timedOut: false);
+            this.HandleInterruptedTravel(contract, TravelInterruptionKind.ControllerEnded);
     }
 
     private bool TryCompleteTravelAtDestination(ActiveHarvestContract contract)
@@ -569,6 +573,10 @@ internal sealed class HarvestingContractExecutionController
 
         if (worker.controller is not null && !ReferenceEquals(worker.controller, contract.Controller))
         {
+            TravelInterruptionDiagnostic diagnostic = this.CaptureTravelInterruption(
+                contract,
+                TravelInterruptionKind.ControllerReplaced);
+            this.Monitor.Log(diagnostic.ToLogMessage(contract), LogLevel.Warn);
             this.FinishContract(contract, succeeded: false, "contract.failure.controller-conflict");
             return true;
         }
@@ -598,8 +606,75 @@ internal sealed class HarvestingContractExecutionController
         return true;
     }
 
-    private void HandleInterruptedTravel(ActiveHarvestContract contract, bool timedOut)
+    private TravelInterruptionDiagnostic CaptureTravelInterruption(
+        ActiveHarvestContract contract,
+        TravelInterruptionKind kind)
     {
+        NPC worker = contract.Lease.Worker;
+        Point? destination = contract.Phase switch
+        {
+            HarvestContractPhase.TravelingToTarget => contract.CurrentTarget.InteractionTile,
+            HarvestContractPhase.TravelingToChest => contract.CurrentChestRoute?.InteractionTile,
+            HarvestContractPhase.Returning => contract.Plan.ArrivalTile,
+            _ => null
+        };
+        Stack<Point>? remainingPath = contract.Controller?.pathToEndPoint;
+        Point? nextWaypoint = remainingPath is { Count: > 0 }
+            ? remainingPath.Peek()
+            : null;
+        string collisionProbe = "no remaining waypoint";
+        if (nextWaypoint.HasValue)
+        {
+            Stack<Point> probePath = new();
+            probePath.Push(nextWaypoint.Value);
+            collisionProbe = FarmNavigationMap.CanBeginPath(
+                contract.Farm,
+                worker,
+                worker.TilePoint,
+                probePath,
+                out string failure)
+                ? "pass"
+                : failure;
+        }
+
+        string controllerState = worker.controller is null
+            ? "none"
+            : ReferenceEquals(worker.controller, contract.Controller)
+                ? "attached"
+                : "replaced";
+        return new TravelInterruptionDiagnostic(
+            kind,
+            new GridPoint(worker.TilePoint.X, worker.TilePoint.Y),
+            worker.Position.X,
+            worker.Position.Y,
+            destination,
+            remainingPath?.Count ?? 0,
+            nextWaypoint,
+            controllerState,
+            collisionProbe);
+    }
+
+    private void HandleInterruptedTravel(
+        ActiveHarvestContract contract,
+        TravelInterruptionKind kind)
+    {
+        TravelInterruptionDiagnostic diagnostic = this.CaptureTravelInterruption(contract, kind);
+        this.Monitor.Log(diagnostic.ToLogMessage(contract), LogLevel.Debug);
+        if (contract.Phase == HarvestContractPhase.TravelingToChest
+            && DeliveryRouteExclusionPolicy.TrySelectFailedTile(
+                diagnostic.Origin,
+                diagnostic.NextWaypoint.HasValue
+                    ? new GridPoint(diagnostic.NextWaypoint.Value.X, diagnostic.NextWaypoint.Value.Y)
+                    : null,
+                out GridPoint failedTile)
+            && contract.FailedDeliveryTiles.Add(failedTile))
+        {
+            this.Monitor.Log(
+                $"Excluded stalled delivery tile {failedTile}; future chest routes in contract "
+                + $"{contract.Id:N} will replan around it.",
+                LogLevel.Debug);
+        }
+
         if (contract.Lease.Worker.controller is not null
             && ReferenceEquals(contract.Lease.Worker.controller, contract.Controller))
             contract.Lease.Worker.controller = null;
@@ -613,13 +688,14 @@ internal sealed class HarvestingContractExecutionController
 
                 this.HandleFailedTargetRoute(
                     contract,
-                    timedOut ? "travel timeout" : "stalled or stopped controller");
+                    diagnostic.ToTechnicalReason());
                 break;
 
             case HarvestContractPhase.TravelingToChest:
                 this.HandleFailedDeliveryRoute(
                     contract,
-                    timedOut ? "travel timeout" : "stalled or stopped controller");
+                    diagnostic.ToTechnicalReason(),
+                    diagnostic.ReasonTranslationKey);
                 break;
 
             case HarvestContractPhase.Returning:
@@ -629,7 +705,7 @@ internal sealed class HarvestingContractExecutionController
                     this.FinishContract(
                         contract,
                         succeeded: false,
-                        timedOut
+                        kind == TravelInterruptionKind.Timeout
                             ? "contract.failure.return-timeout"
                             : "contract.failure.return-interrupted");
                     break;
@@ -693,7 +769,10 @@ internal sealed class HarvestingContractExecutionController
             this.BeginReturn(contract, depositOverflowOnReturn: false);
     }
 
-    private void HandleFailedDeliveryRoute(ActiveHarvestContract contract, string reason)
+    private void HandleFailedDeliveryRoute(
+        ActiveHarvestContract contract,
+        string reason,
+        string reasonTranslationKey)
     {
         Point? failedChest = contract.CurrentChestRoute?.ChestTile;
         Point? failedInteraction = contract.CurrentChestRoute?.InteractionTile;
@@ -721,8 +800,21 @@ internal sealed class HarvestingContractExecutionController
             $"Harvest worker '{contract.Lease.Worker.Name}' exhausted "
             + $"{decision.MaximumFailures} consecutive delivery routes from {origin}; "
             + $"last chest={failedChest}, interaction={failedInteraction}; "
-            + "stopping the contract because no classified chest route remains safely reachable.",
+            + $"excludedTiles={string.Join(",", contract.FailedDeliveryTiles)}; "
+            + $"lastReason={reason}; stopping the contract because no classified chest route remains safely reachable.",
             LogLevel.Warn);
+        string chestLabel = failedChest.HasValue
+            ? $"{failedChest.Value.X},{failedChest.Value.Y}"
+            : "-";
+        Game1.addHUDMessage(new HUDMessage(
+            this.Translation.Get("harvest.hud.delivery-route-stopped", new
+            {
+                worker = contract.Lease.Worker.displayName,
+                origin = $"{origin.X},{origin.Y}",
+                chest = chestLabel,
+                reason = this.Translation.Get(reasonTranslationKey)
+            }),
+            HUDMessage.error_type));
         this.StopForUnavailableStorage(contract, "delivery route retries were exhausted");
     }
 
@@ -1261,7 +1353,8 @@ internal sealed class HarvestingContractExecutionController
             contract.Lease.Worker.TilePoint,
             entry.Item,
             attempted,
-            attemptedRoutes);
+            attemptedRoutes,
+            contract.FailedDeliveryTiles);
         if (route is null)
         {
             this.StopForUnavailableStorage(
@@ -1287,7 +1380,8 @@ internal sealed class HarvestingContractExecutionController
             {
                 this.HandleFailedDeliveryRoute(
                     contract,
-                    $"first-step collision probe rejected the route: {firstStepFailure}");
+                    $"first-step collision probe rejected the route: {firstStepFailure}",
+                    "harvest.route-reason.first-step");
                 return;
             }
 
@@ -1315,7 +1409,8 @@ internal sealed class HarvestingContractExecutionController
         {
             this.HandleFailedDeliveryRoute(
                 contract,
-                $"controller setup failed: {ex.Message}");
+                $"controller setup failed: {ex.Message}",
+                "harvest.route-reason.controller-setup");
         }
     }
 
@@ -2969,6 +3064,7 @@ internal sealed class HarvestingContractExecutionController
         public bool ManagedByShift { get; }
         public HashSet<Point> CompletedTargets { get; } = new();
         public HashSet<FarmTaskRouteEdge> FailedEdges { get; } = new();
+        public HashSet<GridPoint> FailedDeliveryTiles { get; } = new();
         public HashSet<FarmBoundarySide> FailedArrivalSides { get; } = new();
         public TravelProgressWatchdog TravelWatchdog { get; } = new();
         public TravelReplanBudget ReplanBudget { get; } = new();
@@ -3026,6 +3122,44 @@ internal sealed class HarvestingContractExecutionController
             }
 
             return attempted;
+        }
+    }
+
+    private sealed record TravelInterruptionDiagnostic(
+        TravelInterruptionKind Kind,
+        GridPoint Origin,
+        float PixelX,
+        float PixelY,
+        Point? Destination,
+        int RemainingWaypoints,
+        Point? NextWaypoint,
+        string ControllerState,
+        string CollisionProbe)
+    {
+        public string ReasonTranslationKey => this.Kind switch
+        {
+            TravelInterruptionKind.Timeout => "harvest.route-reason.timeout",
+            TravelInterruptionKind.ProgressStall => "harvest.route-reason.progress-stall",
+            TravelInterruptionKind.ControllerEnded => "harvest.route-reason.controller-ended",
+            TravelInterruptionKind.ControllerReplaced => "harvest.route-reason.controller-replaced",
+            _ => "harvest.route-reason.unknown"
+        };
+
+        public string ToTechnicalReason()
+        {
+            return $"kind={this.Kind}, tile={this.Origin}, "
+                + $"pixel=({this.PixelX:0.##},{this.PixelY:0.##}), "
+                + $"destination={this.Destination?.ToString() ?? "-"}, "
+                + $"remainingWaypoints={this.RemainingWaypoints}, "
+                + $"next={this.NextWaypoint?.ToString() ?? "-"}, "
+                + $"controller={this.ControllerState}, liveProbe={this.CollisionProbe}";
+        }
+
+        public string ToLogMessage(ActiveHarvestContract contract)
+        {
+            return $"Harvest travel interrupted: contract={contract.Id:N}, "
+                + $"worker={contract.Lease.Worker.Name}, phase={contract.Phase}, "
+                + this.ToTechnicalReason() + ".";
         }
     }
 
