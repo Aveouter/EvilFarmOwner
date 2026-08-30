@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Added multi-select complete-shift work and location controls for harvesting, watering, animal care, chest sorting, the greenhouse, and safe owned farm-building interiors; Ginger Island remains excluded.
+- Unified harvesting and watering across the main farm, greenhouse, and non-residential farm-building interiors while keeping barn and coop work in animal care.
+- Return interior harvest cargo to the main farm before the existing lossless classified-chest or requester-inventory delivery pipeline runs.
+- Added configurable worker-difference strength, NPC-schedule/weekend/disabled rest-day rules, and schedule-aware wage previews.
+- Refund the full wage reservation when a dispatched shift completes no work instead of charging the one-hour minimum.
+- Upgraded host-authoritative settings synchronization to protocol schema 12 with schema-10/11 migration defaults.
+
 ## 0.5.0 - 2026-08-27
 
 - Added host-configurable concurrent hiring for one to four available adult NPCs while preserving a one-worker default and legacy configuration migration.

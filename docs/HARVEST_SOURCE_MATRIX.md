@@ -13,13 +13,13 @@ This matrix prevents the complete shift from treating every object with a held i
 | Crab pots | Preserve the deterministic Crabbing Book double-catch rule, caught-fish record/length, five fishing XP, consumed bait, lid/readiness state, and short removal guard | Collect the existing exact output through the lossless destination pipeline. Never refill bait automatically. |
 | Fish ponds | Clear only the ready building-owned output and grant vanilla fishing experience: 10 plus 4% of the object's store value | Route to the pond's item-bucket edge, preserve the exact output, and never add fish or satisfy pond requests. |
 | Main-farm berry and tea bushes | Clear the ready sprite state; berry count follows foraging level, Botanist quality is preserved, berry XP matches count, and tea yields one leaf without XP | Only ordinary medium berry bushes and mature tea bushes in the main farm location are eligible. Walnut, town/cosmetic, map-special, and potted bushes are excluded. |
+| Greenhouse and safe farm-building interiors | Reuse the same target-specific state transition as the matching crop, tree, tapper, or simple machine | Carry interior output back to the main farm, then enter the existing lossless classified-chest or requester-inventory pipeline. Residential interiors and Ginger Island are excluded. |
 
 ## Requires a dedicated implementation
 
 | Source | Why generic `heldObject` removal is unsafe |
 | --- | --- |
 | Stateful data-driven machines | Machines with collect-time recalculation or `OutputCollected` continuation rules can replace output, consume retained input, or immediately start another cycle. They remain excluded until that continuation can be rolled back exactly. |
-| Farm-building interiors | Barns, coops, sheds, caves, and greenhouse-like locations need location-aware entrances, doors, route ownership, and return behavior before their contents can join a main-farm shift. |
 | Loose forage and spawned objects | Ownership, quest/special items, spawned-object flags, and terrain coverage need an allowlist. Debris clearing is not harvest collection. |
 
 ## Excluded by policy

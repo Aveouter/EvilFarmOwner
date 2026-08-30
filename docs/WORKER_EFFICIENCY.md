@@ -12,6 +12,15 @@ The deterministic duration rule is `ceil(base action ticks / efficiency)`, with 
 tick after the action takes effect. The host snapshots the selected task multiplier when the
 contract starts, and the same value is used until settlement.
 
+Generic Mod Config Menu exposes a worker-difference strength from 0% to 200%. At 0%, every
+profile is pulled to the `1.00x` baseline. At 100%, the table below is used directly. Values above
+100% amplify only the distance from baseline and remain inside the supported `1.00x–1.20x`
+range. This setting changes action duration only and never changes wages or output.
+
+Generic Mod Config Menu 提供 0%–200% 的“工人差异强度”。0% 会把所有人物拉回 `1.00x`
+基准，100% 直接采用下表，超过 100% 只放大人物相对基准的差距，并始终限制在
+`1.00x–1.20x` 的支持范围内。该设置只改变动作耗时，不改变工资或产出。
+
 确定性耗时规则为 `ceil(基础动作帧数 / 效率)`，下限为动作实际生效后的下一帧。合同开始时由主机固化所选
 工作的效率，此后直到结算都使用同一个数值。
 
