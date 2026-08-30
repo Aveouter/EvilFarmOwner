@@ -12,6 +12,11 @@ internal sealed class ModConfig
 
     public float RestDayMultiplier { get; set; } = (float)ContractPreviewService.RestDayMultiplier;
 
+    public RestDayRule RestDayRule { get; set; } = RestDayRule.NpcSchedule;
+
+    public int WorkerEfficiencyImpactPercent { get; set; } =
+        ContractSettingsPolicy.DefaultWorkerEfficiencyImpactPercent;
+
     public HarvestDestinationMode DefaultHarvestDestination { get; set; } =
         HarvestDestinationMode.ClassifiedChests;
 
@@ -23,6 +28,10 @@ internal sealed class ModConfig
 
     public bool EnableStorageSorting { get; set; } = true;
 
+    public bool EnableGreenhouseWork { get; set; } = true;
+
+    public bool EnableFarmBuildingInteriorWork { get; set; } = true;
+
     public int MaximumConcurrentWorkers { get; set; } =
         ContractSettingsPolicy.DefaultMaximumConcurrentWorkers;
 
@@ -33,11 +42,15 @@ internal sealed class ModConfig
         this.BaseHourlyWage = normalized.BaseHourlyWage;
         this.FriendshipWageImpactPercent = normalized.FriendshipWageImpactPercent;
         this.RestDayMultiplier = normalized.RestDayMultiplier;
+        this.RestDayRule = normalized.RestDayRule;
+        this.WorkerEfficiencyImpactPercent = normalized.WorkerEfficiencyImpactPercent;
         this.DefaultHarvestDestination = normalized.DefaultHarvestDestination;
         this.EnableHarvesting = normalized.EnableHarvesting;
         this.EnableWatering = normalized.EnableWatering;
         this.EnableAnimalCare = normalized.EnableAnimalCare;
         this.EnableStorageSorting = normalized.EnableStorageSorting;
+        this.EnableGreenhouseWork = normalized.EnableGreenhouseWork;
+        this.EnableFarmBuildingInteriorWork = normalized.EnableFarmBuildingInteriorWork;
         this.MaximumConcurrentWorkers = normalized.MaximumConcurrentWorkers;
         return changed;
     }
@@ -55,13 +68,22 @@ internal sealed class ModConfig
         if (normalized.EnableStorageSorting)
             stages |= FarmWorkStageSelection.StorageSorting;
 
+        FarmWorkScopeSelection workScope = FarmWorkScopeSelection.MainFarm;
+        if (normalized.EnableGreenhouseWork)
+            workScope |= FarmWorkScopeSelection.Greenhouse;
+        if (normalized.EnableFarmBuildingInteriorWork)
+            workScope |= FarmWorkScopeSelection.FarmBuildingInteriors;
+
         return new ContractSettingsSnapshot(
             normalized.BaseHourlyWage,
             normalized.FriendshipWageImpactPercent,
             (decimal)normalized.RestDayMultiplier,
             normalized.DefaultHarvestDestination,
             stages,
-            normalized.MaximumConcurrentWorkers);
+            normalized.MaximumConcurrentWorkers,
+            normalized.WorkerEfficiencyImpactPercent,
+            normalized.RestDayRule,
+            workScope);
     }
 
     private ModConfig CreateNormalizedCopy()
@@ -74,6 +96,11 @@ internal sealed class ModConfig
                 this.FriendshipWageImpactPercent),
             RestDayMultiplier = (float)ContractSettingsPolicy.NormalizeRestDayMultiplier(
                 (decimal)this.RestDayMultiplier),
+            RestDayRule = Enum.IsDefined(this.RestDayRule)
+                ? this.RestDayRule
+                : RestDayRule.NpcSchedule,
+            WorkerEfficiencyImpactPercent = ContractSettingsPolicy.NormalizeWorkerEfficiencyImpactPercent(
+                this.WorkerEfficiencyImpactPercent),
             DefaultHarvestDestination = Enum.IsDefined(this.DefaultHarvestDestination)
                 ? this.DefaultHarvestDestination
                 : HarvestDestinationMode.ClassifiedChests,
@@ -81,6 +108,8 @@ internal sealed class ModConfig
             EnableWatering = this.EnableWatering,
             EnableAnimalCare = this.EnableAnimalCare,
             EnableStorageSorting = this.EnableStorageSorting,
+            EnableGreenhouseWork = this.EnableGreenhouseWork,
+            EnableFarmBuildingInteriorWork = this.EnableFarmBuildingInteriorWork,
             MaximumConcurrentWorkers = ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(
                 this.MaximumConcurrentWorkers)
         };
@@ -104,11 +133,15 @@ internal sealed class ModConfig
         return this.BaseHourlyWage == other.BaseHourlyWage
             && this.FriendshipWageImpactPercent == other.FriendshipWageImpactPercent
             && this.RestDayMultiplier.Equals(other.RestDayMultiplier)
+            && this.RestDayRule == other.RestDayRule
+            && this.WorkerEfficiencyImpactPercent == other.WorkerEfficiencyImpactPercent
             && this.DefaultHarvestDestination == other.DefaultHarvestDestination
             && this.EnableHarvesting == other.EnableHarvesting
             && this.EnableWatering == other.EnableWatering
             && this.EnableAnimalCare == other.EnableAnimalCare
             && this.EnableStorageSorting == other.EnableStorageSorting
+            && this.EnableGreenhouseWork == other.EnableGreenhouseWork
+            && this.EnableFarmBuildingInteriorWork == other.EnableFarmBuildingInteriorWork
             && this.MaximumConcurrentWorkers == other.MaximumConcurrentWorkers;
     }
 }

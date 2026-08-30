@@ -9,14 +9,16 @@ internal sealed record WateringContractSettlement(
     public static WateringContractSettlement Create(
         WorkContractPreview preview,
         bool dispatched,
+        int completedWork,
         int startTime,
         int endTime)
     {
         int reserved = Math.Max(0, preview.MaximumAuthorizedWage);
-        int billableHours = dispatched
+        bool billable = dispatched && completedWork > 0;
+        int billableHours = billable
             ? GameClockMath.GetStartedHours(startTime, endTime, preview.RegularShiftHours)
             : 0;
-        int charged = dispatched
+        int charged = billable
             ? Math.Clamp(preview.MinimumCalloutWage * billableHours, 0, reserved)
             : 0;
 

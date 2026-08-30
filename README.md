@@ -55,6 +55,8 @@
 
 没有工作的阶段会自动跳过。个别目标无法到达时，工人会尝试换路或跳过；安全条件失效时合同会明确停止，不会破坏农场摆设。
 
+综合班次把主农场、温室和自有农场建筑内部视为一组连续工作地点：主农场始终包含，温室与棚屋、农场洞穴等内部地点可在设置中分别启用。收获物从室内带回主农场后，才进入同一套分类箱或玩家背包交付流程。畜棚和鸡舍仍由动物照料阶段处理；本版本不处理姜岛农场。
+
 使用分类箱时，NPC 会连续收集产物，按照原版可堆叠规则模拟携带空间，达到 12 个实际物品格后再集中送货；同物品同品质会共用一格，而不是每件作物各占一格。送货时按目标箱分组，每个箱子只走访和加锁一次；目标已经采完或接近停止采集时间时也会立即送货。玩家背包模式仍即时交付，因为它不需要 NPC 往返。
 
 玩家离开农场后，NPC 仍会在农场继续工作。同一时间只执行一份合同，但一份合同可以包含 1–4 名工人。多人班次会让所有工人分担收获和浇水；动物照料与箱子整理各只交给一人，避免重复操作。
@@ -66,15 +68,16 @@
 - 普通班次最多按六个已开始的小时结算。
 - 休息日需要明确授权三倍工资。
 - 开工时暂时预留最高工资，工人返回后按实际工时收费并退回剩余金币。
+- 如果班次在任何工作完成前失败或停止，最低一小时工资也不会收取，预留金币将全额退回。
 
-安装可选的 Generic Mod Config Menu 后，主机可以调整基础时薪（50g–500g）、好感度影响（0%–40%）、休息日倍率（1.0–5.0 倍）、同时雇佣上限（1–4 人）、默认产物去向，并启用或关闭收获、浇水、动物照料和箱子整理。至少保留一个工作阶段；已经开工的班次不会被中途修改。
+安装可选的 Generic Mod Config Menu 后，主机可以调整基础时薪（50g–500g）、好感度影响（0%–40%）、工人差异强度（0%–200%）、休息日判定方式与工资倍率（1.0–5.0 倍）、同时雇佣上限（1–4 人）和默认产物去向。收获、浇水、动物照料、箱子整理可以多选；温室和其他农场建筑内部也可分别启用。至少保留一个工作阶段；已经开工的班次不会被中途修改。
 
 ### 收获物去向
 
 确认雇佣时可以选择：
 
 - **分类箱**（默认设置）：寻找主农场上的普通玩家箱子，依次优先同品质可堆叠物品、同物品、同 `Item.Category`，最后才使用容量最大的空箱。
-- **玩家背包**：只要请求合同的玩家仍在线且背包能完整放下当前物品，即使已经离开农场也能接收。
+- **玩家背包**：请求合同的玩家仍在线、位于主农场且背包能完整放下当前物品时直接接收。
 
 一份合同开始后不会偷偷切换目的地。所选位置无法接收完整物品堆叠时，合同会安全停止；已经取得的物品会保存在背包、箱子、可见掉落或恢复存储中，不会静默消失，也不会自动出售。
 
@@ -115,6 +118,7 @@ efo_netstatus    查看联机合同状态
 ### 当前限制
 
 - 暂不支持清理杂物、播种、施肥、自动补充机器原料或自动出售。
+- 暂不处理姜岛农场；当前统一范围仅包括主农场、温室和主农场上的自有建筑内部。
 - 不接管动物自动采集器；也不收取会在交互时重新计算产物或自动续产的机器。
 - 仅支持主农场上的普通玩家箱子，不支持特殊箱子和其他 Mod 添加的箱子。
 - 自定义农场如果没有安全路线，合同会拒绝开始或提前停止。
@@ -152,6 +156,8 @@ A contract performs every currently ready stage in this order:
 
 Empty stages are skipped. The worker replans or skips isolated unreachable targets and stops explicitly when safety conditions change instead of destroying placed objects.
 
+A complete shift treats the main farm, greenhouse, and owned farm-building interiors as one ordered set of work locations. The main farm is always included; the greenhouse and interiors such as sheds and the farm cave can be enabled separately. Interior harvest cargo returns to the main farm before using the same classified-chest or requester-inventory delivery pipeline. Barns and coops remain owned by animal care, and Ginger Island is excluded in this version.
+
 With classified chests selected, the NPC simulates vanilla-compatible stacking and keeps collecting until the cargo occupies 12 actual slots; compatible items share a slot instead of every crop counting separately. Delivery then groups cargo by destination so each chest is visited and locked once. Cargo is also delivered when no target remains or the acquisition cutoff is reached. Requester-inventory delivery remains immediate because it requires no NPC round trip.
 
 NPCs continue working on the farm when the player changes maps. Only one contract runs at a time, but that contract may include one to four workers. All workers can share harvesting and watering; animal care and chest sorting each have one owner to prevent duplicate actions.
@@ -163,15 +169,16 @@ NPCs continue working on the farm when the player changes maps. Only one contrac
 - A normal shift charges at most six started hours.
 - Rest-day work requires explicit authorization for triple pay.
 - The maximum is reserved at dispatch, then unused gold is refunded after the worker returns.
+- A shift which stops before completing any work charges no one-hour minimum and refunds the full reservation.
 
-With the optional Generic Mod Config Menu installed, the host can adjust the base rate (50g–500g), friendship impact (0%–40%), rest-day multiplier (1.0x–5.0x), simultaneous-worker limit (1–4), default harvest destination, and which of harvesting, watering, animal care, and chest sorting are included. At least one stage remains enabled, and a running shift keeps its starting snapshot.
+With the optional Generic Mod Config Menu installed, the host can adjust the base rate (50g–500g), friendship impact (0%–40%), worker-difference strength (0%–200%), rest-day rule and multiplier (1.0x–5.0x), simultaneous-worker limit (1–4), and default harvest destination. Harvesting, watering, animal care, and chest sorting are independent multi-select options; the greenhouse and other farm-building interiors can also be enabled separately. At least one stage remains enabled, and a running shift keeps its starting snapshot.
 
 ### Harvest delivery
 
 Choose one destination at confirmation:
 
 - **Classified chests** (default setting): ordinary player chests on the main farm are ranked by compatible quality stack, same item, exact `Item.Category`, then the empty chest with the most capacity.
-- **Requester inventory**: delivery continues while that player is online on any map and can accept the complete current stack.
+- **Requester inventory**: delivery succeeds while that player is online on the main farm and can accept the complete current stack.
 
 A running contract never changes destination silently. If the selected destination cannot accept the whole stack, the contract stops safely. Already owned items remain in inventory, a chest, a visible drop, or recovery storage; they are never silently deleted or automatically shipped.
 
@@ -207,6 +214,7 @@ If an old `H` hotkey conflicts with UI Info Suite 2, change it to `K` through Ge
 ### Current limitations
 
 - No debris clearing, planting, fertilizing, automatic machine refilling, or automatic shipping.
+- Ginger Island is excluded; the unified scope currently covers only the main farm, greenhouse, and owned buildings on the main farm.
 - Auto-grabbers and machines which recalculate or automatically restart on collection are excluded.
 - Only ordinary player-owned main-farm chests are supported; special and modded chests are excluded.
 - A custom farm without a safe route may reject or stop a contract.

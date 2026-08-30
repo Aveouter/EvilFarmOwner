@@ -13,6 +13,17 @@ Every implementation starts from an issue with one `type`, `priority`, `area`, a
 - `v0.3.2` unifies route interruption diagnostics and bounded non-destructive replanning, and moves deterministic logic tests into the standalone .NET 8 Core project used by CI.
 - `v0.5.0` adds opt-in concurrent hiring for up to four workers, host-owned target and route coordination, independent settlement/recovery, and protocol schema 11.
 
+## Active development after v0.5.0
+
+The current issue set extends complete shifts without changing the safe-storage contract:
+
+- host settings expose independent harvesting, watering, animal-care, and chest-sorting selections plus greenhouse and farm-building-interior scope;
+- harvesting and watering iterate the main farm, greenhouse, and safe non-residential building interiors in deterministic order, while animal houses remain owned by animal care;
+- Ginger Island is explicitly out of scope;
+- worker-background efficiency strength and the rest-day rule are host-configurable and snapshotted when a shift starts;
+- a dispatched shift with zero completed work receives a full refund rather than a one-hour charge;
+- multiplayer settings synchronization moves to schema 12 and migrates schema-10/11 peers to their prior behavior.
+
 ## Released scope: v0.5.0 - Concurrent workers
 
 Concurrent execution remains opt-in: the host-owned `MaximumConcurrentWorkers` setting accepts 1–4 and defaults to 1. A shift keeps an immutable settings snapshot, and old single-worker settings migrate to the default limit of one.

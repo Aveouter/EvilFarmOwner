@@ -72,6 +72,17 @@ internal sealed class GenericModConfigMenuIntegration
             fieldId: nameof(ModConfig.FriendshipWageImpactPercent));
         api.AddNumberOption(
             this.Manifest,
+            getValue: () => this.GetConfig().WorkerEfficiencyImpactPercent,
+            setValue: value => this.GetConfig().WorkerEfficiencyImpactPercent = value,
+            name: this.Text("gmcm.worker-efficiency-impact.name"),
+            tooltip: this.Text("gmcm.worker-efficiency-impact.tooltip"),
+            min: ContractSettingsPolicy.MinimumWorkerEfficiencyImpactPercent,
+            max: ContractSettingsPolicy.MaximumWorkerEfficiencyImpactPercent,
+            interval: ContractSettingsPolicy.WorkerEfficiencyImpactStep,
+            formatValue: value => $"{value}%",
+            fieldId: nameof(ModConfig.WorkerEfficiencyImpactPercent));
+        api.AddNumberOption(
+            this.Manifest,
             getValue: () => this.GetConfig().RestDayMultiplier,
             setValue: value => this.GetConfig().RestDayMultiplier = value,
             name: this.Text("gmcm.rest-day-multiplier.name"),
@@ -81,6 +92,23 @@ internal sealed class GenericModConfigMenuIntegration
             interval: (float)ContractSettingsPolicy.RestDayMultiplierStep,
             formatValue: value => $"{value:0.0}x",
             fieldId: nameof(ModConfig.RestDayMultiplier));
+        api.AddTextOption(
+            this.Manifest,
+            getValue: () => this.GetConfig().RestDayRule.ToString(),
+            setValue: value => this.GetConfig().RestDayRule =
+                Enum.TryParse(value, out RestDayRule rule) && Enum.IsDefined(rule)
+                    ? rule
+                    : RestDayRule.NpcSchedule,
+            name: this.Text("gmcm.rest-day-rule.name"),
+            tooltip: this.Text("gmcm.rest-day-rule.tooltip"),
+            allowedValues: Enum.GetNames<RestDayRule>(),
+            formatAllowedValue: value => this.Helper.Translation.Get(value switch
+            {
+                nameof(RestDayRule.Weekend) => "gmcm.rest-day-rule.weekend",
+                nameof(RestDayRule.Disabled) => "gmcm.rest-day-rule.disabled",
+                _ => "gmcm.rest-day-rule.npc-schedule"
+            }),
+            fieldId: nameof(ModConfig.RestDayRule));
 
         api.AddSectionTitle(this.Manifest, this.Text("gmcm.section.shift"));
         api.AddNumberOption(
@@ -137,6 +165,23 @@ internal sealed class GenericModConfigMenuIntegration
             config => config.EnableStorageSorting,
             (config, value) => config.EnableStorageSorting = value);
         api.AddParagraph(this.Manifest, this.Text("gmcm.stage.notice"));
+
+        api.AddSectionTitle(this.Manifest, this.Text("gmcm.section.scope"));
+        api.AddParagraph(this.Manifest, this.Text("gmcm.scope.main-farm"));
+        api.AddBoolOption(
+            this.Manifest,
+            getValue: () => this.GetConfig().EnableGreenhouseWork,
+            setValue: value => this.GetConfig().EnableGreenhouseWork = value,
+            name: this.Text("gmcm.scope.greenhouse.name"),
+            tooltip: this.Text("gmcm.scope.greenhouse.tooltip"),
+            fieldId: nameof(ModConfig.EnableGreenhouseWork));
+        api.AddBoolOption(
+            this.Manifest,
+            getValue: () => this.GetConfig().EnableFarmBuildingInteriorWork,
+            setValue: value => this.GetConfig().EnableFarmBuildingInteriorWork = value,
+            name: this.Text("gmcm.scope.buildings.name"),
+            tooltip: this.Text("gmcm.scope.buildings.tooltip"),
+            fieldId: nameof(ModConfig.EnableFarmBuildingInteriorWork));
 
         return true;
     }

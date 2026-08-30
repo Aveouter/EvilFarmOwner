@@ -82,11 +82,9 @@ internal sealed class WateringContractExecutionController
             return false;
         }
 
-        int friendshipHearts = requester.getFriendshipHeartLevelForNPC(worker.Name);
-        WorkContractPreview preview = ContractPreviewService.Create(
-            friendshipHearts,
-            Game1.dayOfMonth,
-            worker.Name,
+        WorkContractPreview preview = this.WorkerRoster.CreatePreview(
+            requester,
+            worker,
             NamedFarmTask.Watering);
         if (requester.Money < preview.MaximumAuthorizedWage)
         {
@@ -194,40 +192,58 @@ internal sealed class WateringContractExecutionController
 
     public bool TryStartManaged(FarmWorkShiftContext shift)
     {
+        Farm farm = Game1.getFarm();
+        FarmWorkLocationPlan mainFarm = FarmWorkLocationScope.Create(
+            farm,
+            FarmWorkScopeSelection.MainFarm)[0];
+        return this.TryStartManaged(shift, mainFarm);
+    }
+
+    public bool TryStartManaged(
+        FarmWorkShiftContext shift,
+        FarmWorkLocationPlan locationPlan)
+    {
         this.LastStartFailureKey = null;
         if (this.ActiveContract is not null)
-            return this.FailStart("contract.start.already-active");
+            return this.FailManagedStart("contract.start.already-active");
 
-        Farm farm = Game1.getFarm();
+        GameLocation workLocation = locationPlan.Location;
         NPC worker = shift.Lease.Worker;
-        WateringPlanResult planResult = this.TargetPlanner.TryCreate(
-            farm,
-            worker,
-            isTargetAvailable: target => this.IsTargetAvailable(farm, worker, target));
+        WateringPlanResult planResult = locationPlan.IsMainFarm
+            ? this.TargetPlanner.TryCreate(
+                (Farm)workLocation,
+                worker,
+                isTargetAvailable: target => this.IsTargetAvailable(workLocation, worker, target))
+            : this.TargetPlanner.TryCreate(
+                workLocation,
+                worker,
+                locationPlan.ArrivalTile,
+                target => this.IsTargetAvailable(workLocation, worker, target));
         if (!planResult.IsSuccess || planResult.Plan is null)
-            return this.FailStart(this.GetPlanFailureTranslationKey(planResult.Failure));
-        if (!this.TryClaimTarget(farm, worker, planResult.Plan.FirstTarget.TargetTile))
-            return this.FailStart("farm-work.start.no-work");
+            return this.FailManagedStart(this.GetPlanFailureTranslationKey(planResult.Failure));
+        if (!this.TryClaimTarget(workLocation, worker, planResult.Plan.FirstTarget.TargetTile))
+            return this.FailManagedStart("farm-work.start.no-work");
 
-        WorkContractPreview preview = ContractPreviewService.Create(
-            shift.Requester.getFriendshipHeartLevelForNPC(worker.Name),
-            Game1.dayOfMonth,
-            worker.Name,
-            NamedFarmTask.Watering);
+        WorkContractPreview preview = this.WorkerRoster.CreatePreview(
+            shift.Requester,
+            worker,
+            NamedFarmTask.Watering,
+            shift.Settings);
         ActiveWateringContract contract = new(
             shift.Id,
             shift.RequestId,
             shift.Requester,
             shift.Lease,
             preview,
-            farm,
+            workLocation,
             planResult.Plan,
-            managedByShift: true);
+            managedByShift: true,
+            isMainFarm: locationPlan.IsMainFarm);
         this.ActiveContract = contract;
 
         try
         {
-            Game1.warpCharacter(worker, farm, new Vector2(
+            Game1.warpCharacter(worker, workLocation, new Vector2(
                 planResult.Plan.ArrivalTile.X,
                 planResult.Plan.ArrivalTile.Y));
             worker.Position = FarmNavigationMap.GetAlignedCharacterPosition(planResult.Plan.ArrivalTile);
@@ -235,7 +251,7 @@ internal sealed class WateringContractExecutionController
             contract.Dispatched = true;
             if (worker.TilePoint == planResult.Plan.FirstTarget.InteractionTile)
             {
-                this.OnArrivedAtTarget(worker, farm);
+                this.OnArrivedAtTarget(worker, workLocation);
                 return true;
             }
 
@@ -794,7 +810,8 @@ internal sealed class WateringContractExecutionController
     private bool TryHandleStalledEntrance(ActiveWateringContract contract)
     {
         NPC worker = contract.Lease.Worker;
-        if (contract.CompletedTargets.Count > 0
+        if (!contract.IsMainFarm
+            || contract.CompletedTargets.Count > 0
             || !ReferenceEquals(worker.currentLocation, contract.Farm)
             || worker.TilePoint != contract.Plan.ArrivalTile)
             return false;
@@ -808,7 +825,7 @@ internal sealed class WateringContractExecutionController
             LogLevel.Warn);
 
         WateringPlanResult replacement = this.TargetPlanner.TryCreate(
-            contract.Farm,
+            (Farm)contract.Farm,
             worker,
             contract.FailedArrivalSides,
             target => this.IsTargetAvailable(contract.Farm, worker, target));
@@ -1085,14 +1102,14 @@ internal sealed class WateringContractExecutionController
         this.ContinueFinalization(contract, mustFinalizeNow);
     }
 
-    private bool IsTargetAvailable(Farm farm, NPC worker, Point target) =>
+    private bool IsTargetAvailable(GameLocation farm, NPC worker, Point target) =>
         this.WorkClaims?.IsAvailable(
             farm.NameOrUniqueName,
             target.X,
             target.Y,
             worker.Name) != false;
 
-    private bool TryClaimTarget(Farm farm, NPC worker, Point target) =>
+    private bool TryClaimTarget(GameLocation farm, NPC worker, Point target) =>
         this.WorkClaims?.TryClaim(
             farm.NameOrUniqueName,
             target.X,
@@ -1181,6 +1198,7 @@ internal sealed class WateringContractExecutionController
         WateringContractSettlement settlement = WateringContractSettlement.Create(
             contract.Preview,
             contract.Dispatched,
+            contract.WateredTargets,
             contract.Lease.StartTime,
             Game1.timeOfDay);
         contract.Requester.Money += settlement.RefundedGold;
@@ -1283,6 +1301,12 @@ internal sealed class WateringContractExecutionController
         return false;
     }
 
+    private bool FailManagedStart(string translationKey)
+    {
+        this.LastStartFailureKey = translationKey;
+        return false;
+    }
+
     private string GetPlanFailureTranslationKey(WateringPlanFailure failure)
     {
         return failure switch
@@ -1316,9 +1340,10 @@ internal sealed class WateringContractExecutionController
             Farmer requester,
             NpcWorkLease lease,
             WorkContractPreview preview,
-            Farm farm,
+            GameLocation farm,
             WateringWorkPlan plan,
-            bool managedByShift = false)
+            bool managedByShift = false,
+            bool isMainFarm = true)
         {
             this.Id = id;
             this.RequestId = requestId;
@@ -1333,6 +1358,7 @@ internal sealed class WateringContractExecutionController
             this.Plan = plan;
             this.CurrentTarget = plan.FirstTarget;
             this.ManagedByShift = managedByShift;
+            this.IsMainFarm = isMainFarm;
         }
 
         public Guid Id { get; }
@@ -1341,7 +1367,7 @@ internal sealed class WateringContractExecutionController
         public NpcWorkLease Lease { get; }
         public WorkContractPreview Preview { get; }
         public int ActionDurationTicks { get; }
-        public Farm Farm { get; }
+        public GameLocation Farm { get; }
         public WateringWorkPlan Plan { get; set; }
         public HashSet<Point> CompletedTargets { get; } = new();
         public HashSet<FarmTaskRouteEdge> FailedEdges { get; } = new();
@@ -1351,6 +1377,7 @@ internal sealed class WateringContractExecutionController
         public TravelReplanBudget ReplanBudget { get; } = new();
         public WateringTargetPlan CurrentTarget { get; set; }
         public bool ManagedByShift { get; }
+        public bool IsMainFarm { get; }
         public WateringContractPhase Phase { get; set; } = WateringContractPhase.TravelingToTarget;
         public PathFindController? Controller { get; set; }
         public int PhaseTicks { get; set; }

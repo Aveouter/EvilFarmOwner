@@ -2,7 +2,8 @@ namespace EvilFarmOwner;
 
 internal static class MultiplayerContractProtocol
 {
-    public const int SchemaVersion = 11;
+    public const int SchemaVersion = 12;
+    public const int PreviousSchemaVersion = 11;
     public const int SingleWorkerSchemaVersion = 10;
     public const int ProcessedRequestCapacity = 256;
     public const string StartRequestType = "Contract/StartRequest";
@@ -190,6 +191,9 @@ internal sealed class ContractSettingsMessage
     public HarvestDestinationMode DefaultHarvestDestination { get; set; }
     public FarmWorkStageSelection EnabledStages { get; set; }
     public int MaximumConcurrentWorkers { get; set; }
+    public int WorkerEfficiencyImpactPercent { get; set; }
+    public RestDayRule RestDayRule { get; set; }
+    public FarmWorkScopeSelection WorkScope { get; set; }
 
     public bool TryGetSnapshot(out ContractSettingsSnapshot settings)
     {
@@ -197,14 +201,28 @@ internal sealed class ContractSettingsMessage
             && this.MaximumConcurrentWorkers <= 0
                 ? ContractSettingsPolicy.DefaultMaximumConcurrentWorkers
                 : this.MaximumConcurrentWorkers;
+        int efficiencyImpact = this.SchemaVersion <= MultiplayerContractProtocol.PreviousSchemaVersion
+            && this.WorkerEfficiencyImpactPercent <= 0
+                ? 100
+                : this.WorkerEfficiencyImpactPercent;
+        RestDayRule restDayRule = this.SchemaVersion <= MultiplayerContractProtocol.PreviousSchemaVersion
+            ? RestDayRule.Weekend
+            : this.RestDayRule;
+        FarmWorkScopeSelection workScope = this.SchemaVersion <= MultiplayerContractProtocol.PreviousSchemaVersion
+            ? FarmWorkScopeSelection.MainFarm
+            : this.WorkScope;
         settings = new ContractSettingsSnapshot(
             this.BaseHourlyWage,
             this.FriendshipWageImpactPercent,
             this.RestDayMultiplier,
             this.DefaultHarvestDestination,
             this.EnabledStages,
-            workerLimit);
+            workerLimit,
+            efficiencyImpact,
+            restDayRule,
+            workScope);
         return this.SchemaVersion is MultiplayerContractProtocol.SingleWorkerSchemaVersion
+                or MultiplayerContractProtocol.PreviousSchemaVersion
                 or MultiplayerContractProtocol.SchemaVersion
             && this.SettingsVersion >= 0
             && settings.IsValid;

@@ -151,8 +151,57 @@ internal sealed class HarvestTargetPlanner
             foundSafeArrival ? lastFailure : HarvestPlanFailure.NoSafeArrivalTile);
     }
 
+    public HarvestPlanResult TryCreate(
+        GameLocation location,
+        NPC worker,
+        Point arrivalTile,
+        Func<Point, bool>? isTargetAvailable = null)
+    {
+        int width = location.Map.Layers[0].LayerWidth;
+        int height = location.Map.Layers[0].LayerHeight;
+        if (width > MaximumSupportedMapDimension || height > MaximumSupportedMapDimension)
+            return new HarvestPlanResult(null, HarvestPlanFailure.UnsupportedFarmMap);
+        if (arrivalTile.X < 0 || arrivalTile.Y < 0 || arrivalTile.X >= width || arrivalTile.Y >= height)
+            return new HarvestPlanResult(null, HarvestPlanFailure.NoSafeArrivalTile);
+        if (location.warps.Any(warp => warp.X == arrivalTile.X && warp.Y == arrivalTile.Y)
+            || location.doors.ContainsKey(arrivalTile)
+            || FarmNavigationMap.IsOccupiedByOtherLeasedWorker(location, worker, new GridPoint(
+                arrivalTile.X,
+                arrivalTile.Y))
+            || !location.CanSpawnCharacterHere(arrivalTile.ToVector2()))
+            return new HarvestPlanResult(null, HarvestPlanFailure.NoSafeArrivalTile);
+
+        HarvestTargetSearchResult firstTarget = this.TryFindNext(
+            location,
+            worker,
+            arrivalTile,
+            arrivalTile,
+            new HashSet<Point>(),
+            new HashSet<FarmTaskRouteEdge>(),
+            obstacles: null,
+            isTargetAvailable: isTargetAvailable);
+        if (!firstTarget.IsSuccess || firstTarget.Target is not { } firstPlan)
+            return new HarvestPlanResult(null, firstTarget.Failure);
+        if (!FarmNavigationMap.CanBeginPath(
+                location,
+                worker,
+                arrivalTile,
+                firstPlan.Path,
+                out string firstStepFailure))
+        {
+            this.Monitor.Log(
+                $"Rejected harvest arrival {arrivalTile} in {location.NameOrUniqueName}: {firstStepFailure}.",
+                LogLevel.Trace);
+            return new HarvestPlanResult(null, HarvestPlanFailure.NoSafeArrivalTile);
+        }
+
+        return new HarvestPlanResult(
+            new HarvestWorkPlan(arrivalTile, FarmBoundarySide.East, firstPlan),
+            HarvestPlanFailure.None);
+    }
+
     public HarvestTargetSearchResult TryFindNext(
-        Farm farm,
+        GameLocation farm,
         NPC worker,
         Point startTile,
         Point arrivalTile,
@@ -374,7 +423,7 @@ internal sealed class HarvestTargetPlanner
     }
 
     public static int CountRemainingHarvestTargets(
-        Farm farm,
+        GameLocation farm,
         IReadOnlySet<Point> completedTargets)
     {
         int width = farm.Map.Layers[0].LayerWidth;

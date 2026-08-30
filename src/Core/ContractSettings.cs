@@ -11,13 +11,23 @@ internal enum FarmWorkStageSelection
     All = Harvesting | Watering | AnimalCare | StorageSorting
 }
 
+internal enum RestDayRule
+{
+    NpcSchedule = 0,
+    Weekend = 1,
+    Disabled = 2
+}
+
 internal sealed record ContractSettingsSnapshot(
     int BaseHourlyWage,
     int FriendshipWageImpactPercent,
     decimal RestDayMultiplier,
     HarvestDestinationMode DefaultHarvestDestination,
     FarmWorkStageSelection EnabledStages,
-    int MaximumConcurrentWorkers = ContractSettingsPolicy.DefaultMaximumConcurrentWorkers)
+    int MaximumConcurrentWorkers = ContractSettingsPolicy.DefaultMaximumConcurrentWorkers,
+    int WorkerEfficiencyImpactPercent = ContractSettingsPolicy.DefaultWorkerEfficiencyImpactPercent,
+    RestDayRule RestDayRule = RestDayRule.NpcSchedule,
+    FarmWorkScopeSelection WorkScope = FarmWorkScopeSelection.All)
 {
     public static ContractSettingsSnapshot Default { get; } = new(
         ContractPreviewService.BaseHourlyWage,
@@ -43,6 +53,10 @@ internal static class ContractSettingsPolicy
     public const int MinimumMaximumConcurrentWorkers = 1;
     public const int MaximumMaximumConcurrentWorkers = 4;
     public const int DefaultMaximumConcurrentWorkers = 1;
+    public const int MinimumWorkerEfficiencyImpactPercent = 0;
+    public const int MaximumWorkerEfficiencyImpactPercent = 200;
+    public const int WorkerEfficiencyImpactStep = 25;
+    public const int DefaultWorkerEfficiencyImpactPercent = 150;
 
     public static bool IsValid(ContractSettingsSnapshot settings)
     {
@@ -58,7 +72,12 @@ internal static class ContractSettingsPolicy
             && settings.EnabledStages != FarmWorkStageSelection.None
             && (settings.EnabledStages & ~FarmWorkStageSelection.All) == 0
             && settings.MaximumConcurrentWorkers is >= MinimumMaximumConcurrentWorkers
-                and <= MaximumMaximumConcurrentWorkers;
+                and <= MaximumMaximumConcurrentWorkers
+            && settings.WorkerEfficiencyImpactPercent is >= MinimumWorkerEfficiencyImpactPercent
+                and <= MaximumWorkerEfficiencyImpactPercent
+            && settings.WorkerEfficiencyImpactPercent % WorkerEfficiencyImpactStep == 0
+            && Enum.IsDefined(settings.RestDayRule)
+            && settings.WorkScope == FarmWorkLocationPolicy.Normalize(settings.WorkScope);
     }
 
     public static int NormalizeBaseHourlyWage(int value) => NormalizeStep(
@@ -95,6 +114,22 @@ internal static class ContractSettingsPolicy
         value <= 0 ? DefaultMaximumConcurrentWorkers : value,
         MinimumMaximumConcurrentWorkers,
         MaximumMaximumConcurrentWorkers);
+
+    public static int NormalizeWorkerEfficiencyImpactPercent(int value) => NormalizeStep(
+        value,
+        MinimumWorkerEfficiencyImpactPercent,
+        MaximumWorkerEfficiencyImpactPercent,
+        WorkerEfficiencyImpactStep);
+
+    public static decimal ApplyWorkerEfficiencyImpact(decimal profileMultiplier, int impactPercent)
+    {
+        decimal normalizedImpact = NormalizeWorkerEfficiencyImpactPercent(impactPercent) / 100m;
+        decimal adjusted = 1m + (profileMultiplier - 1m) * normalizedImpact;
+        return Math.Clamp(
+            adjusted,
+            WorkerEfficiencyProfiles.MinimumSupportedMultiplier,
+            WorkerEfficiencyProfiles.MaximumSupportedMultiplier);
+    }
 
     private static int NormalizeStep(int value, int minimum, int maximum, int step)
     {

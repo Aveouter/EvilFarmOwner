@@ -16,19 +16,6 @@ internal sealed class WorkerRosterService
         "Hospital", "BathHouse_Pool", "BathHouse_MensLocker", "BathHouse_WomensLocker"
     };
 
-    private static readonly Dictionary<string, ProtectedWorkplace[]> ProtectedWorkplaces = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Clint"] = new[] { new ProtectedWorkplace("Blacksmith", 900, 1700) },
-        ["Emily"] = new[] { new ProtectedWorkplace("Saloon", 1600, 2600) },
-        ["Gus"] = new[] { new ProtectedWorkplace("Saloon", 1200, 2600) },
-        ["Marnie"] = new[] { new ProtectedWorkplace("AnimalShop", 900, 1700) },
-        ["Pam"] = new[] { new ProtectedWorkplace("BusStop", 900, 1700) },
-        ["Pierre"] = new[] { new ProtectedWorkplace("SeedShop", 900, 1800) },
-        ["Robin"] = new[] { new ProtectedWorkplace("ScienceHouse", 900, 1700) },
-        ["Sam"] = new[] { new ProtectedWorkplace("JojaMart", 900, 1700) },
-        ["Willy"] = new[] { new ProtectedWorkplace("FishShop", 900, 1800) }
-    };
-
     private readonly IMonitor Monitor;
     private readonly Func<ContractSettingsSnapshot> GetSettings;
 
@@ -128,11 +115,9 @@ internal sealed class WorkerRosterService
     {
         string displayName = string.IsNullOrWhiteSpace(npc.displayName) ? npc.Name : npc.displayName;
         Texture2D portrait = npc.Portrait;
-        int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(npc.Name);
-        WorkContractPreview wagePreview = ContractPreviewService.Create(
-            friendshipHearts,
-            Game1.dayOfMonth,
-            npc.Name,
+        WorkContractPreview wagePreview = this.CreatePreview(
+            Game1.player,
+            npc,
             NamedFarmTask.FarmWork,
             this.GetSettings());
 
@@ -142,6 +127,26 @@ internal sealed class WorkerRosterService
             portrait,
             availability,
             wagePreview);
+    }
+
+    public WorkContractPreview CreatePreview(
+        Farmer requester,
+        NPC worker,
+        NamedFarmTask task,
+        ContractSettingsSnapshot? settings = null)
+    {
+        ContractSettingsSnapshot effectiveSettings = settings ?? this.GetSettings();
+        bool isRestDay = WorkerSchedulePolicy.IsRestDay(
+            worker,
+            effectiveSettings.RestDayRule,
+            Game1.dayOfMonth);
+        return ContractPreviewService.Create(
+            requester.getFriendshipHeartLevelForNPC(worker.Name),
+            Game1.dayOfMonth,
+            worker.Name,
+            task,
+            effectiveSettings,
+            isRestDay);
     }
 
     public WorkerAvailabilityResult Evaluate(NPC npc)
@@ -176,7 +181,7 @@ internal sealed class WorkerRosterService
             if (MedicalLocationNames.Contains(locationName))
                 return Unavailable(WorkerAvailabilityReason.MedicalActivity);
 
-            if (IsProtectedWorkActivity(npc.Name, locationName, Game1.timeOfDay))
+            if (WorkerSchedulePolicy.IsProtectedWorkActivity(npc.Name, locationName, Game1.timeOfDay))
                 return Unavailable(WorkerAvailabilityReason.WorkActivity);
 
             if (npc.controller is not null || npc.temporaryController is not null)
@@ -222,13 +227,4 @@ internal sealed class WorkerRosterService
         return new WorkerAvailabilityResult(WorkerAvailabilityState.Unknown, reason);
     }
 
-    private static bool IsProtectedWorkActivity(string npcName, string locationName, int timeOfDay)
-    {
-        return ProtectedWorkplaces.TryGetValue(npcName, out ProtectedWorkplace[]? workplaces)
-            && workplaces.Any(workplace => workplace.LocationName.Equals(locationName, StringComparison.OrdinalIgnoreCase)
-                && timeOfDay >= workplace.StartTime
-                && timeOfDay < workplace.EndTime);
-    }
-
-    private sealed record ProtectedWorkplace(string LocationName, int StartTime, int EndTime);
 }
