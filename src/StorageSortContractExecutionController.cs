@@ -157,10 +157,9 @@ internal sealed class StorageSortContractExecutionController
         if (availability.State != WorkerAvailabilityState.EligibleForPreview)
             return this.FailStart("storage-sort.start.worker-unavailable");
 
-        WorkContractPreview preview = ContractPreviewService.Create(
-            requester.getFriendshipHeartLevelForNPC(worker.Name),
-            Game1.dayOfMonth,
-            worker.Name,
+        WorkContractPreview preview = this.WorkerRoster.CreatePreview(
+            requester,
+            worker,
             NamedFarmTask.StorageSorting);
         if (requester.Money < preview.MaximumAuthorizedWage)
             return this.FailStart("storage-sort.start.insufficient-funds");
@@ -271,11 +270,11 @@ internal sealed class StorageSortContractExecutionController
             || session is null)
             return this.FailStart(GetSnapshotFailureKey(sessionFailure));
 
-        WorkContractPreview preview = ContractPreviewService.Create(
-            shift.Requester.getFriendshipHeartLevelForNPC(worker.Name),
-            Game1.dayOfMonth,
-            worker.Name,
-            NamedFarmTask.StorageSorting);
+        WorkContractPreview preview = this.WorkerRoster.CreatePreview(
+            shift.Requester,
+            worker,
+            NamedFarmTask.StorageSorting,
+            shift.Settings);
         ActiveStorageSortContract contract = new(
             shift.Id,
             shift.RequestId,
@@ -1242,6 +1241,7 @@ internal sealed class StorageSortContractExecutionController
         WateringContractSettlement settlement = WateringContractSettlement.Create(
             contract.Preview,
             contract.Dispatched,
+            contract.CompletedTransfers.Count,
             contract.Lease.StartTime,
             Game1.timeOfDay);
         contract.Requester.Money += settlement.RefundedGold;

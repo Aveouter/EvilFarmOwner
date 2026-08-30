@@ -93,10 +93,9 @@ internal sealed class FarmWorkContractExecutionController
         ContractSettingsSnapshot settings = this.GetSettings();
         if (!settings.IsValid)
             settings = ContractSettingsSnapshot.Default;
-        WorkContractPreview preview = ContractPreviewService.Create(
-            requester.getFriendshipHeartLevelForNPC(worker.Name),
-            Game1.dayOfMonth,
-            worker.Name,
+        WorkContractPreview preview = this.WorkerRoster.CreatePreview(
+            requester,
+            worker,
             NamedFarmTask.FarmWork,
             settings);
         if (isBillable && requester.Money < preview.MaximumAuthorizedWage)
@@ -119,7 +118,7 @@ internal sealed class FarmWorkContractExecutionController
             lease,
             preview,
             harvestDestination,
-            settings.EnabledStages,
+            settings,
             isBillable);
         ActiveFarmWorkShift shift = new(context);
         this.ActiveShift = shift;
@@ -160,12 +159,23 @@ internal sealed class FarmWorkContractExecutionController
         if (stageCompletion is not null)
         {
             shift.StageCompletions.Add(stageCompletion);
-            shift.LastFinishedStage = shift.CurrentStage;
             if (!stageCompletion.Succeeded)
             {
                 this.BeginFinalization(shift, false, stageCompletion.ReasonKey);
                 return;
             }
+
+            string? locationFailure = null;
+            if (IsLocationStage(shift.CurrentStage)
+                && this.TryStartNextLocation(shift, shift.CurrentStage, out locationFailure))
+                return;
+            if (locationFailure is not null)
+            {
+                this.BeginFinalization(shift, false, locationFailure);
+                return;
+            }
+
+            shift.LastFinishedStage = shift.CurrentStage;
         }
 
         if (!Context.IsMainPlayer
@@ -276,17 +286,25 @@ internal sealed class FarmWorkContractExecutionController
         while (stage != FarmWorkStage.Complete)
         {
             shift.CurrentStage = stage;
-            bool started = stage switch
-            {
-                FarmWorkStage.Harvesting => this.Harvesting.TryStartManaged(shift.Context),
-                FarmWorkStage.Watering => this.Watering.TryStartManaged(shift.Context),
-                FarmWorkStage.AnimalCare => this.AnimalCare.TryStartManaged(shift.Context),
-                FarmWorkStage.StorageSorting => this.StorageSorting.TryStartManaged(shift.Context),
-                _ => false
-            };
+            shift.PrepareLocationStage(stage);
+            string? locationFailure = null;
+            bool started = IsLocationStage(stage)
+                ? this.TryStartNextLocation(shift, stage, out locationFailure)
+                : stage switch
+                {
+                    FarmWorkStage.AnimalCare => this.AnimalCare.TryStartManaged(shift.Context),
+                    FarmWorkStage.StorageSorting => this.StorageSorting.TryStartManaged(shift.Context),
+                    _ => false
+                };
             if (started)
             {
                 shift.Dispatched = true;
+                return;
+            }
+
+            if (locationFailure is not null)
+            {
+                this.BeginFinalization(shift, false, locationFailure);
                 return;
             }
 
@@ -315,6 +333,7 @@ internal sealed class FarmWorkContractExecutionController
         {
             shift.CurrentPass = nextPass;
             shift.LastFinishedStage = null;
+            shift.ResetLocationStage();
             this.Monitor.Log(
                 $"Farm-work shift {shift.Context.Id:N} is starting its bounded reconciliation pass.",
                 LogLevel.Debug);
@@ -330,6 +349,74 @@ internal sealed class FarmWorkContractExecutionController
             completedAnyWork,
             completedAnyWork ? "" : "farm-work.start.no-work");
     }
+
+    private bool TryStartNextLocation(
+        ActiveFarmWorkShift shift,
+        FarmWorkStage stage,
+        out string? fatalFailureKey)
+    {
+        fatalFailureKey = null;
+        shift.PrepareLocationStage(stage);
+        while (shift.NextLocationIndex < shift.LocationPlans.Count)
+        {
+            FarmWorkLocationPlan plan = shift.LocationPlans[shift.NextLocationIndex++];
+            bool started = stage switch
+            {
+                FarmWorkStage.Harvesting => this.Harvesting.TryStartManaged(shift.Context, plan),
+                FarmWorkStage.Watering => this.Watering.TryStartManaged(shift.Context, plan),
+                _ => false
+            };
+            if (started)
+            {
+                shift.Dispatched = true;
+                this.Monitor.Log(
+                    $"Farm-work shift {shift.Context.Id:N} started {stage} in "
+                    + $"{plan.Identity.Kind}:{plan.Identity.LocationKey}.",
+                    LogLevel.Debug);
+                return true;
+            }
+
+            NamedContractCompletionState? failedDispatch = this.ConsumeStageCompletion(stage);
+            if (failedDispatch is not null)
+            {
+                shift.StageCompletions.Add(failedDispatch);
+                fatalFailureKey = failedDispatch.ReasonKey;
+                return false;
+            }
+
+            string? failureKey = this.GetStageStartFailure(stage);
+            if (!plan.IsMainFarm && IsSkippableInteriorStartFailure(failureKey))
+            {
+                this.Monitor.Log(
+                    $"Farm-work shift {shift.Context.Id:N} skipped unsafe interior "
+                    + $"{plan.Identity.Kind}:{plan.Identity.LocationKey} during {stage}; "
+                    + $"reason={failureKey}.",
+                    LogLevel.Warn);
+                continue;
+            }
+            if (!FarmWorkStagePolicy.IsEmptyStageFailure(stage, failureKey))
+            {
+                fatalFailureKey = failureKey ?? "contract.failure.unknown";
+                return false;
+            }
+
+            this.Monitor.Log(
+                $"Farm-work shift {shift.Context.Id:N} found no {stage} work in "
+                + $"{plan.Identity.Kind}:{plan.Identity.LocationKey}; continuing to the next location.",
+                LogLevel.Trace);
+        }
+
+        return false;
+    }
+
+    private static bool IsLocationStage(FarmWorkStage stage) =>
+        stage is FarmWorkStage.Harvesting or FarmWorkStage.Watering;
+
+    private static bool IsSkippableInteriorStartFailure(string? failureKey) =>
+        failureKey is "contract.start.no-arrival"
+            or "contract.start.no-reachable-crop"
+            or "harvest.start.no-reachable-crop"
+            or "contract.start.unsupported-map";
 
     private string? GetStageStartFailure(FarmWorkStage stage)
     {
@@ -390,11 +477,14 @@ internal sealed class FarmWorkContractExecutionController
         if (action == NpcLeaseRecoveryAction.Relinquish)
             restoreResult = shift.Context.Lease.RelinquishToConflictingController();
 
+        NamedContractCompletionState[] stages = shift.StageCompletions.ToArray();
+        int completedWork = stages.Sum(result => result.CompletedWork);
         WateringContractSettlement settlement = shift.Context.IsBillable
                 && shift.ReservationCharged
             ? WateringContractSettlement.Create(
                 shift.Context.BillingPreview,
                 shift.Dispatched,
+                completedWork,
                 shift.Context.Lease.StartTime,
                 Game1.timeOfDay)
             : new WateringContractSettlement(0, 0, 0, 0);
@@ -407,7 +497,6 @@ internal sealed class FarmWorkContractExecutionController
                     ? "contract.failure.restore-relinquished"
                     : "contract.failure.restore-ownership-lost"
                 : shift.PendingReasonKey;
-        NamedContractCompletionState[] stages = shift.StageCompletions.ToArray();
         this.LastCompletion = new NamedContractCompletionState(
             shift.Context.Id.ToString("N"),
             shift.Context.RequestId,
@@ -416,7 +505,7 @@ internal sealed class FarmWorkContractExecutionController
             NamedFarmTask.FarmWork,
             succeeded,
             reasonKey,
-            stages.Sum(result => result.CompletedWork),
+            completedWork,
             stages.Sum(result => result.PlayerItems),
             stages.Sum(result => result.ChestItems),
             stages.Sum(result => result.OverflowItems),
@@ -476,5 +565,28 @@ internal sealed class FarmWorkContractExecutionController
         public string PendingReasonKey { get; set; } = "contract.failure.unknown";
         public int RestoreWaitTicks { get; set; }
         public bool ReservationCharged { get; set; }
+        public FarmWorkStage? PreparedLocationStage { get; private set; }
+        public IReadOnlyList<FarmWorkLocationPlan> LocationPlans { get; private set; } =
+            Array.Empty<FarmWorkLocationPlan>();
+        public int NextLocationIndex { get; set; }
+
+        public void PrepareLocationStage(FarmWorkStage stage)
+        {
+            if (!IsLocationStage(stage) || this.PreparedLocationStage == stage)
+                return;
+
+            this.PreparedLocationStage = stage;
+            this.NextLocationIndex = 0;
+            this.LocationPlans = FarmWorkLocationScope.Create(
+                Game1.getFarm(),
+                this.Context.Settings.WorkScope);
+        }
+
+        public void ResetLocationStage()
+        {
+            this.PreparedLocationStage = null;
+            this.NextLocationIndex = 0;
+            this.LocationPlans = Array.Empty<FarmWorkLocationPlan>();
+        }
     }
 }

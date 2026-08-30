@@ -136,8 +136,57 @@ internal sealed partial class WateringTargetPlanner
             foundSafeArrival ? lastFailure : WateringPlanFailure.NoSafeArrivalTile);
     }
 
+    public WateringPlanResult TryCreate(
+        GameLocation location,
+        NPC worker,
+        Point arrivalTile,
+        Func<Point, bool>? isTargetAvailable = null)
+    {
+        int width = location.Map.Layers[0].LayerWidth;
+        int height = location.Map.Layers[0].LayerHeight;
+        if (width > MaximumSupportedMapDimension || height > MaximumSupportedMapDimension)
+            return new WateringPlanResult(null, WateringPlanFailure.UnsupportedFarmMap);
+        if (arrivalTile.X < 0 || arrivalTile.Y < 0 || arrivalTile.X >= width || arrivalTile.Y >= height)
+            return new WateringPlanResult(null, WateringPlanFailure.NoSafeArrivalTile);
+        if (location.warps.Any(warp => warp.X == arrivalTile.X && warp.Y == arrivalTile.Y)
+            || location.doors.ContainsKey(arrivalTile)
+            || FarmNavigationMap.IsOccupiedByOtherLeasedWorker(location, worker, new GridPoint(
+                arrivalTile.X,
+                arrivalTile.Y))
+            || !location.CanSpawnCharacterHere(arrivalTile.ToVector2()))
+            return new WateringPlanResult(null, WateringPlanFailure.NoSafeArrivalTile);
+
+        WateringTargetSearchResult firstTarget = this.TryFindNext(
+            location,
+            worker,
+            arrivalTile,
+            arrivalTile,
+            new HashSet<Point>(),
+            new HashSet<FarmTaskRouteEdge>(),
+            obstacles: null,
+            isTargetAvailable: isTargetAvailable);
+        if (!firstTarget.IsSuccess || firstTarget.Target is not { } firstPlan)
+            return new WateringPlanResult(null, firstTarget.Failure);
+        if (!FarmNavigationMap.CanBeginPath(
+                location,
+                worker,
+                arrivalTile,
+                firstPlan.Path,
+                out string firstStepFailure))
+        {
+            this.Monitor.Log(
+                $"Rejected watering arrival {arrivalTile} in {location.NameOrUniqueName}: {firstStepFailure}.",
+                LogLevel.Trace);
+            return new WateringPlanResult(null, WateringPlanFailure.NoSafeArrivalTile);
+        }
+
+        return new WateringPlanResult(
+            new WateringWorkPlan(arrivalTile, FarmBoundarySide.East, firstPlan),
+            WateringPlanFailure.None);
+    }
+
     public WateringTargetSearchResult TryFindNext(
-        Farm farm,
+        GameLocation farm,
         NPC worker,
         Point startTile,
         Point arrivalTile,
@@ -247,7 +296,7 @@ internal sealed partial class WateringTargetPlanner
     }
 
     public static int CountRemainingDryCrops(
-        Farm farm,
+        GameLocation farm,
         IReadOnlySet<Point> completedTargets)
     {
         int width = farm.Map.Layers[0].LayerWidth;

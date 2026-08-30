@@ -9,17 +9,6 @@ internal sealed record WateringContractSettlement(
     public static WateringContractSettlement Create(
         WorkContractPreview preview,
         bool dispatched,
-        int startTime,
-        int endTime) => Create(
-            preview,
-            dispatched,
-            completedWork: dispatched ? 1 : 0,
-            startTime,
-            endTime);
-
-    public static WateringContractSettlement Create(
-        WorkContractPreview preview,
-        bool dispatched,
         int completedWork,
         int startTime,
         int endTime)
