@@ -52,6 +52,7 @@ List<(string Name, Action Test)> tests = new()
     ("recurring contract persistence", TestRecurringContractPersistence),
     ("recurring contract legacy upgrade", TestRecurringContractLegacyUpgrade),
     ("pre-dispatch settlement", TestPreDispatchSettlement),
+    ("zero-work dispatched settlement", TestZeroWorkDispatchedSettlement),
     ("dispatched one-hour settlement", TestDispatchedSettlement),
     ("elapsed multi-hour settlement", TestElapsedMultiHourSettlement),
     ("target ordering", TestTargetOrdering),
@@ -1104,7 +1105,27 @@ static void TestRecurringContractLegacyUpgrade()
 static void TestPreDispatchSettlement()
 {
     WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
-    WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: false, 900, 1200);
+    WateringContractSettlement settlement = WateringContractSettlement.Create(
+        preview,
+        dispatched: false,
+        completedWork: 0,
+        900,
+        1200);
+    Equal(600, settlement.ReservedGold);
+    Equal(0, settlement.ChargedGold);
+    Equal(600, settlement.RefundedGold);
+    Equal(0, settlement.BillableHours);
+}
+
+static void TestZeroWorkDispatchedSettlement()
+{
+    WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
+    WateringContractSettlement settlement = WateringContractSettlement.Create(
+        preview,
+        dispatched: true,
+        completedWork: 0,
+        900,
+        1110);
     Equal(600, settlement.ReservedGold);
     Equal(0, settlement.ChargedGold);
     Equal(600, settlement.RefundedGold);
@@ -1114,7 +1135,12 @@ static void TestPreDispatchSettlement()
 static void TestDispatchedSettlement()
 {
     WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
-    WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: true, 900, 910);
+    WateringContractSettlement settlement = WateringContractSettlement.Create(
+        preview,
+        dispatched: true,
+        completedWork: 1,
+        900,
+        910);
     Equal(600, settlement.ReservedGold);
     Equal(100, settlement.ChargedGold);
     Equal(500, settlement.RefundedGold);
@@ -1124,7 +1150,12 @@ static void TestDispatchedSettlement()
 static void TestElapsedMultiHourSettlement()
 {
     WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
-    WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: true, 900, 1110);
+    WateringContractSettlement settlement = WateringContractSettlement.Create(
+        preview,
+        dispatched: true,
+        completedWork: 1,
+        900,
+        1110);
     Equal(3, settlement.BillableHours);
     Equal(300, settlement.ChargedGold);
     Equal(300, settlement.RefundedGold);
@@ -1620,7 +1651,12 @@ static void TestNpcLeaseRecoveryPolicy()
 static void TestSixHourWageCap()
 {
     WorkContractPreview preview = ContractPreviewService.Create(friendshipHearts: 4, dayOfMonth: 1);
-    WateringContractSettlement settlement = WateringContractSettlement.Create(preview, dispatched: true, 900, 2200);
+    WateringContractSettlement settlement = WateringContractSettlement.Create(
+        preview,
+        dispatched: true,
+        completedWork: 1,
+        900,
+        2200);
     Equal(6, settlement.BillableHours);
     Equal(600, settlement.ChargedGold);
     Equal(0, settlement.RefundedGold);
