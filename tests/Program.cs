@@ -10,6 +10,9 @@ List<(string Name, Action Test)> tests = new()
     ("configurable wage formula", TestConfigurableWageFormula),
     ("contract settings normalization", TestContractSettingsNormalization),
     ("configured farm-work stages", TestConfiguredFarmWorkStages),
+    ("farm-work location scope", TestFarmWorkLocationScope),
+    ("worker efficiency impact", TestWorkerEfficiencyImpact),
+    ("worker rest-day rule", TestWorkerRestDayRule),
     ("multiplayer contract settings validation", TestMultiplayerContractSettingsValidation),
     ("worker efficiency profile coverage", TestWorkerEfficiencyProfileCoverage),
     ("worker task-specific efficiency", TestWorkerTaskSpecificEfficiency),
@@ -226,6 +229,9 @@ static void TestContractSettingsNormalization()
     Equal(1, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(-5));
     Equal(3, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(3));
     Equal(4, ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(9));
+    Equal(0, ContractSettingsPolicy.NormalizeWorkerEfficiencyImpactPercent(-10));
+    Equal(150, ContractSettingsPolicy.NormalizeWorkerEfficiencyImpactPercent(149));
+    Equal(200, ContractSettingsPolicy.NormalizeWorkerEfficiencyImpactPercent(260));
 }
 
 static void TestConfiguredFarmWorkStages()
@@ -241,6 +247,52 @@ static void TestConfiguredFarmWorkStages()
     Equal(true, FarmWorkStagePolicy.IsEnabled(FarmWorkStage.StorageSorting, selected));
 }
 
+static void TestFarmWorkLocationScope()
+{
+    FarmWorkLocationIdentity[] unordered =
+    {
+        new("ShedB", FarmWorkLocationKind.FarmBuildingInterior, 8, 12, "b"),
+        new("Farm", FarmWorkLocationKind.MainFarm, 0, 0, ""),
+        new("Greenhouse", FarmWorkLocationKind.Greenhouse, 25, 8, "g"),
+        new("ShedA", FarmWorkLocationKind.FarmBuildingInterior, 4, 10, "a")
+    };
+    Equal(
+        "Farm,Greenhouse,ShedA,ShedB",
+        string.Join(',', FarmWorkLocationPolicy.Order(unordered).Select(location => location.LocationKey)));
+    Equal(
+        FarmWorkScopeSelection.MainFarm | FarmWorkScopeSelection.Greenhouse,
+        FarmWorkLocationPolicy.Normalize(FarmWorkScopeSelection.Greenhouse));
+    Equal(true, FarmWorkLocationPolicy.IsEnabled(
+        FarmWorkLocationKind.Greenhouse,
+        FarmWorkScopeSelection.All));
+    Equal(false, FarmWorkLocationPolicy.IsEnabled(
+        FarmWorkLocationKind.FarmBuildingInterior,
+        FarmWorkScopeSelection.MainFarm | FarmWorkScopeSelection.Greenhouse));
+}
+
+static void TestWorkerEfficiencyImpact()
+{
+    Equal(1.00m, ContractSettingsPolicy.ApplyWorkerEfficiencyImpact(1.10m, 0));
+    Equal(1.10m, ContractSettingsPolicy.ApplyWorkerEfficiencyImpact(1.10m, 100));
+    Equal(1.15m, ContractSettingsPolicy.ApplyWorkerEfficiencyImpact(1.10m, 150));
+    Equal(1.20m, ContractSettingsPolicy.ApplyWorkerEfficiencyImpact(1.10m, 200));
+}
+
+static void TestWorkerRestDayRule()
+{
+    Equal(false, WorkerRestDayPolicy.IsRestDay(RestDayRule.Disabled, dayOfMonth: 6));
+    Equal(false, WorkerRestDayPolicy.IsRestDay(RestDayRule.Weekend, dayOfMonth: 5));
+    Equal(true, WorkerRestDayPolicy.IsRestDay(RestDayRule.Weekend, dayOfMonth: 6));
+    Equal(false, WorkerRestDayPolicy.IsRestDay(
+        RestDayRule.NpcSchedule,
+        dayOfMonth: 6,
+        npcScheduleRestDay: false));
+    Equal(true, WorkerRestDayPolicy.IsRestDay(
+        RestDayRule.NpcSchedule,
+        dayOfMonth: 1,
+        npcScheduleRestDay: true));
+}
+
 static void TestMultiplayerContractSettingsValidation()
 {
     ContractSettingsMessage message = new()
@@ -252,11 +304,17 @@ static void TestMultiplayerContractSettingsValidation()
         RestDayMultiplier = 2m,
         DefaultHarvestDestination = HarvestDestinationMode.RequesterInventory,
         EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare,
-        MaximumConcurrentWorkers = 3
+        MaximumConcurrentWorkers = 3,
+        WorkerEfficiencyImpactPercent = 150,
+        RestDayRule = RestDayRule.NpcSchedule,
+        WorkScope = FarmWorkScopeSelection.All
     };
     Equal(true, message.TryGetSnapshot(out ContractSettingsSnapshot valid));
     Equal(150, valid.BaseHourlyWage);
     Equal(3, valid.MaximumConcurrentWorkers);
+    Equal(150, valid.WorkerEfficiencyImpactPercent);
+    Equal(RestDayRule.NpcSchedule, valid.RestDayRule);
+    Equal(FarmWorkScopeSelection.All, valid.WorkScope);
     Equal(FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare, valid.EnabledStages);
 
     message.EnabledStages = FarmWorkStageSelection.None;
@@ -267,7 +325,17 @@ static void TestMultiplayerContractSettingsValidation()
     message.BaseHourlyWage = 150;
     message.MaximumConcurrentWorkers = 0;
     Equal(false, message.TryGetSnapshot(out _));
+    message.SchemaVersion = MultiplayerContractProtocol.PreviousSchemaVersion;
+    message.MaximumConcurrentWorkers = 3;
+    message.WorkerEfficiencyImpactPercent = 0;
+    message.RestDayRule = default;
+    message.WorkScope = default;
+    Equal(true, message.TryGetSnapshot(out ContractSettingsSnapshot previous));
+    Equal(100, previous.WorkerEfficiencyImpactPercent);
+    Equal(RestDayRule.Weekend, previous.RestDayRule);
+    Equal(FarmWorkScopeSelection.MainFarm, previous.WorkScope);
     message.SchemaVersion = MultiplayerContractProtocol.SingleWorkerSchemaVersion;
+    message.MaximumConcurrentWorkers = 0;
     Equal(true, message.TryGetSnapshot(out ContractSettingsSnapshot migrated));
     Equal(1, migrated.MaximumConcurrentWorkers);
     message.SchemaVersion--;
@@ -284,7 +352,7 @@ static void TestWorkerEfficiencyProfileCoverage()
         WorkerEfficiencyProfiles.IsValidMultiplier(profile.WateringMultiplier)
         && WorkerEfficiencyProfiles.IsValidMultiplier(profile.HarvestingMultiplier)));
     Equal(false, WorkerEfficiencyProfiles.IsValidMultiplier(0.99m));
-    Equal(false, WorkerEfficiencyProfiles.IsValidMultiplier(1.11m));
+    Equal(false, WorkerEfficiencyProfiles.IsValidMultiplier(1.21m));
 }
 
 static void TestWorkerTaskSpecificEfficiency()
@@ -335,9 +403,9 @@ static void TestWorkerEfficiencyContractSnapshot()
         task: NamedFarmTask.Harvesting);
 
     Equal(first, second);
-    Equal(1.10m, first.EfficiencyMultiplier);
+    Equal(1.15m, first.EfficiencyMultiplier);
     Equal(WorkerEfficiencyBackground.ManualFieldwork, first.EfficiencyBackground);
-    Equal(1.05m, harvesting.EfficiencyMultiplier);
+    Equal(1.075m, harvesting.EfficiencyMultiplier);
     Equal(first.MaximumAuthorizedWage, harvesting.MaximumAuthorizedWage);
 
     WorkContractPreview sorting = ContractPreviewService.Create(
@@ -3380,7 +3448,10 @@ static void TestMultiplayerSyncHandshakeSerialization()
             RestDayMultiplier = 2.5m,
             DefaultHarvestDestination = HarvestDestinationMode.RequesterInventory,
             EnabledStages = FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare,
-            MaximumConcurrentWorkers = 4
+            MaximumConcurrentWorkers = 4,
+            WorkerEfficiencyImpactPercent = 125,
+            RestDayRule = RestDayRule.NpcSchedule,
+            WorkScope = FarmWorkScopeSelection.All
         }
     };
     ContractSyncStateMessage? restoredState = JsonSerializer.Deserialize<ContractSyncStateMessage>(
@@ -3396,6 +3467,9 @@ static void TestMultiplayerSyncHandshakeSerialization()
     Equal(2.5m, restoredSettings.RestDayMultiplier);
     Equal(HarvestDestinationMode.RequesterInventory, restoredSettings.DefaultHarvestDestination);
     Equal(4, restoredSettings.MaximumConcurrentWorkers);
+    Equal(125, restoredSettings.WorkerEfficiencyImpactPercent);
+    Equal(RestDayRule.NpcSchedule, restoredSettings.RestDayRule);
+    Equal(FarmWorkScopeSelection.All, restoredSettings.WorkScope);
     Equal(
         FarmWorkStageSelection.Harvesting | FarmWorkStageSelection.AnimalCare,
         restoredSettings.EnabledStages);
@@ -3513,7 +3587,7 @@ static void TestMultiplayerSnapshotValidation()
 
 static void TestMultiplayerResultSerialization()
 {
-    Equal(11, MultiplayerContractProtocol.SchemaVersion);
+    Equal(12, MultiplayerContractProtocol.SchemaVersion);
     ContractResultMessage source = new()
     {
         SchemaVersion = MultiplayerContractProtocol.SchemaVersion,

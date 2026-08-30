@@ -257,21 +257,9 @@ internal sealed class RecurringContractCoordinator
         }
 
         ContractSettingsSnapshot settings = this.GetSettings();
-        bool isRestDay = ContractPreviewService.Create(
-            0,
-            Game1.dayOfMonth,
-            settings).DayKind == ContractDayKind.RestDay;
-        if (isRestDay && !template.AllowRestDays)
-        {
-            this.Skip(template, "recurring.reason.rest-day-disabled", Array.Empty<RecurringCandidateRejectionData>(), runId);
-            return;
-        }
-
-        int authorizedCap = isRestDay
-            ? template.MaximumRestDayGold
-            : template.MaximumRegularDayGold;
         List<RecurringWorkerCandidate> candidates = new();
         List<RecurringCandidateRejectionData> rejections = new();
+        bool hasRestDayCandidate = false;
         foreach (string workerName in RecurringContractPolicy.GetAuthorizedWorkerNames(template))
         {
             if (!this.WorkerRoster.TryGetWorker(
@@ -290,15 +278,28 @@ internal sealed class RecurringContractCoordinator
             }
 
             int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(worker.Name);
-            WorkContractPreview preview = ContractPreviewService.Create(
-                friendshipHearts,
-                Game1.dayOfMonth,
-                worker.Name,
+            WorkContractPreview preview = this.WorkerRoster.CreatePreview(
+                Game1.player,
+                worker,
                 template.Task,
                 settings);
+            if (preview.DayKind == ContractDayKind.RestDay && !template.AllowRestDays)
+            {
+                rejections.Add(new RecurringCandidateRejectionData
+                {
+                    WorkerName = workerName,
+                    ReasonKey = "recurring.reason.rest-day-disabled"
+                });
+                continue;
+            }
+
+            hasRestDayCandidate |= preview.DayKind == ContractDayKind.RestDay;
+            int candidateCap = preview.DayKind == ContractDayKind.RestDay
+                ? template.MaximumRestDayGold
+                : template.MaximumRegularDayGold;
             RecurringBudgetFailure budgetFailure = RecurringContractPolicy.CheckBudget(
                 preview.MaximumAuthorizedWage,
-                authorizedCap,
+                candidateCap,
                 Game1.player.Money);
             if (budgetFailure == RecurringBudgetFailure.ExceedsAuthorizedCap)
             {
@@ -332,6 +333,9 @@ internal sealed class RecurringContractCoordinator
         int maximumWorkers = WorkStagePartitionPolicy.GetMaximumUsefulWorkerCount(
             settings.EnabledStages,
             settings.MaximumConcurrentWorkers);
+        int authorizedCap = hasRestDayCandidate
+            ? template.MaximumRestDayGold
+            : template.MaximumRegularDayGold;
         IReadOnlyList<ConcurrentWorkerCandidate> selected = ConcurrentWorkerSelectionPolicy.Select(
             candidates.Select(candidate => new ConcurrentWorkerCandidate(
                 candidate.WorkerName,

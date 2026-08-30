@@ -334,17 +334,23 @@ public sealed class ModEntry : Mod
         NamedFarmTask task)
     {
         if (!Context.IsWorldReady
+            || this.WorkerRoster is null
             || workers.Count == 0
             || workers.Any(worker => worker.Availability.State != WorkerAvailabilityState.EligibleForPreview))
             return;
 
         WorkerRosterEntry firstWorker = workers[0];
-        int friendshipHearts = Game1.player.getFriendshipHeartLevelForNPC(firstWorker.InternalName);
+        if (!this.WorkerRoster.TryGetWorker(
+                firstWorker.InternalName,
+                out NPC? npc,
+                out WorkerAvailabilityResult availability)
+            || npc is null
+            || availability.State != WorkerAvailabilityState.EligibleForPreview)
+            return;
         ContractSettingsSnapshot settings = this.GetEffectiveContractSettings();
-        WorkContractPreview preview = ContractPreviewService.Create(
-            friendshipHearts,
-            Game1.dayOfMonth,
-            firstWorker.InternalName,
+        WorkContractPreview preview = this.WorkerRoster.CreatePreview(
+            Game1.player,
+            npc,
             task,
             settings);
 

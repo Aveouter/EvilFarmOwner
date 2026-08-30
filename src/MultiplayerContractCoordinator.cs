@@ -1056,7 +1056,10 @@ internal sealed class MultiplayerContractCoordinator
             RestDayMultiplier = settings.RestDayMultiplier,
             DefaultHarvestDestination = settings.DefaultHarvestDestination,
             EnabledStages = settings.EnabledStages,
-            MaximumConcurrentWorkers = settings.MaximumConcurrentWorkers
+            MaximumConcurrentWorkers = settings.MaximumConcurrentWorkers,
+            WorkerEfficiencyImpactPercent = settings.WorkerEfficiencyImpactPercent,
+            RestDayRule = settings.RestDayRule,
+            WorkScope = settings.WorkScope
         };
     }
 

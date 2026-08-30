@@ -32,7 +32,7 @@ internal static class WorkerEfficiencyProfiles
 {
     internal const decimal BaselineMultiplier = 1.00m;
     internal const decimal MinimumSupportedMultiplier = 1.00m;
-    internal const decimal MaximumSupportedMultiplier = 1.10m;
+    internal const decimal MaximumSupportedMultiplier = 1.20m;
 
     private static readonly IReadOnlyDictionary<string, WorkerEfficiencyProfile> Profiles =
         CreateProfiles().ToDictionary(profile => profile.WorkerName, StringComparer.OrdinalIgnoreCase);

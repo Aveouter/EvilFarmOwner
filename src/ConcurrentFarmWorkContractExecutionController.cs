@@ -72,10 +72,9 @@ internal sealed class ConcurrentFarmWorkContractExecutionController
             if (availability.State != WorkerAvailabilityState.EligibleForPreview)
                 return this.FailStart("contract.start.worker-unavailable");
             workers.Add(worker);
-            totalReservation += ContractPreviewService.Create(
-                requester.getFriendshipHeartLevelForNPC(worker.Name),
-                Game1.dayOfMonth,
-                worker.Name,
+            totalReservation += this.WorkerRoster.CreatePreview(
+                requester,
+                worker,
                 NamedFarmTask.FarmWork,
                 settings).MaximumAuthorizedWage;
         }
