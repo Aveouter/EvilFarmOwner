@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.5.1 - 2026-09-03
+
+- Fixed single-chest farms rejecting mixed-category harvests: foreign-only chests now fall back to a MixedFreeSlot tier (already-mixed junk chests preferred), and an undeliverable stack is parked in persistent overflow while the shift continues instead of stopping the whole contract (#154, #155).
+- Hardened parked-cargo drains across every stop, save, quarantine, drop, audit, runtime-state, and batch-counting boundary so parked stacks can never be silently lost; batched undeliverable cargo behind one routing context instead of rebuilding the farm navigation map per stack.
+- Restored commit-time category revalidation for locked-chest and animal-product transfers so a chest polluted after planning no longer accepts a category-matched placement.
+- Added an in-game Lost & Found menu (roster footer entry and a day-start HUD hint) for retrieving overflow and quarantine items without the SMAPI console (#156).
+- Rewrote failure messages with actionable next-step advice in English and Chinese (#157).
+- Added a one-time in-game warning that multiplayer is experimental and not yet fully verified live (#158).
+- Made wage billing transparent: reservation explanation on the preview card, reserved/paid/refunded settlement HUD, and a live wage example in the Generic Mod Config Menu economy section (#162).
+- Moved the roster footer's recurring/lost-found buttons to their own row so they never overlap the page buttons at narrow widths.
 
 - Added multi-select complete-shift work and location controls for harvesting, watering, animal care, chest sorting, the greenhouse, and safe owned farm-building interiors; Ginger Island remains excluded.
 - Unified harvesting and watering across the main farm, greenhouse, and non-residential farm-building interiors while keeping barn and coop work in animal care.
