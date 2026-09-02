@@ -5,23 +5,30 @@ internal enum HarvestChestMatchKind
     ExactStack = 0,
     SameItem = 1,
     SameCategory = 2,
-    Empty = 3
+    Empty = 3,
+    MixedFreeSlot = 4
 }
 
 internal readonly record struct HarvestChestContents(
     int ExactStackSlots,
     int SameItemSlots,
     int SameCategorySlots,
-    int OccupiedSlots)
+    int OccupiedSlots,
+    int DistinctCategoryCount = 0)
 {
     public int CategoryPurityBasisPoints => this.OccupiedSlots <= 0
         ? 0
         : this.SameCategorySlots * 10_000 / this.OccupiedSlots;
+
+    public bool IsMixed => this.DistinctCategoryCount > 1;
 }
 
 internal static class HarvestChestClassification
 {
-    public static HarvestChestMatchKind? Classify(HarvestChestContents contents)
+    // A chest that holds only foreign items no longer becomes invisible to delivery.
+    // It falls back to MixedFreeSlot so single-chest farms and mixed-category cargo
+    // remain deliverable; misplaced stacks are re-sorted by the storage-sort stage.
+    public static HarvestChestMatchKind Classify(HarvestChestContents contents)
     {
         if (contents.ExactStackSlots > 0)
             return HarvestChestMatchKind.ExactStack;
@@ -31,7 +38,7 @@ internal static class HarvestChestClassification
             return HarvestChestMatchKind.SameCategory;
         return contents.OccupiedSlots == 0
             ? HarvestChestMatchKind.Empty
-            : null;
+            : HarvestChestMatchKind.MixedFreeSlot;
     }
 }
 
@@ -75,7 +82,12 @@ internal static class HarvestChestRanking
             .ThenByDescending(option => option.Contents.SameItemSlots)
             .ThenByDescending(option => option.Contents.CategoryPurityBasisPoints)
             .ThenByDescending(option => option.Contents.SameCategorySlots)
-            .ThenByDescending(option => option.MatchKind == HarvestChestMatchKind.Empty
+            .ThenByDescending(option => option.MatchKind == HarvestChestMatchKind.MixedFreeSlot
+                && option.Contents.IsMixed
+                ? 1
+                : 0)
+            .ThenByDescending(option => option.MatchKind is HarvestChestMatchKind.Empty
+                    or HarvestChestMatchKind.MixedFreeSlot
                 ? option.AcceptableCapacity
                 : 0)
             .ThenBy(option => option.ChestTile.Y)

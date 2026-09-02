@@ -76,9 +76,10 @@ internal sealed class HarvestChestRouter
     public HarvestChestRoutingContext? CreateRoutingContext(
         Farm farm,
         NPC worker,
-        Point startTile)
+        Point startTile,
+        IReadOnlySet<GridPoint>? excludedTiles = null)
     {
-        if (!FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, out GridRouteMap? routes)
+        if (!FarmNavigationMap.TryBuild(farm, worker, startTile, this.Monitor, excludedTiles, out GridRouteMap? routes)
             || routes is null)
             return null;
 
@@ -133,9 +134,7 @@ internal sealed class HarvestChestRouter
                 continue;
 
             HarvestChestContents contents = GetContents(chest, item);
-            HarvestChestMatchKind? matchKind = HarvestChestClassification.Classify(contents);
-            if (!matchKind.HasValue)
-                continue;
+            HarvestChestMatchKind matchKind = HarvestChestClassification.Classify(contents);
 
             foreach (Point offset in InteractionOffsets)
             {
@@ -154,7 +153,7 @@ internal sealed class HarvestChestRouter
                     new HarvestChestOption(
                         chestGrid,
                         new GridPoint(interaction.X, interaction.Y),
-                        matchKind.Value,
+                        matchKind,
                         acceptableCapacity,
                         item.Stack,
                         distance,
@@ -218,12 +217,14 @@ internal sealed class HarvestChestRouter
         int sameItemSlots = 0;
         int sameCategorySlots = 0;
         int occupiedSlots = 0;
+        HashSet<int> categories = new();
         foreach (Item? existing in chest.Items)
         {
             if (existing is null)
                 continue;
 
             occupiedSlots++;
+            categories.Add(existing.Category);
             if (existing.canStackWith(incoming))
                 exactStackSlots++;
             if (existing.QualifiedItemId == incoming.QualifiedItemId)
@@ -236,7 +237,8 @@ internal sealed class HarvestChestRouter
             exactStackSlots,
             sameItemSlots,
             sameCategorySlots,
-            occupiedSlots);
+            occupiedSlots,
+            categories.Count);
     }
 
 }

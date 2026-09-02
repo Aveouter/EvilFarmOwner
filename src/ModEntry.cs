@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using StardewValley.Inventories;
 using StardewValley.Menus;
 using StardewValley.Network;
 using StardewValley.Objects;
@@ -13,6 +14,7 @@ public sealed class ModEntry : Mod
 {
     private ModConfig Config = new();
     private bool HasKnownHotkeyConflict;
+    private bool ShowedExperimentalMultiplayerWarning;
     private WorkerRosterService? WorkerRoster;
     private WateringContractExecutionController? WateringContracts;
     private HarvestingContractExecutionController? HarvestingContracts;
@@ -249,8 +251,32 @@ public sealed class ModEntry : Mod
         this.RecurringContracts?.OnSaveLoaded();
         Game1.addHUDMessage(new HUDMessage(this.Helper.Translation.Get("hud.ready", new { key = this.Config.OpenMenuKey }), HUDMessage.newQuest_type));
 
+        this.ShowExperimentalMultiplayerWarningIfNeeded();
+
+        if (CountGlobalInventoryItems(HarvestingContractExecutionController.OverflowInventoryId) > 0
+            || CountGlobalInventoryItems(HarvestingContractExecutionController.QuarantineInventoryId) > 0)
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("hud.lost-found"),
+                HUDMessage.newQuest_type));
+        }
+
         if (this.HasKnownHotkeyConflict)
             Game1.addHUDMessage(new HUDMessage(this.Helper.Translation.Get("hud.hotkey-conflict"), HUDMessage.error_type));
+    }
+
+    private void ShowExperimentalMultiplayerWarningIfNeeded()
+    {
+        // Multiplayer has not been verified with a real two-process run or the full
+        // live matrix, so surface that risk once per world entry instead of hiding it
+        // in the README where most players never look.
+        if (!Context.IsWorldReady || !Context.IsMultiplayer || this.ShowedExperimentalMultiplayerWarning)
+            return;
+
+        this.ShowedExperimentalMultiplayerWarning = true;
+        Game1.addHUDMessage(new HUDMessage(
+            this.Helper.Translation.Get("multiplayer.hud.experimental"),
+            HUDMessage.error_type));
     }
 
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
@@ -303,7 +329,8 @@ public sealed class ModEntry : Mod
                     page,
                     NamedFarmTask.FarmWork),
                 Context.IsMainPlayer ? this.OpenRecurringContractMenu : null,
-                initialPage);
+                initialPage,
+                this.OpenLostAndFoundMenu);
             return;
         }
 
@@ -317,7 +344,8 @@ public sealed class ModEntry : Mod
             selectableWorkers,
             Context.IsMainPlayer ? this.OpenRecurringContractMenu : null,
             initialPage,
-            initialSelections);
+            initialSelections,
+            this.OpenLostAndFoundMenu);
     }
 
     private void OpenWorkContractPreview(
@@ -423,6 +451,7 @@ public sealed class ModEntry : Mod
 
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
     {
+        this.ShowedExperimentalMultiplayerWarning = false;
         this.WateringContracts?.OnReturnedToTitle();
         this.HarvestingContracts?.OnReturnedToTitle();
         this.AnimalCareContracts?.OnReturnedToTitle();
@@ -537,12 +566,49 @@ public sealed class ModEntry : Mod
 
     private void OnPeerConnected(object? sender, PeerConnectedEventArgs e)
     {
+        this.ShowExperimentalMultiplayerWarningIfNeeded();
         this.MultiplayerContracts?.OnPeerConnected(sender, e);
     }
 
     private void OnPeerDisconnected(object? sender, PeerDisconnectedEventArgs e)
     {
         this.MultiplayerContracts?.OnPeerDisconnected(sender, e);
+    }
+
+    private void OpenLostAndFoundMenu()
+    {
+        if (!Context.IsWorldReady)
+        {
+            this.Monitor.Log(this.Helper.Translation.Get("cmd.roster-world-not-ready"), LogLevel.Info);
+            return;
+        }
+
+        if (this.HasActiveNamedContract())
+        {
+            Game1.addHUDMessage(new HUDMessage(
+                this.Helper.Translation.Get("overflow.busy"),
+                HUDMessage.error_type));
+            return;
+        }
+
+        Game1.activeClickableMenu = new LostAndFoundMenu(
+            this.Helper.Translation,
+            CountGlobalInventoryItems(HarvestingContractExecutionController.OverflowInventoryId),
+            CountGlobalInventoryItems(HarvestingContractExecutionController.QuarantineInventoryId),
+            this.OpenHarvestOverflow,
+            Context.IsMainPlayer ? this.OpenHarvestQuarantine : null);
+    }
+
+    private static int CountGlobalInventoryItems(string inventoryId)
+    {
+        Inventory inventory = Game1.player.team.GetOrCreateGlobalInventory(inventoryId);
+        int count = 0;
+        foreach (Item? item in inventory)
+        {
+            if (item is not null)
+                count += item.Stack;
+        }
+        return count;
     }
 
     private void OpenHarvestOverflow()
