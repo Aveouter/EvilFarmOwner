@@ -533,6 +533,7 @@ internal sealed class FarmWorkContractExecutionController
                     stages = stages.Count(result => result.Succeeded),
                     work = stages.Sum(result => result.CompletedWork),
                     hours = settlement.BillableHours,
+                    reserved = settlement.ChargedGold + settlement.RefundedGold,
                     paid = settlement.ChargedGold,
                     refunded = settlement.RefundedGold
                 }),

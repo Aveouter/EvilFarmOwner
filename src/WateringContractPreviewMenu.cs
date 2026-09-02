@@ -191,6 +191,13 @@ internal sealed class WorkContractPreviewMenu : IClickableMenu
         Vector2 totalSize = Game1.smallFont.MeasureString(total);
         batch.DrawString(Game1.smallFont, total, new Vector2(x + width - totalSize.X, y), new Color(35, 110, 45));
 
+        y += 44;
+        string reservation = Game1.parseText(
+            this.Translation.Get("contract.authorization.explanation", new { gold = this.MaximumAuthorizedWage }),
+            Game1.smallFont,
+            width);
+        batch.DrawString(Game1.smallFont, reservation, new Vector2(x, y), Color.DimGray);
+
         if (!this.CanAfford)
         {
             string warning = Game1.parseText(this.Translation.Get("contract.warning.insufficient-funds", new

@@ -70,6 +70,7 @@ internal sealed class GenericModConfigMenuIntegration
             interval: ContractSettingsPolicy.FriendshipImpactStep,
             formatValue: value => $"{value}%",
             fieldId: nameof(ModConfig.FriendshipWageImpactPercent));
+        api.AddParagraph(this.Manifest, this.GetWageExampleText);
         api.AddNumberOption(
             this.Manifest,
             getValue: () => this.GetConfig().WorkerEfficiencyImpactPercent,
@@ -184,6 +185,17 @@ internal sealed class GenericModConfigMenuIntegration
             fieldId: nameof(ModConfig.EnableFarmBuildingInteriorWork));
 
         return true;
+    }
+
+    private string GetWageExampleText()
+    {
+        ModConfig config = this.GetConfig();
+        int baseWage = ContractSettingsPolicy.NormalizeBaseHourlyWage(config.BaseHourlyWage);
+        decimal impact = ContractSettingsPolicy.NormalizeFriendshipImpactPercent(
+            config.FriendshipWageImpactPercent) / 100m;
+        int low = (int)Math.Ceiling(baseWage * (1m + impact));
+        int high = (int)Math.Ceiling(baseWage * (1m - impact / 2m));
+        return this.Helper.Translation.Get("gmcm.wage-example", new { low, high }).ToString();
     }
 
     private void AddStageOption(

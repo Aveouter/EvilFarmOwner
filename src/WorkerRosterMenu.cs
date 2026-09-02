@@ -25,9 +25,11 @@ internal sealed class WorkerRosterMenu : IClickableMenu
     private readonly Action<WorkerRosterEntry, int>? OpenContractPreview;
     private readonly Action<IReadOnlyList<WorkerRosterEntry>, int>? OpenGroupPreview;
     private readonly Action? OpenRecurringContracts;
+    private readonly Action? OpenLostAndFound;
     private readonly ClickableComponent PreviousButton;
     private readonly ClickableComponent NextButton;
     private readonly ClickableComponent RecurringButton;
+    private readonly ClickableComponent LostFoundButton;
     private readonly ClickableComponent AutoSelectButton;
     private readonly ClickableComponent ReviewButton;
     private readonly List<ClickableComponent> RowButtons = new();
@@ -42,7 +44,8 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         ITranslationHelper translation,
         Action<WorkerRosterEntry, int> openContractPreview,
         Action? openRecurringContracts = null,
-        int initialPage = 0)
+        int initialPage = 0,
+        Action? openLostAndFound = null)
         : this(
             entries,
             translation,
@@ -51,7 +54,8 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             openRecurringContracts,
             maximumSelections: 1,
             initialPage,
-            initialSelections: null)
+            initialSelections: null,
+            openLostAndFound)
     {
     }
 
@@ -62,7 +66,8 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         int maximumSelections,
         Action? openRecurringContracts = null,
         int initialPage = 0,
-        IEnumerable<string>? initialSelections = null)
+        IEnumerable<string>? initialSelections = null,
+        Action? openLostAndFound = null)
         : this(
             entries,
             translation,
@@ -71,7 +76,8 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             openRecurringContracts,
             maximumSelections,
             initialPage,
-            initialSelections)
+            initialSelections,
+            openLostAndFound)
     {
     }
 
@@ -83,7 +89,8 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         Action? openRecurringContracts,
         int maximumSelections,
         int initialPage,
-        IEnumerable<string>? initialSelections)
+        IEnumerable<string>? initialSelections,
+        Action? openLostAndFound)
         : base(
             GetMenuX(),
             GetMenuY(),
@@ -96,10 +103,17 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         this.OpenContractPreview = openContractPreview;
         this.OpenGroupPreview = openGroupPreview;
         this.OpenRecurringContracts = openRecurringContracts;
+        this.OpenLostAndFound = openLostAndFound;
         this.MaximumSelections = openGroupPreview is null
             ? 1
             : ContractSettingsPolicy.NormalizeMaximumConcurrentWorkers(maximumSelections);
-        this.FooterHeight = openGroupPreview is null ? SingleFooterHeight : MultiFooterHeight;
+        // When both center footer buttons exist in single-select mode, the taller footer
+        // keeps them on their own row so they never overlap the Previous/Next buttons at
+        // narrow menu widths.
+        this.FooterHeight = openGroupPreview is null
+            && !(openRecurringContracts is not null && openLostAndFound is not null)
+            ? SingleFooterHeight
+            : MultiFooterHeight;
         if (initialSelections is not null)
         {
             HashSet<string> validNames = entries.Select(entry => entry.InternalName)
@@ -117,13 +131,24 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         this.NextButton = new ClickableComponent(
             new Rectangle(this.xPositionOnScreen + this.width - HorizontalPadding - ButtonWidth, buttonY, ButtonWidth, ButtonHeight),
             translation.Get("roster.next"));
+        // In multi-select mode the first footer row hosts auto-select and review, so the
+        // recurring and lost-found entries share the second row (16 px below the first,
+        // per the shared-layout spacing rule).
+        int centerRowY = this.FooterHeight == SingleFooterHeight ? buttonY : buttonY + 60;
         this.RecurringButton = new ClickableComponent(
             new Rectangle(
-                this.xPositionOnScreen + this.width / 2 - 110,
-                buttonY,
+                this.xPositionOnScreen + this.width / 2 - (openLostAndFound is null ? 110 : 230),
+                centerRowY,
                 220,
                 ButtonHeight),
             translation.Get("roster.recurring"));
+        this.LostFoundButton = new ClickableComponent(
+            new Rectangle(
+                this.xPositionOnScreen + this.width / 2 + (openRecurringContracts is null ? -110 : 10),
+                centerRowY,
+                220,
+                ButtonHeight),
+            translation.Get("roster.lost-found"));
         int groupButtonY = this.yPositionOnScreen + this.height - this.FooterHeight + 8;
         this.AutoSelectButton = new ClickableComponent(
             new Rectangle(this.xPositionOnScreen + this.width / 2 - 230, groupButtonY, 220, ButtonHeight),
@@ -137,6 +162,7 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         this.RecurringButton.myID = 102;
         this.AutoSelectButton.myID = 103;
         this.ReviewButton.myID = 104;
+        this.LostFoundButton.myID = 105;
         this.RebuildClickableComponents();
         this.snapToDefaultClickableComponent();
     }
@@ -191,6 +217,13 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             return;
         }
 
+        if (this.OpenLostAndFound is not null && this.LostFoundButton.containsPoint(x, y))
+        {
+            Game1.playSound("smallSelect");
+            this.OpenLostAndFound();
+            return;
+        }
+
         base.receiveLeftClick(x, y, playSound);
     }
 
@@ -225,7 +258,9 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             ? this.RowButtons[0]
             : this.OpenRecurringContracts is not null
                 ? this.RecurringButton
-                : this.upperRightCloseButton;
+                : this.OpenLostAndFound is not null
+                    ? this.LostFoundButton
+                    : this.upperRightCloseButton;
         this.snapCursorToCurrentSnappedComponent();
     }
 
@@ -316,6 +351,8 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             this.DrawButton(batch, this.NextButton);
         if (this.OpenRecurringContracts is not null)
             this.DrawButton(batch, this.RecurringButton);
+        if (this.OpenLostAndFound is not null)
+            this.DrawButton(batch, this.LostFoundButton);
         if (this.OpenGroupPreview is not null)
         {
             this.DrawButton(batch, this.AutoSelectButton);
@@ -466,11 +503,13 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         int visibleRows = Math.Min(this.PageSize, this.Entries.Count - this.CurrentPage * this.PageSize);
         int footerFocusId = this.OpenRecurringContracts is not null
             ? 102
-            : this.CurrentPage > 0
-                ? 100
-                : this.CurrentPage < this.PageCount - 1
-                    ? 101
-                    : -1;
+            : this.OpenLostAndFound is not null
+                ? 105
+                : this.CurrentPage > 0
+                    ? 100
+                    : this.CurrentPage < this.PageCount - 1
+                        ? 101
+                        : -1;
         int contentX = this.xPositionOnScreen + HorizontalPadding;
         int contentWidth = this.width - HorizontalPadding * 2;
         for (int row = 0; row < visibleRows; row++)
@@ -499,8 +538,19 @@ internal sealed class WorkerRosterMenu : IClickableMenu
         this.NextButton.rightNeighborID = -1;
         this.NextButton.upNeighborID = lastRowId;
         this.RecurringButton.leftNeighborID = this.CurrentPage > 0 ? 100 : -1;
-        this.RecurringButton.rightNeighborID = this.CurrentPage < this.PageCount - 1 ? 101 : -1;
+        this.RecurringButton.rightNeighborID = this.OpenLostAndFound is not null
+            ? 105
+            : this.CurrentPage < this.PageCount - 1
+                ? 101
+                : -1;
         this.RecurringButton.upNeighborID = lastRowId;
+        this.LostFoundButton.leftNeighborID = this.OpenRecurringContracts is not null
+            ? 102
+            : this.CurrentPage > 0
+                ? 100
+                : -1;
+        this.LostFoundButton.rightNeighborID = this.CurrentPage < this.PageCount - 1 ? 101 : -1;
+        this.LostFoundButton.upNeighborID = lastRowId;
 
         this.allClickableComponents = new List<ClickableComponent>(this.RowButtons);
         if (this.CurrentPage > 0)
@@ -509,6 +559,8 @@ internal sealed class WorkerRosterMenu : IClickableMenu
             this.allClickableComponents.Add(this.NextButton);
         if (this.OpenRecurringContracts is not null)
             this.allClickableComponents.Add(this.RecurringButton);
+        if (this.OpenLostAndFound is not null)
+            this.allClickableComponents.Add(this.LostFoundButton);
         if (this.OpenGroupPreview is not null)
         {
             this.allClickableComponents.Add(this.AutoSelectButton);
