@@ -84,7 +84,8 @@ List<(string Name, Action Test)> tests = new()
     ("six-hour wage cap", TestSixHourWageCap),
     ("harvest chest classification", TestHarvestChestClassification),
     ("harvest category purity", TestHarvestCategoryPurity),
-    ("harvest incompatible chest exclusion", TestHarvestIncompatibleChestExclusion),
+    ("harvest foreign chest free-slot fallback", TestHarvestForeignChestFreeSlotFallback),
+    ("harvest mixed chest free-slot ranking", TestHarvestMixedChestFreeSlotRanking),
     ("harvest chest full acceptance", TestHarvestChestFullAcceptance),
     ("harvest stable category destination", TestHarvestStableCategoryDestination),
     ("harvest empty chest capacity fallback", TestHarvestEmptyChestCapacityFallback),
@@ -1747,13 +1748,13 @@ static void TestHarvestChestClassification()
     Equal(HarvestChestMatchKind.Empty, ordered[3].MatchKind);
 
     Equal(HarvestChestMatchKind.ExactStack, HarvestChestClassification.Classify(
-        new HarvestChestContents(1, 1, 1, 4))!.Value);
+        new HarvestChestContents(1, 1, 1, 4)));
     Equal(HarvestChestMatchKind.SameItem, HarvestChestClassification.Classify(
-        new HarvestChestContents(0, 1, 1, 4))!.Value);
+        new HarvestChestContents(0, 1, 1, 4)));
     Equal(HarvestChestMatchKind.SameCategory, HarvestChestClassification.Classify(
-        new HarvestChestContents(0, 0, 2, 4))!.Value);
+        new HarvestChestContents(0, 0, 2, 4)));
     Equal(HarvestChestMatchKind.Empty, HarvestChestClassification.Classify(
-        new HarvestChestContents(0, 0, 0, 0))!.Value);
+        new HarvestChestContents(0, 0, 0, 0)));
 }
 
 static void TestHarvestCategoryPurity()
@@ -1781,10 +1782,54 @@ static void TestHarvestCategoryPurity()
     Equal(3_333, mixed.Contents.CategoryPurityBasisPoints);
 }
 
-static void TestHarvestIncompatibleChestExclusion()
+static void TestHarvestForeignChestFreeSlotFallback()
 {
-    Equal(true, HarvestChestClassification.Classify(
-        new HarvestChestContents(0, 0, 0, 8)) is null);
+    // Regression for #154: a chest holding only foreign items must remain eligible
+    // through the free-slot fallback instead of classifying as null.
+    Equal(HarvestChestMatchKind.MixedFreeSlot, HarvestChestClassification.Classify(
+        new HarvestChestContents(0, 0, 0, 8)));
+    Equal(HarvestChestMatchKind.MixedFreeSlot, HarvestChestClassification.Classify(
+        new HarvestChestContents(0, 0, 0, 1, DistinctCategoryCount: 1)));
+}
+
+static void TestHarvestMixedChestFreeSlotRanking()
+{
+    // Inside the MixedFreeSlot tier, an already-mixed chest is preferred over a pure
+    // foreign-category chest so category chests stay clean; a bigger junk chest wins
+    // between two mixed chests.
+    HarvestChestOption mixedJunk = new(
+        new GridPoint(5, 5),
+        new GridPoint(5, 6),
+        HarvestChestMatchKind.MixedFreeSlot,
+        AcceptableCapacity: 40,
+        RequestedStack: 1,
+        TravelDistance: 10,
+        Contents: new HarvestChestContents(0, 0, 0, 6, DistinctCategoryCount: 2));
+    HarvestChestOption pureForeign = new(
+        new GridPoint(2, 2),
+        new GridPoint(2, 3),
+        HarvestChestMatchKind.MixedFreeSlot,
+        AcceptableCapacity: 999,
+        RequestedStack: 1,
+        TravelDistance: 5,
+        Contents: new HarvestChestContents(0, 0, 0, 2, DistinctCategoryCount: 1));
+
+    IReadOnlyList<HarvestChestOption> ordered = HarvestChestRanking.Order(
+        new[] { pureForeign, mixedJunk });
+    Equal(new GridPoint(5, 5), ordered[0].ChestTile);
+    Equal(new GridPoint(2, 2), ordered[1].ChestTile);
+
+    // MixedFreeSlot always ranks below Empty regardless of capacity.
+    HarvestChestOption empty = new(
+        new GridPoint(9, 9),
+        new GridPoint(9, 10),
+        HarvestChestMatchKind.Empty,
+        AcceptableCapacity: 36,
+        RequestedStack: 1,
+        TravelDistance: 50,
+        Contents: new HarvestChestContents(0, 0, 0, 0, DistinctCategoryCount: 0));
+    ordered = HarvestChestRanking.Order(new[] { mixedJunk, empty });
+    Equal(new GridPoint(9, 9), ordered[0].ChestTile);
 }
 
 static void TestHarvestChestFullAcceptance()
@@ -2646,8 +2691,8 @@ static void TestHarvestCargoDestinationGrouping()
         HarvestChestClassification.Classify(new HarvestChestContents(0, 0, 0, 0))
             == HarvestChestMatchKind.Empty);
     Equal(
-        false,
-        HarvestChestClassification.Classify(new HarvestChestContents(0, 0, 0, 1)).HasValue);
+        HarvestChestMatchKind.MixedFreeSlot,
+        HarvestChestClassification.Classify(new HarvestChestContents(0, 0, 0, 1)));
 }
 
 static void TestRegrowingHarvestCaptureSemantics()

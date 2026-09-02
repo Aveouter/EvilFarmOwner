@@ -31,16 +31,14 @@ internal static class AnimalProductDestinationPlanner
                 continue;
 
             HarvestChestContents contents = HarvestChestRouter.GetContents(chest, item);
-            HarvestChestMatchKind? match = HarvestChestClassification.Classify(contents);
-            if (!match.HasValue)
-                continue;
+            HarvestChestMatchKind match = HarvestChestClassification.Classify(contents);
 
             GridPoint tile = new((int)pair.Key.X, (int)pair.Key.Y);
             candidates.Add((
                 new HarvestChestOption(
                     tile,
                     tile,
-                    match.Value,
+                    match,
                     capacity,
                     item.Stack,
                     TravelDistance: 0,
@@ -77,9 +75,13 @@ internal sealed class AnimalProductTransferService
             house, target, out Item? product, out FarmAnimal? animal);
         if (!sourceUnchanged || product is null)
             return AnimalProductTransferFailure.SourceChanged;
+        // Animal products have no storage-sort repair stage, so a commit must still find
+        // a category-compatible slot or land in an already-mixed junk chest. Pure-foreign
+        // chests are rejected at commit time even if the planner picked them as a fallback.
+        HarvestChestContents contents = HarvestChestRouter.GetContents(chest, product);
         bool destinationEligible = HarvestChestRouter.IsEligibleChest(chest)
-            && HarvestChestClassification.Classify(
-                HarvestChestRouter.GetContents(chest, product)).HasValue;
+            && (HarvestChestClassification.Classify(contents) <= HarvestChestMatchKind.SameCategory
+                || contents.IsMixed);
         AnimalProductTransferFailure preflight = AnimalProductCommitPolicy.EvaluatePreflight(
             sourceUnchanged,
             destinationEligible,

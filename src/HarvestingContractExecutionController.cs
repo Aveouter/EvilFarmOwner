@@ -544,12 +544,13 @@ internal sealed class HarvestingContractExecutionController
             contract.Preview.MaximumAuthorizedWage,
             contract.Lease.StartTime,
             contract.HarvestedTargets,
-            contract.Cargo.Select(entry => new NamedContractCargoState(
-                entry.TransferId,
-                entry.Item.QualifiedItemId,
-                entry.Item.DisplayName,
-                entry.Item.Quality,
-                entry.Item.Stack)).ToArray(),
+            contract.Cargo.Concat(contract.PendingOverflowEntries)
+                .Select(entry => new NamedContractCargoState(
+                    entry.TransferId,
+                    entry.Item.QualifiedItemId,
+                    entry.Item.DisplayName,
+                    entry.Item.Quality,
+                    entry.Item.Stack)).ToArray(),
             contract.TransferLedger.GetCompletedTransferIds())
         {
             HarvestDestination = contract.DestinationMode
@@ -1417,6 +1418,12 @@ internal sealed class HarvestingContractExecutionController
 
         if (contract.Cargo.Count == 0)
         {
+            if (contract.PendingOverflowEntries.Count > 0)
+            {
+                this.MergePendingOverflowInto(contract);
+                this.BeginOverflowDeposit(contract);
+                return;
+            }
             if (contract.WorkLocationComplete)
                 this.BeginReturn(contract, depositOverflowOnReturn: false);
             else
@@ -1444,10 +1451,7 @@ internal sealed class HarvestingContractExecutionController
             contract.FailedDeliveryTiles);
         if (route is null)
         {
-            this.StopForUnavailableStorage(
-                contract,
-                $"no reachable category-compatible chest can fully accept "
-                + $"'{entry.Item.QualifiedItemId}' q{entry.Item.Quality} x{entry.Item.Stack}");
+            this.ParkUndeliverableEntries(contract, entry);
             return;
         }
 
@@ -1499,6 +1503,74 @@ internal sealed class HarvestingContractExecutionController
                 $"controller setup failed: {ex.Message}",
                 "harvest.route-reason.controller-setup");
         }
+    }
+
+    private void ParkUndeliverableEntries(
+        ActiveHarvestContract contract,
+        HarvestCargoEntry firstEntry)
+    {
+        // One routing context and one nav-map build for the whole remaining cargo:
+        // parking N stacks must not rebuild the full-farm BFS N times in one tick.
+        HarvestChestRoutingContext? routing = this.ChestRouter.CreateRoutingContext(
+            contract.Farm,
+            contract.Lease.Worker,
+            contract.Lease.Worker.TilePoint,
+            contract.FailedDeliveryTiles);
+        if (routing is null)
+        {
+            foreach (HarvestCargoEntry candidate in contract.Cargo.ToArray())
+                this.ParkEntry(contract, candidate);
+        }
+        else
+        {
+            HarvestCargoRouteRequest[] requests = contract.Cargo
+                .Select(candidate => new HarvestCargoRouteRequest(
+                    candidate.TransferId,
+                    candidate.Item,
+                    contract.GetAttemptedChests(candidate.TransferId),
+                    contract.GetAttemptedChestRoutes(candidate.TransferId)))
+                .ToArray();
+            HashSet<string> routableIds = HarvestChestRouter.FindBestRoutes(routing, requests)
+                .Select(result => result.TransferId)
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (HarvestCargoEntry candidate in contract.Cargo.ToArray())
+            {
+                if (!routableIds.Contains(candidate.TransferId))
+                    this.ParkEntry(contract, candidate);
+            }
+        }
+
+        if (contract.Cargo.Count == 0)
+        {
+            this.MergePendingOverflowInto(contract);
+            this.BeginOverflowDeposit(contract);
+            return;
+        }
+
+        this.BeginDeliveryOrReturn(contract);
+    }
+
+    private void ParkEntry(ActiveHarvestContract contract, HarvestCargoEntry entry)
+    {
+        contract.Cargo.Remove(entry);
+        contract.PendingOverflowEntries.Add(entry);
+        this.Monitor.Log(
+            $"No reachable chest can fully accept '{entry.Item.QualifiedItemId}' "
+            + $"q{entry.Item.Quality} x{entry.Item.Stack}; the contract continues and the stack "
+            + "will be preserved in persistent overflow.",
+            LogLevel.Warn);
+    }
+
+    private void MergePendingOverflowInto(ActiveHarvestContract contract)
+    {
+        // Every deposit, persist, quarantine, drop, audit, and runtime-state boundary
+        // must see parked stacks as cargo; otherwise a stop that fires while stacks are
+        // parked silently loses them at finalization.
+        if (contract.PendingOverflowEntries.Count == 0)
+            return;
+
+        contract.Cargo.AddRange(contract.PendingOverflowEntries);
+        contract.PendingOverflowEntries.Clear();
     }
 
     private void DeliverToRequesterOrStop(
@@ -1728,11 +1800,17 @@ internal sealed class HarvestingContractExecutionController
         HarvestChestRoute route,
         HarvestCargoEntry entry)
     {
+        // Capacity alone does not justify committing into a chest whose category state
+        // changed since planning: a route planned as a category match must still find a
+        // category-compatible slot at commit time. Fallback-tier routes (Empty or
+        // MixedFreeSlot) keep committing because a foreign placement was the plan all along.
         HarvestChestContents contents = HarvestChestRouter.GetContents(route.Chest, entry.Item);
-        bool stillMatchesCategory = HarvestChestClassification.Classify(contents).HasValue;
+        bool plannedCategoryMatch = route.MatchKind <= HarvestChestMatchKind.SameCategory;
+        bool stillCategoryMatch = HarvestChestClassification.Classify(contents)
+            <= HarvestChestMatchKind.SameCategory;
         bool canFullyAccept = HarvestChestRouter.GetAcceptableCapacity(route.Chest, entry.Item)
             >= entry.Item.Stack;
-        if (!stillMatchesCategory || !canFullyAccept)
+        if ((plannedCategoryMatch && !stillCategoryMatch) || !canFullyAccept)
         {
             contract.GetAttemptedChests(entry.TransferId).Add(route.ChestTile);
             return true;
@@ -1982,8 +2060,10 @@ internal sealed class HarvestingContractExecutionController
 
     private int CountCarriedSlots(ActiveHarvestContract contract)
     {
+        // Parked overflow stacks still count as carried cargo for the delivery threshold,
+        // so the worker does not keep acquiring targets with invisible outstanding cargo.
         return HarvestCargoBatchPolicy.CountCarriedSlots(
-            contract.Cargo,
+            contract.Cargo.Concat(contract.PendingOverflowEntries),
             entry => entry.Item.Stack,
             entry => entry.Item.maximumStackSize(),
             (left, right) => left.Item.canStackWith(right.Item));
@@ -2101,7 +2181,8 @@ internal sealed class HarvestingContractExecutionController
             this.WorkClaims?.ReleaseWorker(contract.Lease.Worker.Name);
             this.WorkforceRoutes?.ReleaseWorker(contract.Lease.Worker.Name);
             this.ReleaseCurrentChestLock(contract);
-            if (contract.Cargo.Count > 0 && contract.Phase != HarvestContractPhase.QuarantiningCargo)
+            bool hasOutstandingCargo = contract.Cargo.Count > 0 || contract.PendingOverflowEntries.Count > 0;
+            if (hasOutstandingCargo && contract.Phase != HarvestContractPhase.QuarantiningCargo)
                 this.PersistOrDropCargo(contract);
             if (contract.Cargo.Count > 0 && !this.TryQuarantineRemainingCargo(contract))
             {
@@ -2113,7 +2194,8 @@ internal sealed class HarvestingContractExecutionController
             }
 
             int harvestedItems = contract.HarvestedItems.Sum(item => item.Stack);
-            int unresolvedItems = contract.Cargo.Sum(entry => entry.Item.Stack);
+            int unresolvedItems = contract.Cargo.Sum(entry => entry.Item.Stack)
+                + contract.PendingOverflowEntries.Sum(entry => entry.Item.Stack);
             bool placementBalanced = HarvestPlacementAudit.IsBalanced(
                 harvestedItems,
                 contract.PlayerInventoryItems,
@@ -2380,6 +2462,7 @@ internal sealed class HarvestingContractExecutionController
 
     private void PersistOrDropCargo(ActiveHarvestContract contract)
     {
+        this.MergePendingOverflowInto(contract);
         if (contract.Cargo.Count == 0)
             return;
 
@@ -2521,6 +2604,7 @@ internal sealed class HarvestingContractExecutionController
 
     private void StoreCargoInOverflow(ActiveHarvestContract contract)
     {
+        this.MergePendingOverflowInto(contract);
         Inventory overflow = Game1.player.team.GetOrCreateGlobalInventory(OverflowInventoryId);
         foreach (HarvestCargoEntry entry in contract.Cargo.ToArray())
         {
@@ -2542,6 +2626,7 @@ internal sealed class HarvestingContractExecutionController
 
     private bool TryQuarantineRemainingCargo(ActiveHarvestContract contract)
     {
+        this.MergePendingOverflowInto(contract);
         if (contract.Cargo.Count == 0)
             return true;
 
@@ -2967,6 +3052,7 @@ internal sealed class HarvestingContractExecutionController
 
     private void DropCargoVisibly(ActiveHarvestContract contract, string reason)
     {
+        this.MergePendingOverflowInto(contract);
         EmergencyDropDestination destination = this.ResolveEmergencyDropDestination(contract);
         this.Monitor.Log(
             $"{reason}; dropping exact harvest cargo visibly at {destination.Label} {destination.Tile}.",
@@ -3284,6 +3370,7 @@ internal sealed class HarvestingContractExecutionController
         public HarvestTransferLedger TransferLedger { get; } = new();
         public HashSet<string> QuarantinedTransferIds { get; } = new(StringComparer.Ordinal);
         public List<HarvestCargoEntry> Cargo { get; } = new();
+        public List<HarvestCargoEntry> PendingOverflowEntries { get; } = new();
         public List<HarvestItemSnapshot> HarvestedItems { get; } = new();
         public HarvestContractPhase Phase { get; set; } = HarvestContractPhase.TravelingToTarget;
         public PathFindController? Controller { get; set; }
