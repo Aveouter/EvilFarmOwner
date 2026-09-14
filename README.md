@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.5.0
+  <strong>邪恶农场主</strong> · Stardew Valley SMAPI Mod · v0.5.2
 </p>
 
 <p align="center">
@@ -26,6 +26,10 @@
 ---
 
 ## 中文
+
+> **测试风险声明 / AI-assisted release**
+>
+> 本 Mod 由 AI 辅助快速开发，包含明显的 vibe coding 成分。v0.5.2 是公开风险声明版：已通过自动化构建、确定性逻辑测试和发布包检查，但尚未完整完成所有真实存档、多人联机、复杂农场布局、其他经济类 Mod 组合和长时间游玩的人工验收。请先备份存档；遇到路线、箱子、工资或多人同步异常时，请在 GitHub Issues 提交 SMAPI 日志与截图。
 
 ### 简介
 
@@ -127,6 +131,10 @@ efo_netstatus    查看联机合同状态
 ---
 
 ## English
+
+> **Testing Risk Notice / AI-assisted release**
+>
+> This mod was developed quickly with AI assistance and includes clear vibe-coding risk. v0.5.2 is a public risk-disclosure build: automated builds, deterministic logic tests, and release-package checks pass, but the full matrix of real saves, multiplayer sessions, complex farm layouts, economy-mod combinations, and long play sessions has not been completed. Back up your save first. If you hit route, chest, wage, or multiplayer-sync issues, please report them with a SMAPI log and screenshot.
 
 ### Overview
 

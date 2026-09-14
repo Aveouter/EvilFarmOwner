@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 - 2026-09-14
+
+- Published a risk-disclosure build for broader mod-platform testing, explicitly documenting that the project was developed quickly with AI assistance and retains vibe-coding validation risk.
+- Added prominent Chinese and English README warnings asking players to back up saves and report SMAPI logs/screenshots for route, storage, wage, or multiplayer issues.
+- Kept gameplay code unchanged from v0.5.1; this release changes metadata and user-facing risk communication only.
+
 ## 0.5.1 - 2026-09-03
 
 - Fixed single-chest farms rejecting mixed-category harvests: foreign-only chests now fall back to a MixedFreeSlot tier (already-mixed junk chests preferred), and an undeliverable stack is parked in persistent overflow while the shift continues instead of stopping the whole contract (#154, #155).
